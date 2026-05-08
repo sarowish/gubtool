@@ -3,7 +3,7 @@ mod player_tab;
 mod travel_tab;
 mod utility_tab;
 
-use crate::{ds2::game_state::GameStateHandler, tui::{
+use crate::{ds2::{game_state::GameStateHandler, target}, tui::{
     common::tabs_widget::TabsWidget,
     ds2::{items_tab::ItemTab, player_tab::PlayerTab, travel_tab::TravelTab, utility_tab::UtilityTab}, event::ResultExt,
 }};
@@ -64,13 +64,14 @@ impl DarkSouls2 {
         self.game_state.poll().send_error();
     }
 
-    pub fn render_tick(&mut self) {
+    pub fn render_tick(&self) {
     }
 
-    pub fn on_unattach(&mut self) {
+    pub fn on_unattach(&self) {
     }
 
-    pub fn on_attach(&mut self) -> anyhow::Result<()> {
+    pub fn on_attach(&self) -> anyhow::Result<()> {
+        target::install_target_hook().send_error();
         Ok(())
     }
 }

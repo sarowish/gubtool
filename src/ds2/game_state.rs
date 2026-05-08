@@ -4,7 +4,7 @@ use crate::ds2::{
     chr_ctrl::ChrCtrlExt,
     mem::*,
     offsets::{code_cave, game_manager_imp},
-    player,
+    player, utility,
 };
 
 pub struct GameStateHandler {
@@ -50,6 +50,11 @@ impl GameStateHandler {
         Ok(())
     }
     fn on_unloaded(&self) -> Result<()> {
+        if get_state_flag(GameStateFlags::FastQuitout) {
+            utility::set_faster_menu(true)?
+        } else if utility::is_faster_menu()? {
+            utility::set_faster_menu(false)?
+        }
         Ok(())
     }
 }
@@ -57,6 +62,7 @@ impl GameStateHandler {
 #[repr(u64)]
 pub enum GameStateFlags {
     PlayerNoDeath = 0x0,
+    FastQuitout = 0x1,
 }
 
 pub fn get_state_flag(flag_offset: GameStateFlags) -> bool {

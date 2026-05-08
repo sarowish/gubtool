@@ -7,7 +7,7 @@ use crate::{
             chr_ins::{self, *},
             code_cave, functions, world_chr_man,
         },
-        resources::asm,
+        resources::ASM,
         target,
     },
 };
@@ -73,7 +73,7 @@ pub fn chr_ins_from_entity_id(entity_id: u32) -> ChrIns {
     let looked_up_chr_ins = code_cave::base() + code_cave::LOOKED_UP_CHR_INS;
     let world_chr_man = read::<u64>(world_chr_man::base())?;
 
-    let mut asm = asm::CHR_INS_FROM_ENTITY_ID;
+    let mut asm = ASM.get_function("chr_ins_from_entity_id").bytes.clone();
     write_to_slice::<u64>(&mut asm, 2, world_chr_man)?;
     write_to_slice::<u32>(&mut asm, 17, entity_id)?;
     write_to_slice::<u64>(&mut asm, 23, functions::get_chr_ins_by_entity_id())?;
@@ -96,15 +96,15 @@ pub fn chr_ins_from_handle(handle: u64) -> ChrIns {
 
 impl ChrInsExt for ChrIns {
     fn get_current_hp(&self) -> Result<i32> {
-        read::<i32>(self.data_pointer()? + data_offsets::HEALTH)
+        read::<i32>(self.data_pointer()?.saturating_add(data_offsets::HEALTH))
     }
 
     fn get_max_hp(&self) -> Result<i32> {
-        read::<i32>(self.data_pointer()? + data_offsets::MAX_HEALTH)
+        read::<i32>(self.data_pointer()?.saturating_add(data_offsets::MAX_HEALTH))
     }
 
     fn set_hp(&self, val: i32) -> Result<()> {
-        write::<i32>(self.data_pointer()? + data_offsets::HEALTH, val)
+        write::<i32>(self.data_pointer()?.saturating_add(data_offsets::HEALTH), val)
     }
 
     fn set_hp_pct(&self, pct: i32) -> Result<()> {
@@ -113,56 +113,56 @@ impl ChrInsExt for ChrIns {
             bail!("Could not set hp percentage: Tried to divide by zero")
         }
         let val = (pct * max_hp) / 100;
-        write::<i32>(self.data_pointer()? + data_offsets::HEALTH, val)
+        write::<i32>(self.data_pointer()?.saturating_add(data_offsets::HEALTH), val)
     }
 
     fn set_no_death(&self, state: bool) -> Result<()> {
-        set_bit(self.data_pointer()? + data_flags(), bit_flags::NO_DEATH, state)
+        set_bit(self.data_pointer()?.saturating_add(data_flags()), bit_flags::NO_DEATH, state)
     }
 
     fn is_no_death(&self) -> Result<bool> {
-        is_bit_set(self.data_pointer()? + data_flags(), bit_flags::NO_DEATH)
+        is_bit_set(self.data_pointer()?.saturating_add(data_flags()), bit_flags::NO_DEATH)
     }
 
     fn set_no_damage(&self, state: bool) -> Result<()> {
-        set_bit(self.data_pointer()? + data_flags(), bit_flags::NO_DAMAGE, state)
+        set_bit(self.data_pointer()?.saturating_add(data_flags()), bit_flags::NO_DAMAGE, state)
     }
 
     fn is_no_damage(&self) -> Result<bool> {
-        is_bit_set(self.data_pointer()? + data_flags(), bit_flags::NO_DAMAGE)
+        is_bit_set(self.data_pointer()?.saturating_add(data_flags()), bit_flags::NO_DAMAGE)
     }
 
     fn get_max_poise(&self) -> Result<f32> {
-        read::<f32>(self.super_armor_pointer()? + super_armor_offsets::MAX_POISE)
+        read::<f32>(self.super_armor_pointer()?.saturating_add(super_armor_offsets::MAX_POISE))
     }
 
     fn get_current_poise(&self) -> Result<f32> {
-        read::<f32>(self.super_armor_pointer()? + super_armor_offsets::CURRENT_POISE)
+        read::<f32>(self.super_armor_pointer()?.saturating_add(super_armor_offsets::CURRENT_POISE))
     }
 
     fn get_poise_timer(&self) -> Result<f32> {
-        read::<f32>(self.super_armor_pointer()? + super_armor_offsets::POISE_TIMER)
+        read::<f32>(self.super_armor_pointer()?.saturating_add(super_armor_offsets::POISE_TIMER))
     }
 
     fn get_current_animation(&self) -> Result<i32> {
-        read::<i32>(self.time_act_pointer()? + time_act_offsets::ANIMATION_ID)
+        read::<i32>(self.time_act_pointer()?.saturating_add(time_act_offsets::ANIMATION_ID))
     }
 
     fn get_last_act(&self) -> Result<u8> {
-        read::<u8>(self.ai_think_pointer()? + ai_think_offsets::last_act())
+        read::<u8>(self.ai_think_pointer()?.saturating_add(ai_think_offsets::last_act()))
     }
 
     fn set_repeat_act(&self, state: bool) -> Result<()> {
-        write::<u8>(self.ai_think_pointer()? + ai_think_offsets::force_act(), state as u8)
+        write::<u8>(self.ai_think_pointer()?.saturating_add(ai_think_offsets::force_act()), state as u8)
     }
 
     fn is_repeat_act(&self) -> Result<bool> {
-        read::<u8>(self.ai_think_pointer()? + ai_think_offsets::force_act())
+        read::<u8>(self.ai_think_pointer()?.saturating_add(ai_think_offsets::force_act()))
             .map(|val| val != 0x0)
     }
 
     fn force_act(&self, act: i32) -> Result<()> {
-        write::<i32>(self.ai_think_pointer()? + ai_think_offsets::force_act(), act)
+        write::<i32>(self.ai_think_pointer()?.saturating_add(ai_think_offsets::force_act()), act)
     }
 
     fn set_disable_ai(&self, state: bool) -> Result<()> {
@@ -174,19 +174,19 @@ impl ChrInsExt for ChrIns {
     }
 
     fn get_animation_speed(&self) -> Result<f32> {
-        read::<f32>(self.behaviour_pointer()? + behavior_offsets::ANIMATION_SPEED)
+        read::<f32>(self.behaviour_pointer()?.saturating_add(behavior_offsets::ANIMATION_SPEED))
     }
 
     fn set_animation_speed(&self, val: f32) -> Result<()> {
-        write::<f32>(self.behaviour_pointer()? + behavior_offsets::ANIMATION_SPEED, val)
+        write::<f32>(self.behaviour_pointer()?.saturating_add(behavior_offsets::ANIMATION_SPEED), val)
     }
 
     fn local_coords(&self) -> Result<[f32; 3]> {
-        read::<[f32; 3]>(self.physics_pointer()? + chr_ins::physics_offsets::COORDS)
+        read::<[f32; 3]>(self.physics_pointer()?.saturating_add(chr_ins::physics_offsets::COORDS))
     }
 
     fn hurtbox_radius(&self) -> Result<f32> {
-        read::<f32>(self.physics_pointer()? + chr_ins::physics_offsets::HURT_CAPSULE_RADIUS)
+        read::<f32>(self.physics_pointer()?.saturating_add(chr_ins::physics_offsets::HURT_CAPSULE_RADIUS))
     }
 
     fn get_distance(&self, other: &ChrIns) -> Result<f32> {
@@ -201,12 +201,12 @@ impl ChrInsExt for ChrIns {
     }
 
     fn block_id(&self) -> Result<u32> {
-        read::<u32>(self.chr_ins_pointer()? + chr_ins::BLOCK_ID)
+        read::<u32>(self.chr_ins_pointer()?.saturating_add(chr_ins::BLOCK_ID))
     }
 
     fn map_coords(&self) -> Result<[f32; 3]> {
         let block_pos = target::world_block_info_from_block_id(self.block_id()?)
-            .and_then(|addr| read::<[f32; 3]>(addr + 0x70))?;
+            .and_then(|addr| read::<[f32; 3]>(addr.saturating_add(0x70)))?;
         let local_coords = self.local_coords()?;
         Ok([
             local_coords[0] - block_pos[0],
@@ -218,7 +218,7 @@ impl ChrInsExt for ChrIns {
     fn set_speffect(&self, speffect_id: i64) -> Result<()> {
         let location = code_cave::base() + code_cave::SET_SPEFFECT_ASM;
 
-        let mut asm = asm::SET_SPEFFECT;
+        let mut asm = ASM.get_function("set_speffect").bytes.clone();
         write_to_slice::<u64>(&mut asm, 2, self.chr_ins_pointer()?)?;
         write_to_slice::<i64>(&mut asm, 12, speffect_id)?;
         write_to_slice::<u64>(&mut asm, 22, functions::set_speffect())?;
@@ -231,7 +231,7 @@ impl ChrInsExt for ChrIns {
     fn remove_speffect(&self, speffect_id: i64) -> Result<()> {
         let location = code_cave::base() + code_cave::REMOVE_SPEFFECT_ASM;
 
-        let mut asm = asm::REMOVE_SPEFFECT;
+        let mut asm = ASM.get_function("remove_speffect").bytes.clone();
         write_to_slice::<u64>(&mut asm, 2, self.special_effect_pointer()?)?;
         write_to_slice::<i64>(&mut asm, 12, speffect_id)?;
         write_to_slice::<u64>(&mut asm, 22, functions::remove_speffect())?;
@@ -246,23 +246,23 @@ impl ChrInsExt for ChrIns {
     }
 
     fn get_lua_timers(&self) -> Result<[f32; 16]> {
-        read::<[f32; 16]>(self.ai_think_pointer()? + ai_think_offsets::LUA_TIMERS_ARRAY)
+        read::<[f32; 16]>(self.ai_think_pointer()?.saturating_add(ai_think_offsets::LUA_TIMERS_ARRAY))
     }
 
     fn chr_id(&self) -> Result<i32> {
-        read::<i32>(self.chr_ins_pointer()? + chr_ins::CHR_ID)
+        read::<i32>(self.chr_ins_pointer()?.saturating_add(chr_ins::CHR_ID))
     }
 
     fn handle(&self) -> Result<u64> {
-        read::<u64>(self.chr_ins_pointer()? + chr_ins::HANDLE)
+        read::<u64>(self.chr_ins_pointer()?.saturating_add(chr_ins::HANDLE))
     }
 
     fn entity_id(&self) -> Result<u32> {
-        read::<u32>(self.chr_ins_pointer()? + chr_ins::entity_id())
+        read::<u32>(self.chr_ins_pointer()?.saturating_add(chr_ins::entity_id()))
     }
 
     fn npc_think_param_id(&self) -> Result<i32> {
-        read::<i32>(self.ai_think_pointer()? + ai_think_offsets::NPC_THINK_PARAM_ID)
+        read::<i32>(self.ai_think_pointer()?.saturating_add(ai_think_offsets::NPC_THINK_PARAM_ID))
     }
 
     fn chr_ins_pointer(&self) -> Result<u64> {

@@ -5,8 +5,8 @@ use crate::{
         mem::*,
         offsets::{self, code_cave, functions},
         resources::{
+            ASM,
             aow::{AFFINITIES, Affinity, Aow, aow_array},
-            asm,
             items::{
                 Categories, Item, armor::ARMOR, arrows::ARROWS, ashes_of_war::ASHES_OF_WAR,
                 bell_bearings::BELL_BEARINGS, consumables::CONSUMABLES, cookbooks::COOKBOOKS,
@@ -36,7 +36,7 @@ fn itemspawn(item_id: i64, quantity: i64, aow_id: i64,
     write_to_slice::<i32>(&mut item_struct, 0x4C, -1)?;
     write_to_slice::<i32>(&mut item_struct, 0x50, aow_id)?;
 
-    let mut asm = asm::ITEM_SPAWN;
+    let mut asm = ASM.get_function("item_spawn").bytes.clone();
     write_to_slice::<i32>(&mut asm, 7, rel_i32(item_struct_location, location + 11)?)?;
     write_to_slice::<i32>(&mut asm, 13, rel_i32(should_adjust_quantity, location + 17)?)?;
     write_to_slice::<i32>(&mut asm, 25, rel_i32(functions::get_player_item_quantity_by_id(), location + 29)?)?;

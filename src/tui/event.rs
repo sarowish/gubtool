@@ -15,6 +15,7 @@ pub enum Event {
     Error(String),
     Search((Vec<Utf32String>, fn(&mut App))),
     Input(fn(String, &mut App)),
+    ApplyAttach,
 }
 
 pub static SENDER: OnceLock<mpsc::Sender<Event>> = OnceLock::new();

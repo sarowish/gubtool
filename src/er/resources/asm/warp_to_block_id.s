@@ -1,0 +1,11 @@
+.intel_syntax noprefix
+
+mov ecx, 0x0
+mov edx, 0x0
+mov r8d, 0x0
+mov r9d, 0x0
+movabs rax, 0x0
+sub rsp, 0x20
+call rax
+add rsp, 0x20
+ret

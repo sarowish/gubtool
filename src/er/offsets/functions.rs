@@ -248,7 +248,7 @@ pub fn get_event() -> u64 {
     }
 }
 
-pub fn external_event_temporary_constructor() -> u64 {
+pub fn external_event_temporary_ctor() -> u64 {
     module_handle() + match version() {
         Version::ER1_2_0 => 0x1F934E0,
         Version::ER1_2_1 => 0x1F93530,
@@ -341,7 +341,7 @@ pub fn emevd_switch() -> u64 {
     }
 }
 
-pub fn emk_event_ins_constructor() -> u64 {
+pub fn emk_event_ins_ctor() -> u64 {
     module_handle() + match version() {
         Version::ER1_2_0 => 0x56ECA0,
         Version::ER1_2_1 |

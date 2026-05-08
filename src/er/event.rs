@@ -10,7 +10,7 @@ use crate::{
         },
         player::player_ins,
         resources::{
-            asm,
+            ASM,
             bosses::{Boss, bosses_array},
             talk_commands::TalkCommand,
         },
@@ -83,13 +83,14 @@ pub fn execute_emevd_command(group_id: i32, command_id: i32, args: &[u8]) -> Res
     let location = code_cave::base() + code_cave::EMEVD_ASM;
     let args_location = code_cave::base() + code_cave::EMEVD_ARGS;
 
-    let mut asm = asm::EXECUTE_EMEVD_COMMAND;
-    write_to_slice::<u64>(&mut asm, 105, functions::emk_event_ins_constructor())?;
-    write_to_slice::<i32>(&mut asm, 124, group_id)?;
-    write_to_slice::<i32>(&mut asm, 131, command_id)?;
-    write_to_slice::<u64>(&mut asm, 151, args_location)?;
-    write_to_slice::<u64>(&mut asm, 171, offsets::cs_emk_system::base())?;
-    write_to_slice::<u64>(&mut asm, 194, functions::emevd_switch())?;
+    let fun = ASM.get_function("execute_emevd_command");
+    let mut asm = fun.bytes.clone();
+    write_to_slice::<u64>(&mut asm, fun.reloc("fn_emk_event_ins_ctor"), functions::emk_event_ins_ctor())?;
+    write_to_slice::<i32>(&mut asm, fun.reloc("group_id"), group_id)?;
+    write_to_slice::<i32>(&mut asm, fun.reloc("command_id"), command_id)?;
+    write_to_slice::<u64>(&mut asm, fun.reloc("args_location"), args_location)?;
+    write_to_slice::<u64>(&mut asm, fun.reloc("cs_emk_system_base"), offsets::cs_emk_system::base())?;
+    write_to_slice::<u64>(&mut asm, fun.reloc("fn_emevd_switch"), functions::emevd_switch())?;
     let asm = append_flag_setter(location, &asm)?;
 
     let _handle = EXECUTE_EMEVD_COMMAND_MUTEX.lock().unwrap();
@@ -104,9 +105,10 @@ pub fn execute_talk_command(command_id: i32, params: &'static [i32], handle: u64
     let params_location = code_cave::base() + code_cave::EZ_STATE_TALK_PARAMS;
     let params: Vec<u8> = params.iter().flat_map(|&x| x.to_le_bytes()).collect();
 
-    let mut asm = asm::EXECUTE_TALK_COMMAND;
+    let fun = ASM.get_function("execute_talk_command");
+    let mut asm = fun.bytes.clone();
     write_to_slice::<i32>(&mut asm, 18, command_id)?;
-    write_to_slice::<i32>(&mut asm, 23, rel_i32(functions::external_event_temporary_constructor(), location + 27)?)?;
+    write_to_slice::<i32>(&mut asm, 23, rel_i32(functions::external_event_temporary_ctor(), location + 27)?)?;
     write_to_slice::<u64>(&mut asm, 65, handle)?;
     write_to_slice::<i32>(&mut asm, 78, params.len())?;
     write_to_slice::<i32>(&mut asm, 93, rel_i32(params_location, location + 97)?)?;
@@ -224,37 +226,4 @@ impl Boss {
 
 pub fn mass_revive(dlc: bool, first_encounter: bool) -> Result<()> {
     bosses_array(dlc).iter().try_for_each(|boss| boss.revive(first_encounter, false))
-}
-
-pub fn _set_event(event_id: u32, value: bool) -> Result<()> {
-    let location = code_cave::base() + code_cave::SET_EVENT_ASM;
-    let virt_flag_ptr = read::<u64>(virtual_memory_flag::base())?;
-
-    let mut asm = asm::SET_EVENT;
-    asm[2..10].copy_from_slice(&(virt_flag_ptr).to_le_bytes());
-    asm[12..20].copy_from_slice(&(event_id as u64).to_le_bytes());
-    asm[22..30].copy_from_slice(&(value as i64).to_le_bytes());
-    asm[32..40].copy_from_slice(&(functions::set_event()).to_le_bytes());
-    let asm = append_flag_setter(location, &asm)?;
-
-    write_bytes(location, &asm)?;
-    run_thread(location)
-}
-
-pub fn _get_event(event_id: u32) -> Result<bool> {
-    let location = code_cave::base() + code_cave::GET_EVENT_ASM;
-    let virt_flag_ptr = read::<u64>(virtual_memory_flag::base())?;
-    let result_location = code_cave::base() + code_cave::EVENT_RESULT;
-
-    let mut asm = asm::GET_EVENT;
-    asm[2..10].copy_from_slice(&(virt_flag_ptr).to_le_bytes());
-    asm[12..20].copy_from_slice(&(event_id as u64).to_le_bytes());
-    asm[22..30].copy_from_slice(&(functions::get_event()).to_le_bytes());
-    asm[42..50].copy_from_slice(&(result_location).to_le_bytes());
-    let asm = append_flag_setter(location, &asm)?;
-
-    write::<u8>(result_location, 0xFF)?;
-    write_bytes(location, &asm)?;
-    run_thread(location)?;
-    Ok(read::<u8>(result_location)? != 0)
 }

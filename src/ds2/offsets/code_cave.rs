@@ -11,7 +11,7 @@ pub fn base() -> u64 {
         Version::Vanilla1_0_7 => 0x0,
         Version::Vanilla1_0_10 => 0x0,
         Version::Vanilla1_0_11 => 0x117A154,
-        Version::Vanilla1_0_12 => 0x114B079,
+        Version::Vanilla1_0_12 => 0x121F6A0,
         Version::Scholar1_0_1 => 0x0,
         Version::Scholar1_0_2 => 0x169B246,
         Version::Scholar1_0_3 => 0x16FA40A,
@@ -44,12 +44,19 @@ pub mod item_struct_offsets {
 }
 pub const ITEM_SPAWN_STACK: u64 = 0x19B;                // [u8; 0x300]
 
+pub const SAVED_TARGET_POINTER: u64 = 0x49B;            // u64
+
+pub const CREDITS_MODIFY_ONCE_FLAG: u64 = 0x600;        // u8
+
 pub const STATE_HANDLER_FLAGS: u64 = 0xF00;             // [u8; 256]
 
 // Hooks
 pub const WARP_COORDS_HOOK: u64 = 0x1000;               // [u8; 124]
 pub const IVORY_SKIP_HOOK: u64 = 0x1080;                // [u8; 219]
-pub const IVORY_KNIGHTS_HOOK: u64 = 0x1160;              // [u8; 36]
+pub const IVORY_KNIGHTS_HOOK: u64 = 0x1160;             // [u8; 36]
+pub const TARGET_POINTER_HOOK: u64 = 0x1190;            // [u8; 19]
+pub const CREDITS_SKIP_HOOK: u64 = 0x11B0;              // [u8; 38]
+pub const FASTER_MENU_HOOK: u64 = 0x11E0;               // [u8; 26]
 
 // Shellcode
 pub const RUN_THREAD_ASM: u64 = 0x2000;                 // [u8; 39]
@@ -60,4 +67,4 @@ pub const BONFIRE_WARP_ASM: u64 = 0x2070;               // [u8; 56]
 pub const EVENT_WARP_ASM: u64 = 0x20C0;                 // [u8; 37]
 pub const ITEM_SPAWN_ASM: u64 = 0x20F0;                 // [u8; 293]
 
-pub const EMPTY_SPACE: u64 = 0x4000;                    //
+pub const BONFIRE_WARP_OUTPUT: u64 = 0x4000;            //

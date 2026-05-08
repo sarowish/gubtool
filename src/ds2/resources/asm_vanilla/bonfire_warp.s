@@ -1,0 +1,17 @@
+.intel_syntax noprefix
+
+sub esp, 0x48
+push 0x5
+push DWORD PTR ds:0x0
+lea eax, ds:0x0
+push eax
+mov eax, 0x0
+call eax
+add esp, 0xC
+lea eax, ds:0x0
+push eax
+mov ecx, 0x0
+mov eax, 0x0
+call eax
+add esp, 0x48
+ret

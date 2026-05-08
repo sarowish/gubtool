@@ -1,19 +1,19 @@
-use std::{thread, time::Duration};
-use anyhow::{Result, anyhow};
 use crate::{
     core::common::{rel_i32, write_to_slice},
     ds2::{
-        game_state::is_loading_screen, mem::*, offsets::{
-            code_cave,
-            functions,
+        game_state::is_loading_screen,
+        mem::*,
+        offsets::{
+            code_cave, functions,
             game_manager_imp::{self, event_manager_offsets, hk_hardware_info},
             hooks,
-        }, resources::{
-            asm,
-            warps::Warp,
-        }, utils::{character_loaded_check, is_scholar}
+        },
+        resources::{scholar, vanilla, warps::Warp},
+        utils::{character_loaded_check, is_scholar},
     },
 };
+use anyhow::{Result, anyhow};
+use std::{thread, time::Duration};
 
 impl Warp {
     pub fn warp(&self) -> Result<()> {
@@ -51,11 +51,11 @@ fn bonfire_warp(bonfire_id: i32, event_warp_entity: u64) -> Result<()> {
 }
 
 fn bonfire_warp_scholar(event_warp_entity: u64) -> Result<()> {
-    let empty_space = code_cave::base() + code_cave::EMPTY_SPACE;
+    let empty_space = code_cave::base() + code_cave::BONFIRE_WARP_OUTPUT;
     let bonfire_id_location = code_cave::base() + code_cave::BONFIRE_ID;
     let location = code_cave::base() + code_cave::BONFIRE_WARP_ASM;
 
-    let mut asm = asm::BONFIRE_WARP_SCHOLAR;
+    let mut asm = scholar::ASM.get_function("bonfire_warp").bytes.clone();
     write_to_slice::<i32>(&mut asm, 7, rel_i32(empty_space, location + 11)?)?;
     write_to_slice::<i32>(&mut asm, 14, rel_i32(bonfire_id_location, location + 18)?)?;
     write_to_slice::<i32>(&mut asm, 25, rel_i32(functions::warp_prep(), location + 29)?)?;
@@ -69,11 +69,11 @@ fn bonfire_warp_scholar(event_warp_entity: u64) -> Result<()> {
 }
 
 fn bonfire_warp_vanilla(event_warp_entity: u64) -> Result<()> {
-    let empty_space = code_cave::base() + code_cave::EMPTY_SPACE;
+    let empty_space = code_cave::base() + code_cave::BONFIRE_WARP_OUTPUT;
     let bonfire_id_location = code_cave::base() + code_cave::BONFIRE_ID;
     let location = code_cave::base() + code_cave::BONFIRE_WARP_ASM;
 
-    let mut asm = asm::BONFIRE_WARP_VANILLA;
+    let mut asm = vanilla::ASM.get_function("bonfire_warp").bytes.clone();
     write_to_slice::<u32>(&mut asm, 7, bonfire_id_location)?;
     write_to_slice::<u32>(&mut asm, 13, empty_space)?;
     write_to_slice::<u32>(&mut asm, 19, functions::warp_prep())?;
@@ -106,7 +106,7 @@ fn event_warp(bonfire_id: i32, event_object_id: i32, event_warp_entity: u64) -> 
 fn event_warp_scholar(event_warp_entity: u64, params_location: u64) -> Result<()> {
     let location = code_cave::base() + code_cave::EVENT_WARP_ASM;
 
-    let mut asm = asm::EVENT_WARP_SCHOLAR;
+    let mut asm = scholar::ASM.get_function("event_warp").bytes.clone();
     write_to_slice::<u64>(&mut asm, 9, event_warp_entity)?;
     write_to_slice::<i32>(&mut asm, 20, rel_i32(params_location, location + 24)?)?;
     write_to_slice::<i32>(&mut asm, 25, rel_i32(functions::warp(), location + 29)?)?;
@@ -119,7 +119,7 @@ fn event_warp_scholar(event_warp_entity: u64, params_location: u64) -> Result<()
 fn event_warp_vanilla(event_warp_entity: u64, params_location: u64) -> Result<()> {
     let location = code_cave::base() + code_cave::EVENT_WARP_ASM;
 
-    let mut asm = asm::EVENT_WARP_VANILLA;
+    let mut asm = vanilla::ASM.get_function("event_warp").bytes.clone();
     write_to_slice::<u32>(&mut asm, 1, event_warp_entity)?;
     write_to_slice::<u32>(&mut asm, 7, params_location)?;
     write_to_slice::<u32>(&mut asm, 13, functions::warp())?;
@@ -148,7 +148,7 @@ fn write_coords_hook(coords: &[f32; 16]) -> Result<()> {
 fn write_coords_hook_scholar(coords_location: u64) -> Result<()> {
     let location = code_cave::base() + code_cave::WARP_COORDS_HOOK;
 
-    let mut asm = asm::WARP_COORD_WRITE_SCHOLAR;
+    let mut asm = scholar::ASM.get_function("warp_coord_hook").bytes.clone();
     write_to_slice::<u64>(&mut asm, 10, hk_hardware_info::base())?;
     write_to_slice::<i32>(&mut asm, 55, rel_i32(coords_location, location + 59)?)?;
     write_to_slice::<i32>(&mut asm, 68, rel_i32(coords_location + 0x10, location + 72)?)?;
@@ -162,7 +162,7 @@ fn write_coords_hook_scholar(coords_location: u64) -> Result<()> {
 fn write_coords_hook_vanilla(coords_location: u64) -> Result<()> {
     let location = code_cave::base() + code_cave::WARP_COORDS_HOOK;
 
-    let mut asm = asm::WARP_COORD_WRITE_VANILLA;
+    let mut asm = vanilla::ASM.get_function("warp_coord_hook").bytes.clone();
     write_to_slice::<u32>(&mut asm, 9, game_manager_imp::base())?;
     write_to_slice::<u32>(&mut asm, 53, coords_location)?;
     write_to_slice::<u32>(&mut asm, 64, coords_location + 0x10)?;
@@ -175,9 +175,8 @@ fn write_coords_hook_vanilla(coords_location: u64) -> Result<()> {
 
 fn wait_for_loaded(do_coords_hook: bool) -> Result<()> {
     while !is_loading_screen()? {
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(50));
     }
-    thread::sleep(Duration::from_millis(200));
 
     if do_coords_hook {
         let location = code_cave::base() + code_cave::WARP_COORDS_HOOK;
@@ -187,7 +186,7 @@ fn wait_for_loaded(do_coords_hook: bool) -> Result<()> {
     }
 
     while is_loading_screen()? {
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(50));
     }
     thread::sleep(Duration::from_millis(200));
 

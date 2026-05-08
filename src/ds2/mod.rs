@@ -6,5 +6,6 @@ mod offsets;
 pub mod player;
 pub mod resources;
 pub mod utility;
+pub mod target;
 pub mod travel;
 mod utils;

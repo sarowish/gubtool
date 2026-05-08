@@ -173,6 +173,8 @@ impl FuzzyFinder {
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
+        self.list_state.size = self.match_count;
+
         match (key.code, key.modifiers) {
             (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
                 self.list_state.increment(28);

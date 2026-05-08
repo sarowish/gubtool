@@ -16,7 +16,6 @@ use crate::{
             functions, game_manager_imp,
         },
         resources::{
-            asm,
             items::{
                 Categories, Item,
                 armor::ARMOR,
@@ -30,6 +29,7 @@ use crate::{
                 upgrade_materials::UPGRADE_MATERIALS,
                 weapons::WEAPONS,
             },
+            scholar, vanilla,
         },
         utils::{ScholarError, character_loaded_check, is_scholar},
     },
@@ -75,7 +75,7 @@ fn write_item_shellcode_scholar(args_loc: u64) -> Result<()> {
     let item_struct = args_loc + ITEM_STRUCT;
     use item_struct_offsets as off;
 
-    let mut asm = asm::ITEM_SPAWN_SCHOLAR;
+    let mut asm = scholar::ASM.get_function("item_spawn").bytes.clone();
     write_to_slice::<u64>(&mut asm, 15, game_manager_imp::base())?;
     write_to_slice::<u64>(&mut asm, 87, functions::current_item_quantity_check())?;
     write_to_slice::<u64>(&mut asm, 175, functions::item_give())?;
@@ -111,8 +111,7 @@ fn write_item_shellcode_vanilla(args_loc: u64) -> Result<()> {
     let item_struct = args_loc + ITEM_STRUCT;
     use item_struct_offsets as off;
 
-    let mut asm = asm::ITEM_SPAWN_VANILLA;
-
+    let mut asm = vanilla::ASM.get_function("item_spawn").bytes.clone();
     write_to_slice::<u32>(&mut asm, 2, args_loc + SHOULD_PROCESS_FLAG)?;
     write_to_slice::<u32>(&mut asm, 15, game_manager_imp::base())?;
     write_to_slice::<u32>(&mut asm, 32, args_loc + SHOULD_PROCESS_FLAG)?;

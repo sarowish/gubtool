@@ -17,14 +17,7 @@ use nix::{
 };
 use pelite::Pod;
 use std::{
-    any::type_name,
-    hint::spin_loop,
-    io::{IoSlice, IoSliceMut},
-    mem::zeroed,
-    ptr, slice,
-    sync::{LazyLock, Mutex},
-    thread,
-    time::{Duration, Instant},
+    any::type_name, fs, hint::spin_loop, io::{IoSlice, IoSliceMut}, mem::zeroed, ptr, slice, sync::{LazyLock, Mutex}, thread, time::{Duration, Instant}
 };
 
 static PTRACE_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -302,7 +295,7 @@ pub fn run_win32_thread(
             ptrace::attach(pid())?;
             waitpid(pid(), None)?;
 
-            let mut regs_buf: [u8; 512] = zeroed();
+            let mut regs_buf: [u8; size_of::<i386Regs>()] = zeroed();
             let mut iov = libc::iovec {
                 iov_base: regs_buf.as_mut_ptr() as *mut libc::c_void,
                 iov_len: regs_buf.len(),
@@ -352,4 +345,25 @@ pub fn run_win32_thread(
             }
         }
     }
+}
+
+pub fn get_process_uptime(pid: Pid) -> Result<f64> {
+    let stat = fs::read_to_string(format!("/proc/{}/stat", pid))?;
+    let start_ticks: f64 = stat
+        .split_whitespace()
+        .nth(21)
+        .ok_or(anyhow!("Could not determine process start time"))?
+        .parse()?;
+
+    let system_uptime_str = fs::read_to_string("/proc/uptime")?;
+    let system_uptime: f64 = system_uptime_str
+        .split_whitespace()
+        .next()
+        .ok_or(anyhow!("Could not read system uptime"))?
+        .parse()?;
+
+    let system_tick_rate = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as f64;
+
+    let process_start = start_ticks / system_tick_rate;
+    Ok(system_uptime - process_start)
 }

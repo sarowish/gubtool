@@ -1,5 +1,5 @@
 use crate::{
-    ds2::utility::{self},
+    ds2::{game_state, utility::{self}},
     tui::{
         common::{
             StrExt, blockless_list, stateful_list::StatefulList, tab_state::TabState, tabs_list,
@@ -16,6 +16,8 @@ use ratatui::{
 
 enum OptionsItems {
     IvorySkip,
+    SkipCredits,
+    FastQuitout,
 }
 
 enum PreferencesItems {
@@ -103,6 +105,14 @@ impl OptionsItems {
                 let new_state = !utility::is_ivory_skip().unwrap_or_default();
                 utility::set_ivory_skip(new_state).send_error();
             }
+            Self::SkipCredits => {
+                let new_state = !utility::is_credits_skip().unwrap_or_default();
+                utility::set_credits_skip(new_state).send_error();
+            }
+            Self::FastQuitout => {
+                let new_state = !game_state::get_state_flag(game_state::GameStateFlags::FastQuitout);
+                game_state::set_state_flag(game_state::GameStateFlags::FastQuitout, new_state).send_error();
+            }
         }
     }
     fn set_input(&self) {
@@ -116,11 +126,21 @@ impl OptionsItems {
                 let state = utility::is_ivory_skip().unwrap_or_default();
                 "Skip Ivory King Gauntlet".create_toggle_str(state)
             }
+            Self::SkipCredits => {
+                let state = utility::is_credits_skip().unwrap_or_default();
+                "Skip Credits".create_toggle_str(state)
+            }
+            Self::FastQuitout => {
+                let state = game_state::get_state_flag(game_state::GameStateFlags::FastQuitout);
+                "Fast Quitout".create_toggle_str(state)
+            }
         };
         ListItem::new(text)
     }
     const ARRAY: &[OptionsItems] = &[
         Self::IvorySkip,
+        Self::SkipCredits,
+        Self::FastQuitout,
     ];
     fn list(utility_tab: &UtilityTab) -> List<'static> {
         let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item()).collect();

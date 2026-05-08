@@ -4,7 +4,7 @@ use crate::{
         event,
         mem::*,
         offsets::{code_cave, functions, hooks, menu_man, world_chr_man},
-        resources::{asm, bosses::Boss, graces::Grace},
+        resources::{ASM, bosses::Boss, graces::Grace},
         utils::{character_loaded_check, dlc_check},
     },
 };
@@ -14,7 +14,7 @@ use std::{thread, time::Duration};
 pub fn warp_to_grace(grace_id: i64) -> Result<()> {
     let location = code_cave::base() + code_cave::GRACE_WARP_ASM;
 
-    let mut asm = asm::WARP_TO_GRACE;
+    let mut asm = ASM.get_function("warp_to_grace").bytes.clone();
     write_to_slice::<u64>(&mut asm, 2, world_chr_man::base())?;
     write_to_slice::<i64>(&mut asm, 20, grace_id)?;
     write_to_slice::<u64>(&mut asm, 30, functions::grace_warp())?;
@@ -31,7 +31,7 @@ pub fn warp_to_block_id(block_id: i32, coords: [f32; 3], angle: f32, is_night: b
     let map: i32 = (block_id >> 8) & 0xFF;
     let alt_no: i32 = block_id & 0xFF;
 
-    let mut asm = asm::WARP_TO_BLOCK_ID;
+    let mut asm = ASM.get_function("warp_to_block_id").bytes.clone();
     write_to_slice::<i32>(&mut asm, 1, area)?;
     write_to_slice::<i32>(&mut asm, 6, block)?;
     write_to_slice::<i32>(&mut asm, 12, map)?;
@@ -58,19 +58,19 @@ fn hook_warp_coord_writes(coords: [f32; 3], angle: f32, is_night: bool) -> Resul
     write_bytes(target_coords_location, &target_coords)?;
     write::<f32>(target_angle_location + 4, angle)?;
 
-    let mut asm = asm::HOOK_WARP_COORD_ANGLE;
+    let mut asm = ASM.get_function("warp_coord_angle_hook").bytes.clone();
 
     let warp_code_location = code_cave::base() + code_cave::WARP_COORDS_HOOK;
     write_to_slice::<i32>(&mut asm, 3, rel_i32(target_coords_location, warp_code_location + 7)?)?;
     write_to_slice::<i32>(&mut asm, 15, rel_i32(hooks::warp_coord_write() + 7, warp_code_location + 19)?)?;
-    write(warp_code_location, asm)?;
+    write_bytes(warp_code_location, &asm)?;
 
     let angle_code_location = code_cave::base() + code_cave::WARP_ANGLE_HOOK;
     write_to_slice::<i32>(&mut asm, 3, rel_i32(target_angle_location, angle_code_location + 7)?)?;
     write_to_slice::<i32>(&mut asm, 10, angle_offset_in_struct)?;
     write_to_slice::<i32>(&mut asm, 15, rel_i32(hooks::warp_angle_write() + 7, angle_code_location + 19)?)?;
 
-    write(angle_code_location, asm)?;
+    write_bytes(angle_code_location, &asm)?;
 
     let mut hookbytes: [u8; 6] = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90];
     write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(warp_code_location, hooks::warp_coord_write() + 5)?)?;
@@ -81,6 +81,8 @@ fn hook_warp_coord_writes(coords: [f32; 3], angle: f32, is_night: bool) -> Resul
     wait_to_unhook_warp(is_night)
 }
 
+const COORD_HOOK_ORIGINAL: [u8; 7] = [0x0F, 0x11, 0x80, 0xA0, 0x0A, 0x00, 0x00];
+const ANGLE_HOOK_ORIGINAL: [u8; 7] = [0x0F, 0x11, 0x80, 0xB0, 0x0A, 0x00, 0x00];
 fn wait_to_unhook_warp(is_night: bool) -> Result<()> {
     let is_faded_ptr = read::<u64>(menu_man::base())? + menu_man::is_fading();
 
@@ -94,8 +96,8 @@ fn wait_to_unhook_warp(is_night: bool) -> Result<()> {
     if is_night {
         event::set_night()?;
     }
-    write_bytes(hooks::warp_coord_write(), &asm::COORD_HOOK_ORIGINAL)?;
-    write_bytes(hooks::warp_angle_write(), &asm::ANGLE_HOOK_ORIGINAL)
+    write_bytes(hooks::warp_coord_write(), &COORD_HOOK_ORIGINAL)?;
+    write_bytes(hooks::warp_angle_write(), &ANGLE_HOOK_ORIGINAL)
 }
 
 impl Boss {

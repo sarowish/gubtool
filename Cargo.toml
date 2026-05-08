@@ -23,3 +23,11 @@ thiserror = "2.0.18"
 ratatui-themes = "0.2.0"
 phf = { version = "0.13.1", features = ["macros"]}
 libc = "0.2.186"
+object = "0.39.1"
+bincode = "1"
+
+[build-dependencies]
+serde = { version = "1.0.228", features = ["derive"]}
+serde_derive = "1.0.228"
+bincode = "1"
+object = "0.39.1"

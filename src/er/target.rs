@@ -1,10 +1,13 @@
 use crate::{
-    core::common::{rel_i32, write_to_slice},
+    core::{
+        attach::{Version, version},
+        common::{rel_i32, write_to_slice},
+    },
     er::{
         chr_ins::ChrIns,
         mem::*,
         offsets::{code_cave, field_area, hooks},
-        resources::asm,
+        resources::ASM,
     },
 };
 use anyhow::{Result, anyhow, bail, ensure};
@@ -20,7 +23,7 @@ pub fn install_target_hook() -> Result<()> {
     let location = code_cave::base() + code_cave::TARGET_POINTER_HOOK;
     let saved_pointer = code_cave::base() + code_cave::TARGET_POINTER;
 
-    let mut asm = asm::TARGET_HOOK;
+    let mut asm = ASM.get_function("save_target_hook").bytes.clone();
     write_to_slice::<i32>(&mut asm, 10, rel_i32(saved_pointer, location + 14)?)?;
     write_to_slice::<i32>(&mut asm, 15, rel_i32(hooks::locked_target_pointer() + 7, location + 19)?)?;
 
@@ -31,13 +34,31 @@ pub fn install_target_hook() -> Result<()> {
     write_bytes(hooks::locked_target_pointer(), &hookbytes)
 }
 
+const TARGET_HOOK_BYTES_ORIGINAL: [u8; 7] = [0x48, 0x8B, 0x8F, 0x88, 0x00, 0x00, 0x00];
 pub fn uninstall_target_hook() -> Result<()> {
-    write_bytes(hooks::locked_target_pointer(), &asm::TARGET_HOOK_BYTES_ORIGINAL)
+    write_bytes(hooks::locked_target_pointer(), &TARGET_HOOK_BYTES_ORIGINAL)
 }
 
 pub fn is_target_hook_active() -> Result<bool> {
     read::<[u8; 7]>(hooks::locked_target_pointer())
-        .map(|val| val != asm::TARGET_HOOK_BYTES_ORIGINAL)
+        .map(|val| val != TARGET_HOOK_BYTES_ORIGINAL)
+}
+
+fn get_force_act_idx_original_bytes() -> [u8; 7] {
+    match version() {
+        Version::ER1_2_0 |
+        Version::ER1_2_1 |
+        Version::ER1_2_2 |
+        Version::ER1_2_3 |
+        Version::ER1_3_0 |
+        Version::ER1_3_1 |
+        Version::ER1_3_2 |
+        Version::ER1_4_0 |
+        Version::ER1_4_1 |
+        Version::ER1_5_0 |
+        Version::ER1_6_0 => [0x0F, 0xBE, 0x80, 0xB1, 0xE9, 0x00, 0x00],
+        _ => [0x0F, 0xBE, 0x80, 0xC1, 0xE9, 0x00, 0x00],
+    }
 }
 
 pub fn force_act_sequence(act_sequence: Vec<i32>, npc_think_param_id: i32) -> Result<()> {
@@ -52,7 +73,7 @@ pub fn force_act_sequence(act_sequence: Vec<i32>, npc_think_param_id: i32) -> Re
     act_array.resize(10, 0);
     let act_array: Vec<u8> = act_array.iter().flat_map(|&x| x.to_le_bytes()).collect();
 
-    let mut asm = asm::FORCE_ACT_SEQUENCE;
+    let mut asm = ASM.get_function("force_act_sequence_hook").bytes.clone();
     write_to_slice::<i32>(&mut asm, 2, rel_i32(should_run_flag_location, location + 7)?)?;
     write_to_slice::<i32>(&mut asm, 12, npc_think_param_id)?;
     write_to_slice::<i32>(&mut asm, 23, rel_i32(current_idx_location, location + 27)?)?;
@@ -60,7 +81,7 @@ pub fn force_act_sequence(act_sequence: Vec<i32>, npc_think_param_id: i32) -> Re
     write_to_slice::<i32>(&mut asm, 42, rel_i32(current_idx_location, location + 46)?)?;
     write_to_slice::<i32>(&mut asm, 53, rel_i32(should_run_flag_location, location + 58)?)?;
     write_to_slice::<i32>(&mut asm, 62, rel_i32(hooks::get_force_act_idx() + 7, location + 66)?)?;
-    write_to_slice::<[u8; 7]>(&mut asm, 66, asm::get_force_act_idx_original_bytes())?;
+    write_to_slice::<[u8; 7]>(&mut asm, 66, get_force_act_idx_original_bytes())?;
     write_to_slice::<i32>(&mut asm, 74, rel_i32(hooks::get_force_act_idx() + 7, location + 78)?)?;
 
     let mut hookbytes = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90];
@@ -78,7 +99,7 @@ pub fn install_stagger_hook() -> Result<()> {
     let location = code_cave::base() + code_cave::TARGET_NO_STAGGER_HOOK;
     let target_ptr_location = code_cave::base() + code_cave::TARGET_POINTER;
 
-    let mut asm = asm::TARGET_STAGGER_HOOK;
+    let mut asm = ASM.get_function("target_stagger_hook").bytes.clone();
     write_to_slice::<i32>(&mut asm, 8, rel_i32(target_ptr_location, location + 12)?)?;
     write_to_slice::<i32>(&mut asm, 24, rel_i32(hooks::target_no_stagger() + 8, location + 28)?)?;
 
@@ -89,13 +110,14 @@ pub fn install_stagger_hook() -> Result<()> {
     write_bytes(hooks::target_no_stagger(), &hookbytes)
 }
 
+const TARGET_STAGGER_HOOK_BYTES_ORIGINAL: [u8; 8] = [0x48, 0x8B, 0x41, 0x08, 0x83, 0x48, 0x2C, 0x08];
 pub fn uninstall_stagger_hook() -> Result<()> {
-    write_bytes(hooks::target_no_stagger(), &asm::TARGET_STAGGER_HOOK_BYTES_ORIGINAL)
+    write_bytes(hooks::target_no_stagger(), &TARGET_STAGGER_HOOK_BYTES_ORIGINAL)
 }
 
 pub fn is_stagger_hook_active() -> Result<bool> {
     read::<[u8; 8]>(hooks::target_no_stagger())
-        .map(|val| val != asm::TARGET_STAGGER_HOOK_BYTES_ORIGINAL)
+        .map(|val| val != TARGET_STAGGER_HOOK_BYTES_ORIGINAL)
 }
 
 pub fn toggle_stagger_hook() -> Result<()> {

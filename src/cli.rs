@@ -1,7 +1,11 @@
 use crate::{
-    core::attach::{self, Game, game}, ds2, er::{
-        self, chr_ins::ChrInsExt, item, offsets::chr_dbg_flags::ChrDbgOffsets, player::{self, player_ins}, resources::items, target
-    }, tui::tui
+    core::attach::{self, Game, game},
+    ds2::{self, chr_ctrl::ChrCtrlExt},
+    er::{
+        self, chr_ins::ChrInsExt, item, offsets::chr_dbg_flags::ChrDbgOffsets, resources::items,
+        target,
+    },
+    tui::tui,
 };
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -51,8 +55,26 @@ pub fn run() -> Result<()> {
                 Game::DarkSoulsII => ds2::utility::quitout(),
             }
         }
+        Commands::KillTarget => {
+            match game() {
+                Game::EldenRing => {
+                    if !er::target::is_target_hook_active()? {
+                        er::target::install_target_hook()?;
+                        thread::sleep(Duration::from_millis(50));
+                    }
+                    ChrInsExt::set_hp(&er::target::target_ins(), 0)
+                }
+                Game::DarkSoulsII => {
+                    if !ds2::target::is_target_hook_active()? {
+                        ds2::target::install_target_hook()?;
+                        thread::sleep(Duration::from_millis(50));
+                    }
+                    ChrCtrlExt::set_hp(&ds2::target::target_ctrl(), 0)
+                }
+            }
+        }
         Commands::PlayerHp { val } => {
-            player_ins().set_hp(val)
+            ChrInsExt::set_hp(&er::target::target_ins(), val)
         }
         Commands::LogoPatch { val } => {
             er::utility::set_logo_patch(val.into())
@@ -61,10 +83,10 @@ pub fn run() -> Result<()> {
             er::utility::set_freeze_world(!er::utility::is_freeze_world_on()?)
         }
         Commands::NoDeath { val } => {
-            player::set_chr_dbg_flag(ChrDbgOffsets::PlayerNoDeath, val.into())
+            er::player::set_chr_dbg_flag(ChrDbgOffsets::PlayerNoDeath, val.into())
         }
         Commands::OneShot { val } => {
-            player::set_chr_dbg_flag(ChrDbgOffsets::OneShot, val.into())
+            er::player::set_chr_dbg_flag(ChrDbgOffsets::OneShot, val.into())
         }
         Commands::MuteMusic { val } => {
             er::utility::mute_music(val.into())
@@ -73,7 +95,7 @@ pub fn run() -> Result<()> {
             er::utility::trigger_new_game()
         }
         Commands::GiveRunes { val } => {
-            player::give_runes(val)
+            er::player::give_runes(val)
         }
         Commands::Fps { val } => {
             er::utility::set_fps_cap(val)
@@ -84,15 +106,8 @@ pub fn run() -> Result<()> {
         Commands::ShowMaps { val } => {
             er::utility::show_all_maps(val.into())
         }
-        Commands::KillTarget => {
-            if !target::is_target_hook_active().unwrap() {
-                target::install_target_hook().unwrap();
-                thread::sleep(Duration::from_millis(50));
-            }
-            target::target_ins().set_hp(0)
-        }
         Commands::TargetHp { val } => {
-            target::target_ins().set_hp(val)
+            ChrInsExt::set_hp(&target::target_ins(), val)
         }
         Commands::MassSpawn { val } => {
             item::mass_spawn(val)

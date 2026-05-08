@@ -1,0 +1,9 @@
+.intel_syntax noprefix
+
+sub rsp, 0x220
+cmp DWORD PTR [rip+0x0], 0x0
+jne skip
+mov DWORD PTR [rcx+0x28], 0x7
+mov DWORD PTR [rip+0x0], 0x1
+skip:
+jmp 0x0

@@ -1,0 +1,12 @@
+.intel_syntax noprefix
+
+sub rsp, 0x60
+lea rcx, [rip+0x0]
+movzx edx, WORD PTR [rip+0x0]
+mov r8d, 0x5
+call 0x0
+movabs rcx, 0x0
+lea rdx, [rip+0x0]
+call 0x0
+add rsp, 0x60
+ret

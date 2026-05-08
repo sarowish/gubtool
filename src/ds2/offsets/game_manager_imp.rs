@@ -74,12 +74,30 @@ use crate::core::attach::{Version, version};
             _ => 0x0,
         }
     }
+    pub fn params_ptr() -> u64 {
+        match version() {
+            Version::Vanilla1_0_11 |
+            Version::Vanilla1_0_12 => 0x20,
+            Version::Scholar1_0_2 |
+            Version::Scholar1_0_3 => 0x38,
+            _ => 0x0,
+        }
+    }
     pub fn coords() -> u64 {
         match version() {
             Version::Vanilla1_0_11 |
             Version::Vanilla1_0_12 => 0x80,
             Version::Scholar1_0_2 |
             Version::Scholar1_0_3 => 0x90,
+            _ => 0x0,
+        }
+    }
+    pub fn hp() -> u64 {
+        match version() {
+            Version::Vanilla1_0_11 |
+            Version::Vanilla1_0_12 => 0xFC,
+            Version::Scholar1_0_2 |
+            Version::Scholar1_0_3 => 0x168,
             _ => 0x0,
         }
     }

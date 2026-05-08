@@ -83,7 +83,6 @@ impl ProcessSelector {
                 Cell::from(comm),
                 Cell::from(process.pid.to_string()),
                 Cell::from(format!("{}", process.version)),
-                Cell::from(format!("{:#X}", process.module_handle)),
             ]);
             rows.push(row);
         }
@@ -91,7 +90,6 @@ impl ProcessSelector {
             Cell::from("Name"),
             Cell::from("PID"),
             Cell::from("Game Version"),
-            Cell::from("Module Handle"),
         ]).bold();
         let widths = [
             Constraint::Max(20),

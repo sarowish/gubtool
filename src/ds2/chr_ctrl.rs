@@ -1,23 +1,39 @@
 use anyhow::{Result, anyhow};
+use phf::phf_map;
 
 use crate::ds2::{
     mem::{read, write},
     offsets::game_manager_imp::chr_ctrl_offsets,
+    utils::is_scholar,
 };
 
 pub type ChrCtrl = Result<u64>;
 
 pub trait ChrCtrlExt {
+    fn get_hp(&self) -> Result<i32>;
+    fn set_hp(&self, val: i32) -> Result<()>;
     fn get_min_hp(&self) -> Result<i32>;
     fn set_min_hp(&self, val: i32) -> Result<()>;
     fn is_no_death(&self) -> Result<bool>;
     fn set_no_death(&self, state: bool) -> Result<()>;
     fn coords(&self) -> Result<[f32; 3]>;
+    fn posture(&self) -> Result<f32>;
+
+    fn chr_id(&self) -> Result<i32>;
 
     fn chr_ctrl_pointer(&self) -> Result<u64>;
+    fn chr_param_pointer(&self) -> Result<u64>;
+
+    fn name_from_chr_id(&self) -> &'static str;
 }
 
 impl ChrCtrlExt for ChrCtrl {
+    fn get_hp(&self) -> Result<i32> {
+        read::<i32>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::hp())
+    }
+    fn set_hp(&self, val: i32) -> Result<()> {
+        write::<i32>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::hp(), val)
+    }
     fn get_min_hp(&self) -> Result<i32> {
         read::<i32>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::min_hp())
     }
@@ -39,7 +55,237 @@ impl ChrCtrlExt for ChrCtrl {
         read::<[f32; 3]>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::coords())
     }
 
+    fn chr_id(&self) -> Result<i32> {
+        read::<i32>(self.chr_param_pointer()? + 0x0)
+    }
+
+    fn posture(&self) -> Result<f32> {
+        read::<f32>(self.chr_param_pointer()? + 0xFC)
+    }
+
     fn chr_ctrl_pointer(&self) -> Result<u64> {
         Ok(*self.as_ref().map_err(|e| anyhow!("{e}"))?)
     }
+
+    fn chr_param_pointer(&self) -> Result<u64> {
+        if is_scholar() {
+            read::<u64>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::params_ptr())
+        } else {
+            read::<u32>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::params_ptr())
+                .map(|val| val as u64)
+        }
+    }
+
+    fn name_from_chr_id(&self) -> &'static str {
+        CHR_NAMES
+            .get(&self.chr_id().unwrap_or_default())
+            .map_or("", |v| *v)
+    }
 }
+
+static CHR_NAMES: phf::Map<i32, &'static str> = phf_map! {
+    0001 => "Human NPC",
+    1000 => "Goblin	Forest",
+    1010 => "Kobold",
+    1020 => "Hollow Soldier",
+    1021 => "Royal Soldier",
+    1030 => "Hollow Infantry",
+    1031 => "Royal Infantry",
+    1050 => "Amana Shrine Maiden",
+    1060 => "Hollow Priest",
+    1062 => "Hollow Priestess",
+    1070 => "Parasitized Undead",
+    1080 => "Rogue",
+    1130 => "Varangian Sailor",
+    1150 => "Undead Traveler",
+    1170 => "Stone Soldier",
+    1180 => "Hollow Mage (Black)",
+    1182 => "Hollow Mage (White)",
+    1210 => "Giant",
+    1230 => "Suspicious Shadow",
+    1240 => "Manikin",
+    1250 => "Undead Citizen",
+    1270 => "Undead Laborer",
+    1271 => "Undead Laborer (Frozen)",
+    1290 => "Witchtree",
+    1292 => "Witchtree (Frozen)",
+    1310 => "Lindelt Cleric",
+    1320 => "Skeleton",
+    1330 => "Bonewheel Skeleton",
+    1340 => "Gyrm",
+    1350 => "Gyrm Warrior",
+    1370 => "Prowling Magus",
+    1380 => "Torturer",
+    1390 => "Artificial Undead",
+    1400 => "Weaponsmith Ornifex",
+    1410 => "Enhanced Undead",
+    1460 => "Duke Tseldora",
+    1470 => "Undead Supplicant",
+    1480 => "Undead Peasant",
+    1490 => "Undead Steelworker",
+    1500 => "Stone Knight",
+    1510 => "Ironclad Soldier",
+    1512 => "Old Ironclad Soldier",
+    1520 => "Royal Swordsman",
+    1530 => "Royal Guard",
+    1540 => "Skeleton Lords",
+    1550 => "Lizardman",
+    1570 => "Armored Skeleton",
+    2011 => "Enslaved Pig",
+    2021 => "Undead Boar",
+    2030 => "Parasite Spider",
+    2040 => "Great Moth",
+    2050 => "Poison Horn Beetle",
+    2051 => "Acid Horn Beetle",
+    2060 => "Razorback Nightcrawler",
+    2090 => "Hunting Dog",
+    2100 => "Basilisk",
+    2120 => "Guardian Dragon",
+    2130 => "Crystal Lizard",
+    2131 => "Red Crystal Lizard",
+    2140 => "Giant Undead Boar",
+    2160 => "Wall Warrior",
+    2170 => "Dark Stalker",
+    2200 => "Giant Acid Horn Beetle",
+    2220 => "Giant Basilisk",
+    2230 => "Dog Rat",
+    2240 => "Coal Tar",
+    2250 => "Marker NPC",
+    2260 => "Corpse Rat",
+    2261 => "Royal Rat Vanguard",
+    2262 => "The Rat King",
+    2270 => "Stray Hound",
+    2271 => "Frost Hound",
+    3000 => "Ogre",
+    3010 => "Heide Knight",
+    3020 => "Undead Jailer",
+    3033 => "Flexile Sentry",
+    3040 => "Injured Milfanito",
+    3050 => "Smelter Demon",
+    3052 => "Smelter Demon (Blue)",
+    3060 => "Alonne Knight Captain",
+    3070 => "Body of Vengarl",
+    3071 => "Head of Vengarl",
+    3080 => "Lion Clan Warrior",
+    3081 => "Lion Clan Warrior (Golden)	",
+    3090 => "Elite Giant",
+    3096 => "The Last Giant",
+    3097 => "Giant Lord",
+    3110 => "Mounted Overseer",
+    3120 => "Grave Warden",
+    3130 => "Falconer",
+    3140 => "Primal Knight (Undead)",
+    3150 => "Primal Knight",
+    3160 => "Desert Sorceress",
+    3170 => "Dragon Acolyte",
+    3180 => "The Pursuer",
+    3190 => "Alonne Knight",
+    3210 => "Mimic",
+    3240 => "Belfry Gargoyles",
+    3250 => "Ruin Sentinels",
+    3260 => "The Rotten",
+    3270 => "Dragon Skeleton",
+    3300 => "Old Knight",
+    3310 => "Drakekeeper",
+    3320 => "Throne Defender",
+    3330 => "Velstadt, The Royal Aegis",
+    3340 => "Throne Watcher",
+    3370 => "Captive Undead",
+    5000 => "Covetous Demon",
+    5001 => "Covetous Demon",
+    5010 => "Mytha, the Baneful Queen",
+    5020 => "Manscorpion Tark",
+    5030 => "Scorpioness Najka",
+    5040 => "Looking Glass Knight",
+    5061 => "Darklurker",
+    5062 => "Darklurker's Portal",
+    5065 => "Grave Warden Agdayne",
+    5090 => "Leydia Witch",
+    5110 => "Imperious Knight",
+    5120 => "Leydia Pyromancer",
+    5146 => "Vendrick",
+    6000 => "Ancient Dragon",
+    6010 => "Flame Salamander",
+    6020 => "Demon of Song",
+    6030 => "The Duke's Dear Freja",
+    6070 => "Old Iron King",
+    6080 => "Corrosive Ant Queen",
+    6110 => "Dragonrider (Black)",
+    6115 => "Dragonrider (Red)",
+    6191 => "Executioner's Chariot",
+    6250 => "Old Dragonslayer",
+    6260 => "Lost Sinner",
+    6270 => "Nashandra",
+    6280 => "Royal Rat Authority",
+    6500 => "Iron Warrior",
+    6510 => "Fume Sorcerer",
+    6530 => "Ashen Warrior",
+    6540 => "Scorcher",
+    6560 => "Possessed Armor",
+    6570 => "Cask Runner",
+    6580 => "Alsanna, Silent Oracle",
+    6590 => "Rampart Gole",
+    6600 => "Ice Golem",
+    6610 => "Ice Stallion",
+    6620 => "Ice Rat",
+    6630 => "Spellsword",
+    6650 => "Sanctum Knight",
+    6660 => "Sanctum Soldier",
+    6700 => "Sanctum Priestess",
+    6710 => "Poison Kokeshi Lizard",
+    6711 => "Petrifying Kokeshi Lizard",
+    6720 => "Corrosive Egg Insect",
+    6740 => "Pagan Tree",
+    6750 => "Fume Knight",
+    6770 => "Retainer",
+    6780 => "Frozen Golem",
+    6790 => "Lud & Zallen, the King's Pets",
+    6791 => "Aava, the King's Pet",
+    6800 => "Sir Alonne",
+    6810 => "Sinh, the Slumbering Dragon",
+    6820 => "Elana, the Squalid Queen",
+    6830 => "The Imperfect",
+    6840 => "Vendrick (NPC)",
+    6880 => "Loyce Knight",
+    6890 => "Charred Loyce Knight",
+    6900 => "Burnt Ivory King",
+    6920 => "Aldia, Scholar of the First Sin",
+    6930 => "Aldia (Voice Marker)	",
+    7005 => "Emerald Herald	Shanalotte",
+    7015 => "Child Emerald Herald (Unused)",
+    7036 => "Nashandra (NPC)",
+    7045 => "Laddersmith Gilligan",
+    7050 => "Strowen (Cutscene)",
+    7051 => "Griant (Cutscene)",
+    7053 => "Morrel (Cutscene)",
+    7055 => "Strowen",
+    7056 => "Griant",
+    7058 => "Morrel",
+    7210 => "Chancellor Wellager",
+    7230 => "Milibeth",
+    7240 => "Captain Drummond",
+    7250 => "Darkdiver Grandahl",
+    7300 => "Looking Glass Phantom (Ultra Greatsword)",
+    7310 => "Looking Glass Phantom (Halberd)",
+    7420 => "Creighton the Wanderer",
+    7430 => "Benhart of Jugo",
+    7440 => "Mild-mannered Pate",
+    7510 => "Cartographer Cale",
+    7520 => "Lucatiel of Mirrah",
+    7530 => "Bell Keeper",
+    7540 => "Merchant Hag Melentia",
+    7600 => "Milfanito (Blonde)",
+    7601 => "Milfanito (Brunette)",
+    7602 => "Imprisoned Milfanito",
+    7620 => "Stone Trader Chloanne",
+    7640 => "Blacksmith Lenigrast",
+    7643 => "Steady Hand McDuff",
+    7680 => "Straid of Olaphis",
+    7690 => "Licia of Lindeldt",
+    7700 => "Felkin the Outcast",
+    7710 => "Royal Sorcerer Navlaan",
+    7770 => "Sweet Shalquoir",
+    7830 => "Titchy Gren",
+    7850 => "Blue Sentinel Targray",
+    8050 => "Player Character (Starting cutscenes)",
+};

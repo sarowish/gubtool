@@ -1,5 +1,8 @@
 use crate::{
-    core::common::{read_from_slice, rel_i32, write_to_slice},
+    core::{
+        attach::{Version, version},
+        common::{read_from_slice, rel_i32, write_to_slice},
+    },
     er::{
         chr_ins::{self, ChrIns, ChrInsExt},
         mem::*,
@@ -10,7 +13,7 @@ use crate::{
             hooks::{self},
             patches, world_chr_man,
         },
-        resources::asm,
+        resources::ASM,
         utils::{character_loaded_check, dlc_check},
     },
 };
@@ -34,8 +37,7 @@ pub fn set_chr_dbg_flag(offset: ChrDbgOffsets, state: bool) -> Result<()> {
 }
 
 pub fn is_chr_dbg_flag(offset: ChrDbgOffsets) -> Result<bool> {
-    read::<u8>(chr_dbg_flags::base() + offset as u64)
-        .map(|val| val == 1)
+    read::<u8>(chr_dbg_flags::base() + offset as u64).map(|val| val == 1)
 }
 
 pub fn set_rune_arc(state: bool) -> Result<()> {
@@ -57,10 +59,16 @@ pub fn give_runes(amount: i64) -> Result<()> {
     let player_game_data = read::<u64>(game_data_man::base())
         .and_then(|addr| read::<u64>(addr + game_data_man::PLAYER_GAME_DATA))?;
 
-    let mut asm = asm::GIVE_RUNES;
-    write_to_slice::<u64>(&mut asm, 2, player_game_data)?;
-    write_to_slice::<i64>(&mut asm, 12, amount)?;
-    write_to_slice::<u64>(&mut asm, 22, functions::give_runes())?;
+    let fun = ASM.get_function("give_runes");
+    let mut asm = fun.bytes.clone();
+
+    write_to_slice::<u64>(&mut asm, fun.reloc("player_game_data"), player_game_data)?;
+    write_to_slice::<i64>(&mut asm, fun.reloc("amount"), amount)?;
+    write_to_slice::<u64>(
+        &mut asm,
+        fun.reloc("fn_give_runes"),
+        functions::give_runes(),
+    )?;
     let asm = append_flag_setter(location, &asm)?;
 
     write_bytes(location, &asm)?;
@@ -68,21 +76,29 @@ pub fn give_runes(amount: i64) -> Result<()> {
 }
 
 pub fn map_coords() -> Result<[f32; 3]> {
-    read::<[f32; 3]>(player_ins().chr_ins_pointer()? + world_chr_man::player_ins_offsets::current_map_coords())
+    read::<[f32; 3]>(
+        player_ins().chr_ins_pointer()? + world_chr_man::player_ins_offsets::current_map_coords(),
+    )
 }
 
 pub fn map_angle() -> Result<f32> {
-    read::<f32>(player_ins().chr_ins_pointer()? + world_chr_man::player_ins_offsets::current_map_angle())
+    read::<f32>(
+        player_ins().chr_ins_pointer()? + world_chr_man::player_ins_offsets::current_map_angle(),
+    )
 }
 
 fn install_grab_hook() -> Result<()> {
-    let mut asm = asm::GRAB_HOOK;
+    let mut asm = ASM.get_function("grab_hook").bytes.clone();
     let location = code_cave::base() + code_cave::NO_GRAB_HOOK;
     let skip_grab_jmp_location = hooks::no_grab() + 0x95;
 
     write_to_slice::<i32>(&mut asm, 4, rel_i32(world_chr_man::base(), location + 8)?)?;
     write_to_slice::<i32>(&mut asm, 11, world_chr_man::player_ins())?;
-    write_to_slice::<i32>(&mut asm, 22, rel_i32(skip_grab_jmp_location, location + 26)?)?;
+    write_to_slice::<i32>(
+        &mut asm,
+        22,
+        rel_i32(skip_grab_jmp_location, location + 26)?,
+    )?;
     write_to_slice::<i32>(&mut asm, 36, rel_i32(hooks::no_grab() + 9, location + 40)?)?;
 
     let mut hookbytes: [u8; 9] = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90, 0x90];
@@ -92,35 +108,55 @@ fn install_grab_hook() -> Result<()> {
     write_bytes(hooks::no_grab(), &hookbytes)
 }
 
+const GRAB_HOOK_BYTES_ORIGINAL: [u8; 9] = [0x41, 0x8B, 0x56, 0x44, 0x48, 0x8D, 0x4C, 0x24, 0x40];
 fn uninstall_grab_hook() -> Result<()> {
-    write_bytes(hooks::no_grab(), &asm::GRAB_HOOK_BYTES_ORIGINAL)
+    write_bytes(hooks::no_grab(), &GRAB_HOOK_BYTES_ORIGINAL)
 }
 
 fn install_infinite_poise_hook() -> Result<()> {
-    let mut asm = asm::INFINITE_POISE_HOOK;
+    let mut asm = ASM.get_function("infinite_poise_hook").bytes.clone();
     let location = code_cave::base() + code_cave::INFINITE_POISE_HOOK;
 
     write_to_slice::<i32>(&mut asm, 11, rel_i32(world_chr_man::base(), location + 15)?)?;
     write_to_slice::<i32>(&mut asm, 18, world_chr_man::player_ins())?;
     write_to_slice::<i32>(&mut asm, 27, world_chr_man::player_ins())?;
     write_to_slice::<i32>(&mut asm, 64, rel_i32(world_chr_man::base(), location + 68)?)?;
-    write_to_slice::<i32>(&mut asm, 84, rel_i32(functions::get_chr_ins_by_entity_id(), location + 88)?)?;
-    write_to_slice::<i32>(&mut asm, 107, rel_i32(hooks::infinite_poise() + 7, location + 111)?)?;
+    write_to_slice::<i32>(
+        &mut asm,
+        84,
+        rel_i32(functions::get_chr_ins_by_entity_id(), location + 88)?,
+    )?;
+    write_to_slice::<i32>(
+        &mut asm,
+        107,
+        rel_i32(hooks::infinite_poise() + 7, location + 111)?,
+    )?;
 
     let mut hookbytes: [u8; 7] = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90];
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(location, hooks::infinite_poise() + 5)?)?;
+    write_to_slice::<i32>(
+        &mut hookbytes,
+        1,
+        rel_i32(location, hooks::infinite_poise() + 5)?,
+    )?;
 
     write_bytes(location, &asm)?;
     write_bytes(hooks::infinite_poise(), &hookbytes)
 }
 
+fn infinite_poise_bytes_original() -> [u8; 7] {
+    match version() {
+        Version::ER1_2_0 | Version::ER1_2_1 | Version::ER1_2_2 | Version::ER1_2_3 => {
+            [0x4C, 0x8B, 0xC7, 0x41, 0x0F, 0xB6, 0xD6]
+        }
+        _ => [0x4C, 0x8B, 0xC7, 0x40, 0x0F, 0xB6, 0xD5],
+    }
+}
 fn uninstall_infinite_poise_hook() -> Result<()> {
-    write_bytes(hooks::infinite_poise(), &asm::infinite_poise_bytes_original())
+    write_bytes(hooks::infinite_poise(), &infinite_poise_bytes_original())
 }
 
 pub fn is_infinite_poise() -> Result<bool> {
-    read::<[u8; 7]>(hooks::infinite_poise())
-        .map(|val| val != asm::infinite_poise_bytes_original())
+    read::<[u8; 7]>(hooks::infinite_poise()).map(|val| val != infinite_poise_bytes_original())
 }
 
 pub fn set_infinite_poise(val: bool) -> Result<()> {
@@ -150,8 +186,7 @@ pub fn set_torrent_anywhere(state: bool) -> Result<()> {
 }
 
 pub fn is_torrent_anywhere() -> Result<bool> {
-    read::<[u8; 3]>(patches::whistle_disabled())
-        .map(|val| val == [0x30, 0xC0, 0x90])
+    read::<[u8; 3]>(patches::whistle_disabled()).map(|val| val == [0x30, 0xC0, 0x90])
 }
 
 fn player_game_data() -> Result<u64> {
@@ -221,9 +256,15 @@ pub fn set_stat(player_game_data_offset: u64, val: i32) -> Result<()> {
         }
         let current_rune_mem = read::<u32>(game_data + player_game_data_offsets::RUNE_MEMORY)?;
         let new_rune_mem = std::cmp::min(current_rune_mem as u64 + rune_cost as u64, 0xFFFFFFFF);
-        write::<u32>(game_data + player_game_data_offsets::RUNE_MEMORY, new_rune_mem as u32)?;
+        write::<u32>(
+            game_data + player_game_data_offsets::RUNE_MEMORY,
+            new_rune_mem as u32,
+        )?;
     }
-    write::<i32>(game_data + player_game_data_offsets::RUNE_LEVEL, current_level + diff)?;
+    write::<i32>(
+        game_data + player_game_data_offsets::RUNE_LEVEL,
+        current_level + diff,
+    )?;
     write::<i32>(game_data + player_game_data_offset, val)
 }
 
@@ -236,12 +277,14 @@ pub fn set_dlc_stat(player_game_data_offset: u64, val: u8) -> Result<()> {
 fn level_up_cost(next_level: i32) -> i32 {
     let base_level_offset = 80_f32;
     let initial_level_up_cost = 0.1_f32;
-    let initial_level_up_offset= 1_f32;
+    let initial_level_up_offset = 1_f32;
     let level_up_cost_increase = 0.02_f32;
     let level_up_increase_interval = 92_f32;
 
     let base_level = next_level as f32 + base_level_offset;
     let adjusted_level = 0.0_f32.max(base_level - level_up_increase_interval);
-    let cost = base_level * base_level * (level_up_cost_increase * adjusted_level + initial_level_up_cost) + initial_level_up_offset;
+    let cost =
+        base_level * base_level * (level_up_cost_increase * adjusted_level + initial_level_up_cost)
+            + initial_level_up_offset;
     cost as i32
 }
