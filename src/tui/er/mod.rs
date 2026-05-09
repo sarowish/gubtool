@@ -6,7 +6,7 @@ mod target_tab;
 mod travel_tab;
 mod utility_tab;
 
-use crate::{config::preferences::Preferences, tui::common::tabs_widget::TabsWidget};
+use crate::{config::{Config, user::AttachConfig}, tui::common::tabs_widget::TabsWidget};
 use anyhow::anyhow;
 use crossterm::event::KeyEvent;
 use ratatui::{Frame, layout::Rect};
@@ -115,6 +115,9 @@ impl EldenRing {
     pub fn on_attach(&mut self) -> anyhow::Result<()> {
         self.game_state = GameStateHandler::new();
         target::install_target_hook()?;
-        Preferences::apply_elden_ring()
+        if let Ok(config) = AttachConfig::read() {
+            config.elden_ring.apply()?;
+        }
+        Ok(())
     }
 }

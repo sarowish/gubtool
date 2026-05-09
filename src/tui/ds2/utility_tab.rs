@@ -1,5 +1,8 @@
 use crate::{
-    ds2::{game_state, utility::{self}},
+    ds2::{
+        game_state,
+        utility::{self},
+    },
     tui::{
         common::{
             StrExt, blockless_list, stateful_list::StatefulList, tab_state::TabState, tabs_list,
@@ -20,11 +23,11 @@ enum OptionsItems {
     FastQuitout,
 }
 
-enum PreferencesItems {
+enum TigglesItems {
 }
 
 const OPTIONS_IDX: usize = 0;
-pub const PREFERENCES_IDX: usize = 1;
+const TOGGLES_IDX: usize = 1;
 const MENUS_IDX: usize = 2;
 
 pub struct UtilityTab {
@@ -35,7 +38,7 @@ impl UtilityTab {
     pub fn new() -> Self {
         let mut list_states = vec![StatefulList::new(0); 4];
         list_states[OPTIONS_IDX] = StatefulList::new(OptionsItems::ARRAY.len());
-        list_states[PREFERENCES_IDX] = StatefulList::new(PreferencesItems::ARRAY.len());
+        list_states[TOGGLES_IDX] = StatefulList::new(TigglesItems::ARRAY.len());
         list_states[MENUS_IDX] = StatefulList::new(0);
         UtilityTab {
             tab: TabState::new(list_states),
@@ -80,7 +83,7 @@ impl UtilityTab {
         if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
             match self.tab.current_list {
                 OPTIONS_IDX => OptionsItems::ARRAY[selected].set_input(),
-                PREFERENCES_IDX => PreferencesItems::ARRAY[selected].set_input(),
+                TOGGLES_IDX => TigglesItems::ARRAY[selected].set_input(),
                 _ => (),
             }
         }
@@ -90,7 +93,7 @@ impl UtilityTab {
         if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
             match self.tab.current_list {
                 OPTIONS_IDX => OptionsItems::ARRAY[selected].execute(),
-                PREFERENCES_IDX => PreferencesItems::ARRAY[selected].execute(),
+                TOGGLES_IDX => TigglesItems::ARRAY[selected].execute(),
                 MENUS_IDX => (),
                 _ => (),
             }
@@ -138,9 +141,9 @@ impl OptionsItems {
         ListItem::new(text)
     }
     const ARRAY: &[OptionsItems] = &[
-        Self::IvorySkip,
-        Self::SkipCredits,
         Self::FastQuitout,
+        Self::SkipCredits,
+        Self::IvorySkip,
     ];
     fn list(utility_tab: &UtilityTab) -> List<'static> {
         let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item()).collect();
@@ -148,7 +151,7 @@ impl OptionsItems {
     }
 }
 
-impl PreferencesItems {
+impl TigglesItems {
     fn execute(&self) {
         match self {
             _ => ()
@@ -165,10 +168,10 @@ impl PreferencesItems {
         };
         ListItem::new(text)
     }
-    const ARRAY: &[PreferencesItems] = &[
+    const ARRAY: &[TigglesItems] = &[
     ];
     fn list(utility_tab: &UtilityTab) -> List<'static> {
         let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item()).collect();
-        blockless_list(items, &utility_tab.tab, PREFERENCES_IDX)
+        blockless_list(items, &utility_tab.tab, TOGGLES_IDX)
     }
 }

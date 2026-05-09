@@ -1,4 +1,4 @@
-pub mod preferences;
+pub mod user;
 pub mod ui_state;
 
 use std::path::PathBuf;

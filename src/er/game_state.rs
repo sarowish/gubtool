@@ -5,6 +5,7 @@ use crate::er::{
     offsets::{code_cave, game_data_man, menu_man, world_chr_man},
     player::{self, player_ins, torrent_ins},
     target::target_ins,
+    utility,
     utils::{is_dlc_available, is_version_dlc_compat},
 };
 use anyhow::Result;
@@ -60,6 +61,9 @@ impl GameStateHandler {
         if get_state_flag(GameStateFlags::RuneArc) {
             player::set_rune_arc(true)?;
         }
+        if get_state_flag(GameStateFlags::StutterFix) {
+            utility::set_stutter_fix(true)?;
+        }
 
         let handle = read::<u64>(code_cave::base() + code_cave::TARGET_HANDLE)?;
         write::<u64>(code_cave::base() + code_cave::TARGET_POINTER, chr_ins_from_handle(handle).unwrap_or_default())?;
@@ -112,6 +116,7 @@ pub enum GameStateFlags {
     TitleCards = 0x2,
     RuneArc = 0x3,
     TorrentNoDeath = 0x4,
+    StutterFix = 0x5,
 }
 
 pub fn get_state_flag(flag_offset: GameStateFlags) -> bool {

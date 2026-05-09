@@ -3,12 +3,21 @@ mod player_tab;
 mod travel_tab;
 mod utility_tab;
 
-use crate::{ds2::{game_state::GameStateHandler, target}, tui::{
-    common::tabs_widget::TabsWidget,
-    ds2::{items_tab::ItemTab, player_tab::PlayerTab, travel_tab::TravelTab, utility_tab::UtilityTab}, event::ResultExt,
-}};
+use crate::{
+    config::{Config, user::AttachConfig},
+    ds2::{game_state::GameStateHandler, target},
+    tui::{
+        common::tabs_widget::TabsWidget,
+        ds2::{
+            items_tab::ItemTab, player_tab::PlayerTab, travel_tab::TravelTab,
+            utility_tab::UtilityTab,
+        },
+        event::ResultExt,
+    },
+};
 use crossterm::event::KeyEvent;
 use ratatui::{Frame, layout::Rect};
+
 pub struct DarkSouls2 {
     tabs_widget: TabsWidget,
     game_state: GameStateHandler,
@@ -72,6 +81,9 @@ impl DarkSouls2 {
 
     pub fn on_attach(&self) -> anyhow::Result<()> {
         target::install_target_hook().send_error();
+        if let Ok(config) = AttachConfig::read() {
+            config.dark_souls_2.apply()?;
+        }
         Ok(())
     }
 }

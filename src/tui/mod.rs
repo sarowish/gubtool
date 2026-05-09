@@ -1,5 +1,5 @@
 pub mod app;
-mod attach_preferences;
+mod attach_options;
 mod common;
 pub mod ds2;
 pub mod er;

@@ -5,6 +5,7 @@ use crate::{
         sys,
     },
     tui::{
+        attach_options::AttachOptions,
         ds2::DarkSouls2,
         er::EldenRing,
         event::{Event, ResultExt, send_event, start_event_loop_thread},
@@ -34,6 +35,7 @@ pub struct App {
     pub game_screen: Game,
     attached: bool,
     show_err: bool,
+    show_input: bool,
     err_message: String,
 
     pub theme: ThemeName,
@@ -44,6 +46,7 @@ pub struct App {
     fuzzy_picker: fn(&mut App),
     process_selector: ProcessSelector,
     game_screen_selector: GameScreenSelector,
+    attach_options: AttachOptions,
 
     pub elden_ring: EldenRing,
     pub dark_souls_2: DarkSouls2,
@@ -57,6 +60,7 @@ impl App {
             current_screen: CurrentScreen::Game,
             attached: false,
             show_err: false,
+            show_input: false,
             err_message: "".to_string(),
 
             theme: ThemeName::default(),
@@ -67,6 +71,7 @@ impl App {
             fuzzy_picker: |_| {},
             process_selector: ProcessSelector::new(),
             game_screen_selector: GameScreenSelector::new(),
+            attach_options: AttachOptions::new(),
 
             elden_ring: EldenRing::new(),
             dark_souls_2: DarkSouls2::new(),
@@ -120,7 +125,7 @@ impl App {
                 }
                 Event::Input(f) => {
                     self.input_enter_fn = f;
-                    self.current_screen = CurrentScreen::Input;
+                    self.show_input = true;
                 }
                 Event::ApplyAttach => {
                     match game() {
@@ -137,7 +142,7 @@ impl App {
         let background = Block::default().bg(theme().bg);
         frame.render_widget(background, frame.area());
 
-        let constraints = if self.show_err || self.current_screen == CurrentScreen::Input {
+        let constraints = if self.show_err || self.show_input {
             vec![
                 Constraint::Length(1),
                 Constraint::Fill(1),
@@ -169,7 +174,7 @@ impl App {
         if self.show_err {
             let err_paragraph = Paragraph::new(self.err_message.to_string()).style(theme().error);
             frame.render_widget(err_paragraph, layout[2]);
-        } else if self.current_screen == CurrentScreen::Input {
+        } else if self.show_input {
             let input = Paragraph::new(self.input.to_string()).style(theme().fg);
             self.input.set_cursor(frame, layout[2]);
             frame.render_widget(input, layout[2]);
@@ -193,6 +198,9 @@ impl App {
             CurrentScreen::GameScreenSelection => {
                 self.game_screen_selector.draw(frame)
             }
+            CurrentScreen::AttachOptions => {
+                self.attach_options.draw(frame, &self.game_screen)
+            }
             CurrentScreen::Help => {
                 help::draw(frame)
             }
@@ -212,6 +220,24 @@ impl App {
         if self.show_err {
             self.show_err = false;
         }
+        if self.show_input {
+            match key.code {
+                KeyCode::Enter => {
+                    let text = self.input.text.clone();
+                    (self.input_enter_fn)(text, self);
+                    self.input.set_text("");
+                    self.show_input = false
+                }
+                KeyCode::Esc => {
+                    self.input.set_text("");
+                    self.show_input = false
+                }
+                _ => {
+                    self.input.handle_keys(key);
+                }
+            }
+            return;
+        }
         match self.current_screen {
             CurrentScreen::ProcessSelection => {
                 if let Some(process) = self.process_selector.handle_keys(key, &mut self.current_screen) {
@@ -223,6 +249,9 @@ impl App {
             },
             CurrentScreen::ThemeSelection => {
                 self.theme_selector.handle_keys(key, &mut self.theme, &mut self.current_screen)
+            },
+            CurrentScreen::AttachOptions => {
+                self.attach_options.handle_keys(key, &self.game_screen, &mut self.current_screen)
             },
             CurrentScreen::Help | CurrentScreen::Debug => {
                 self.current_screen = CurrentScreen::Game
@@ -243,39 +272,21 @@ impl App {
                     }
                 }
             }
-            CurrentScreen::Input => {
-                match key.code {
-                    KeyCode::Enter => {
-                        let text = self.input.text.clone();
-                        (self.input_enter_fn)(text, self);
-                        self.input.set_text("");
-                        self.current_screen = CurrentScreen::Game;
-                    }
-                    KeyCode::Esc => {
-                        self.input.set_text("");
-                        self.current_screen = CurrentScreen::Game;
-                    }
-                    _ => {
-                        self.input.handle_keys(key);
-                    }
-                }
-            },
             CurrentScreen::Game => {
                 match self.game_screen {
                     Game::EldenRing => self.elden_ring.handle_keys(key),
                     Game::DarkSoulsII => self.dark_souls_2.handle_keys(key),
                 }
             }
-            CurrentScreen::AttachPreferences => {
-            }
         }
         match (key.code, key.modifiers) {
+            (KeyCode::Char('a'), _) => self.current_screen = CurrentScreen::AttachOptions,
             (KeyCode::F(1), _) => self.current_screen = CurrentScreen::Help,
-            (KeyCode::F(2), _) => self.current_screen = {
+            (KeyCode::Char('p'), _) => self.current_screen = {
                 self.process_selector.update_processes();
                 CurrentScreen::ProcessSelection
             },
-            (KeyCode::F(3), _) => self.current_screen = CurrentScreen::GameScreenSelection,
+            (KeyCode::Char('o'), _) => self.current_screen = CurrentScreen::GameScreenSelection,
             (KeyCode::F(12), KeyModifiers::CONTROL) => self.current_screen = CurrentScreen::Debug,
             (KeyCode::F(12), _) => self.current_screen = CurrentScreen::ThemeSelection,
             _ => ()
@@ -317,7 +328,7 @@ impl App {
         }
         match game() {
             Game::EldenRing => self.elden_ring.on_unattach(),
-            Game::DarkSoulsII => (),
+            Game::DarkSoulsII => self.dark_souls_2.on_unattach(),
         }
         self.attached = false;
     }
@@ -343,12 +354,11 @@ impl App {
 pub enum CurrentScreen {
     Game,
     Search,
-    Input,
     Help,
     ProcessSelection,
     ThemeSelection,
     GameScreenSelection,
-    AttachPreferences,
+    AttachOptions,
     Debug,
 }
 
