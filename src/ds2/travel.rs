@@ -1,5 +1,5 @@
 use crate::{
-    core::common::{rel_i32, write_to_slice},
+    core::common::{write_rel_i32, write_to_slice},
     ds2::{
         game_state::is_loading_screen,
         mem::*,
@@ -56,13 +56,13 @@ fn bonfire_warp_scholar(event_warp_entity: u64) -> Result<()> {
     let location = code_cave::base() + code_cave::BONFIRE_WARP_ASM;
 
     let mut asm = scholar::ASM.get_function("bonfire_warp").bytes.clone();
-    write_to_slice::<i32>(&mut asm, 7, rel_i32(empty_space, location + 11)?)?;
-    write_to_slice::<i32>(&mut asm, 14, rel_i32(bonfire_id_location, location + 18)?)?;
-    write_to_slice::<i32>(&mut asm, 25, rel_i32(functions::warp_prep(), location + 29)?)?;
+    write_rel_i32(&mut asm, location, 7, empty_space, 4)?;
+    write_rel_i32(&mut asm, location, 14, bonfire_id_location, 4)?;
+    write_rel_i32(&mut asm, location, 25, functions::warp_prep(), 4)?;
     write_to_slice::<u64>(&mut asm, 31, event_warp_entity)?;
-    write_to_slice::<i32>(&mut asm, 42, rel_i32(empty_space, location + 46)?)?;
-    write_to_slice::<i32>(&mut asm, 47, rel_i32(functions::warp(), location + 51)?)?;
-    let asm = append_flag_setter(location, &asm)?;
+    write_rel_i32(&mut asm, location, 42, empty_space, 4)?;
+    write_rel_i32(&mut asm, location, 47, functions::warp(), 4)?;
+    append_flag_setter(location, &mut asm)?;
 
     write_bytes(location, &asm)?;
     run_thread(location)
@@ -80,7 +80,7 @@ fn bonfire_warp_vanilla(event_warp_entity: u64) -> Result<()> {
     write_to_slice::<u32>(&mut asm, 30, empty_space)?;
     write_to_slice::<u32>(&mut asm, 36, event_warp_entity)?;
     write_to_slice::<u32>(&mut asm, 41, functions::warp())?;
-    let asm = append_flag_setter(location, &asm)?;
+    append_flag_setter(location, &mut asm)?;
 
     write_bytes(location, &asm)?;
     run_thread(location)
@@ -108,9 +108,9 @@ fn event_warp_scholar(event_warp_entity: u64, params_location: u64) -> Result<()
 
     let mut asm = scholar::ASM.get_function("event_warp").bytes.clone();
     write_to_slice::<u64>(&mut asm, 9, event_warp_entity)?;
-    write_to_slice::<i32>(&mut asm, 20, rel_i32(params_location, location + 24)?)?;
-    write_to_slice::<i32>(&mut asm, 25, rel_i32(functions::warp(), location + 29)?)?;
-    let asm = append_flag_setter(location, &asm)?;
+    write_rel_i32(&mut asm, location, 20, params_location, 4)?;
+    write_rel_i32(&mut asm, location, 25, functions::warp(), 4)?;
+    append_flag_setter(location, &mut asm)?;
 
     write_bytes(location, &asm)?;
     run_thread(location)
@@ -123,7 +123,7 @@ fn event_warp_vanilla(event_warp_entity: u64, params_location: u64) -> Result<()
     write_to_slice::<u32>(&mut asm, 1, event_warp_entity)?;
     write_to_slice::<u32>(&mut asm, 7, params_location)?;
     write_to_slice::<u32>(&mut asm, 13, functions::warp())?;
-    let asm = append_flag_setter(location, &asm)?;
+    append_flag_setter(location, &mut asm)?;
 
     write_bytes(location, &asm)?;
     run_thread(location)
@@ -150,11 +150,11 @@ fn write_coords_hook_scholar(coords_location: u64) -> Result<()> {
 
     let mut asm = scholar::ASM.get_function("warp_coord_hook").bytes.clone();
     write_to_slice::<u64>(&mut asm, 10, hk_hardware_info::base())?;
-    write_to_slice::<i32>(&mut asm, 55, rel_i32(coords_location, location + 59)?)?;
-    write_to_slice::<i32>(&mut asm, 68, rel_i32(coords_location + 0x10, location + 72)?)?;
-    write_to_slice::<i32>(&mut asm, 81, rel_i32(coords_location + 0x20, location + 85)?)?;
-    write_to_slice::<i32>(&mut asm, 94, rel_i32(coords_location + 0x30, location + 98)?)?;
-    write_to_slice::<i32>(&mut asm, 120, rel_i32(hooks::warp_coord_write() + 7, location + 124)?)?;
+    write_rel_i32(&mut asm, location, 55, coords_location, 4)?;
+    write_rel_i32(&mut asm, location, 68, coords_location + 0x10, 4)?;
+    write_rel_i32(&mut asm, location, 81, coords_location + 0x20, 4)?;
+    write_rel_i32(&mut asm, location, 94, coords_location + 0x30, 4)?;
+    write_rel_i32(&mut asm, location, 120, hooks::warp_coord_write() + 7, 4)?;
 
     write_bytes(location, &asm)
 }
@@ -168,7 +168,7 @@ fn write_coords_hook_vanilla(coords_location: u64) -> Result<()> {
     write_to_slice::<u32>(&mut asm, 64, coords_location + 0x10)?;
     write_to_slice::<u32>(&mut asm, 75, coords_location + 0x20)?;
     write_to_slice::<u32>(&mut asm, 86, coords_location + 0x30)?;
-    write_to_slice::<i32>(&mut asm, 103, rel_i32(hooks::warp_coord_write() + 7, location + 107)?)?;
+    write_rel_i32(&mut asm, location, 103, hooks::warp_coord_write() + 7, 4)?;
 
     write_bytes(location, &asm)
 }
@@ -180,9 +180,7 @@ fn wait_for_loaded(do_coords_hook: bool) -> Result<()> {
 
     if do_coords_hook {
         let location = code_cave::base() + code_cave::WARP_COORDS_HOOK;
-        let mut hookbytes: [u8; 7] = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90];
-        write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(location, hooks::warp_coord_write() + 5)?)?;
-        write_bytes(hooks::warp_coord_write(), &hookbytes)?;
+        install_hook(location, hooks::warp_coord_write(), 7)?;
     }
 
     while is_loading_screen()? {

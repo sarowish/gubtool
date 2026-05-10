@@ -78,7 +78,7 @@ pub fn chr_ins_from_entity_id(entity_id: u32) -> ChrIns {
     write_to_slice::<u32>(&mut asm, 17, entity_id)?;
     write_to_slice::<u64>(&mut asm, 23, functions::get_chr_ins_by_entity_id())?;
     write_to_slice::<u64>(&mut asm, 39, looked_up_chr_ins)?;
-    let asm = append_flag_setter(location, &asm)?;
+    append_flag_setter(location, &mut asm)?;
 
     write_bytes(location, &asm)?;
     run_thread(location)?;
@@ -222,7 +222,7 @@ impl ChrInsExt for ChrIns {
         write_to_slice::<u64>(&mut asm, 2, self.chr_ins_pointer()?)?;
         write_to_slice::<i64>(&mut asm, 12, speffect_id)?;
         write_to_slice::<u64>(&mut asm, 22, functions::set_speffect())?;
-        let asm = append_flag_setter(location, &asm)?;
+        append_flag_setter(location, &mut asm)?;
 
         write_bytes(location, &asm)?;
         run_thread(location)
@@ -235,7 +235,7 @@ impl ChrInsExt for ChrIns {
         write_to_slice::<u64>(&mut asm, 2, self.special_effect_pointer()?)?;
         write_to_slice::<i64>(&mut asm, 12, speffect_id)?;
         write_to_slice::<u64>(&mut asm, 22, functions::remove_speffect())?;
-        let asm = append_flag_setter(location, &asm)?;
+        append_flag_setter(location, &mut asm)?;
 
         write_bytes(location, &asm)?;
         run_thread(location)

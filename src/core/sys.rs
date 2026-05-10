@@ -177,20 +177,20 @@ pub fn write_bytes_unsafe(address: u64, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub fn append_64bit_flag_setter(location: u64, asm_head: &[u8]) -> Result<Vec<u8>> {
+pub fn append_64bit_flag_setter(location: u64, asm_head: &mut Vec<u8>) -> Result<()> {
     let mut asm_tail = FLAG_SETTER_64;
     write_to_slice::<u64>(&mut asm_tail, 2, location.saturating_sub(1))?;
-    let mut asm = asm_head[..asm_head.len().saturating_sub(1)].to_vec();
-    asm.extend_from_slice(&asm_tail);
-    Ok(asm)
+    asm_head.pop();
+    asm_head.extend_from_slice(&asm_tail);
+    Ok(())
 }
 
-pub fn append_32bit_flag_setter(location: u64, asm_head: &[u8]) -> Result<Vec<u8>> {
+pub fn append_32bit_flag_setter(location: u64, asm_head: &mut Vec<u8>) -> Result<()> {
     let mut asm_tail = FLAG_SETTER_32;
     write_to_slice::<u32>(&mut asm_tail, 1, location.saturating_sub(1))?;
-    let mut asm = asm_head[..asm_head.len().saturating_sub(1)].to_vec();
-    asm.extend_from_slice(&asm_tail);
-    Ok(asm)
+    asm_head.pop();
+    asm_head.extend_from_slice(&asm_tail);
+    Ok(())
 }
 
 pub fn run_win_thread_wait(

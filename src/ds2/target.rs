@@ -1,5 +1,5 @@
 use crate::{
-    core::common::{rel_i32, write_to_slice},
+    core::common::{write_rel_i32, write_to_slice},
     ds2::{
         chr_ctrl::ChrCtrl,
         mem::*,
@@ -26,14 +26,11 @@ fn install_target_hook_scholar() -> Result<()> {
     let location = code_cave::base() + code_cave::TARGET_POINTER_HOOK;
     let pointer_location = code_cave::base() + code_cave::SAVED_TARGET_POINTER;
     let mut asm = scholar::ASM.get_function("save_target_hook").bytes.clone();
-    write_to_slice::<i32>(&mut asm, 3, rel_i32(pointer_location, location + 7)?)?;
-    write_to_slice::<i32>(&mut asm, 15, rel_i32(hooks::locked_target() + 7, location + 19)?)?;
-
-    let mut hookbytes: [u8; 7] = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90];
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(location, hooks::locked_target() + 5)?)?;
+    write_rel_i32(&mut asm, location, 3, pointer_location, 4)?;
+    write_rel_i32(&mut asm, location, 15, hooks::locked_target() + 7, 4)?;
 
     write_bytes(location, &asm)?;
-    write_bytes(hooks::locked_target(), &hookbytes)
+    install_hook(location, hooks::locked_target(), 7)
 }
 
 fn install_target_hook_vanilla() -> Result<()> {
@@ -41,13 +38,10 @@ fn install_target_hook_vanilla() -> Result<()> {
     let pointer_location = code_cave::base() + code_cave::SAVED_TARGET_POINTER;
     let mut asm = vanilla::ASM.get_function("save_target_hook").bytes.clone();
     write_to_slice::<u32>(&mut asm, 8, pointer_location)?;
-    write_to_slice::<i32>(&mut asm, 13, rel_i32(hooks::locked_target() + 6, location + 17)?)?;
-
-    let mut hookbytes: [u8; 6] = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90];
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(location, hooks::locked_target() + 5)?)?;
+    write_rel_i32(&mut asm, location, 13, hooks::locked_target() + 6, 4)?;
 
     write_bytes(location, &asm)?;
-    write_bytes(hooks::locked_target(), &hookbytes)
+    install_hook(location, hooks::locked_target(), 6)
 }
 
 pub fn is_target_hook_active() -> Result<bool> {

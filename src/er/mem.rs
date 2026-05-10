@@ -1,7 +1,6 @@
 use crate::{
     core::{
-        attach::{Game, game},
-        sys::*,
+        attach::{Game, game}, common::get_hook_bytes, sys::*
     },
     er::offsets::{self, code_cave},
 };
@@ -40,7 +39,7 @@ pub fn run_thread(address: u64) -> Result<()> {
     )
 }
 
-pub fn append_flag_setter(location: u64, asm_head: &[u8]) -> Result<Vec<u8>> {
+pub fn append_flag_setter(location: u64, asm_head: &mut Vec<u8>) -> Result<()> {
     append_64bit_flag_setter(location, asm_head)
 }
 
@@ -56,4 +55,9 @@ pub fn set_bit(address: u64, mask: u8, value: bool) -> Result<()> {
         false => current_byte & !mask,
     };
     write::<u8>(address, new_byte)
+}
+
+pub fn install_hook(code_location: u64, hook_location: u64, original_instruction_size: usize) -> Result<()> {
+    let hookbytes = get_hook_bytes(code_location, hook_location, original_instruction_size)?;
+    write_bytes(hook_location, &hookbytes)
 }

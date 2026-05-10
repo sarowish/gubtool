@@ -1,8 +1,7 @@
 use crate::{
-    core::common::{rel_i32, write_to_slice},
+    core::common::{write_rel_i32, write_to_slice},
     er::{
-        event,
-        mem::*,
+        event, mem::*,
         offsets::{self, code_cave, functions},
         resources::{
             ASM,
@@ -37,13 +36,13 @@ fn itemspawn(item_id: i64, quantity: i64, aow_id: i64,
     write_to_slice::<i32>(&mut item_struct, 0x50, aow_id)?;
 
     let mut asm = ASM.get_function("item_spawn").bytes.clone();
-    write_to_slice::<i32>(&mut asm, 7, rel_i32(item_struct_location, location + 11)?)?;
-    write_to_slice::<i32>(&mut asm, 13, rel_i32(should_adjust_quantity, location + 17)?)?;
-    write_to_slice::<i32>(&mut asm, 25, rel_i32(functions::get_player_item_quantity_by_id(), location + 29)?)?;
-    write_to_slice::<i32>(&mut asm, 31, rel_i32(max_quantity_location, location + 35)?)?;
-    write_to_slice::<i32>(&mut asm, 52, rel_i32(offsets::map_item_impl::base(), location + 56)?)?;
-    write_to_slice::<i32>(&mut asm, 71, rel_i32(functions::item_spawn(), location + 75)?)?;
-    let asm = append_flag_setter(location, &asm)?;
+    write_rel_i32(&mut asm, location, 7, item_struct_location, 4)?;
+    write_rel_i32(&mut asm, location, 13, should_adjust_quantity, 4)?;
+    write_rel_i32(&mut asm, location, 25, functions::get_player_item_quantity_by_id(), 4)?;
+    write_rel_i32(&mut asm, location, 31, max_quantity_location, 4)?;
+    write_rel_i32(&mut asm, location, 52, offsets::map_item_impl::base(), 4)?;
+    write_rel_i32(&mut asm, location, 71, functions::item_spawn(), 4)?;
+    append_flag_setter(location, &mut asm)?;
 
     let _handle = ITEM_SPAWN_MUTEX.lock().unwrap();
 

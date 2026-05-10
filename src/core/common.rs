@@ -47,7 +47,7 @@ pub fn write_to_slice<T: Pod>(array: &mut [u8], offset: u64, value: impl TryInto
 }
 
 #[track_caller]
-pub fn rel_i32(target: u64, source: u64) -> Result<i32> {
+fn rel_i32(target: u64, source: u64) -> Result<i32> {
     let file_location = std::panic::Location::caller();
     let relative_offset = (target as i128) - (source as i128);
     relative_offset
@@ -56,4 +56,19 @@ pub fn rel_i32(target: u64, source: u64) -> Result<i32> {
                 file_location.file(),
                 file_location.line(),
         ))
+}
+
+#[track_caller]
+pub fn write_rel_i32(asm: &mut Vec<u8>, location: u64, offset: u64, target: u64, bytes_to_next_instr: u64) -> Result<()> {
+    write_to_slice::<i32>(asm, offset, rel_i32(target, location + offset + bytes_to_next_instr)?)
+}
+
+#[track_caller]
+pub fn get_hook_bytes(code_location: u64, hook_location: u64, original_instruction_size: usize) -> Result<Vec<u8>> {
+    let mut bytes = vec![0xE9, 0x00, 0x00, 0x00, 0x00];
+    let nop_num = original_instruction_size.saturating_sub(5);
+    let nops = vec![0x90; nop_num];
+    bytes.extend_from_slice(&nops);
+    write_rel_i32(&mut bytes, hook_location, 1, code_location, 4)?;
+    Ok(bytes)
 }

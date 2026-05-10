@@ -40,7 +40,7 @@ fn give_souls_scholar(amount: i32, stats_entity: u64) -> Result<()> {
     write_to_slice::<u64>(&mut asm, 2, stats_entity)?;
     write_to_slice::<i64>(&mut asm, 12, amount)?;
     write_to_slice::<u64>(&mut asm, 22, functions::give_souls())?;
-    let asm = append_flag_setter(location, &asm)?;
+    append_flag_setter(location, &mut asm)?;
 
     write_bytes(location, &asm)?;
     run_thread(location)
@@ -53,7 +53,7 @@ fn give_souls_vanilla(amount: i32, stats_entity: u64) -> Result<()> {
     write_to_slice::<i32>(&mut asm, 1, amount)?;
     write_to_slice::<u32>(&mut asm, 7, stats_entity)?;
     write_to_slice::<u32>(&mut asm, 12, functions::give_souls())?;
-    let asm = append_flag_setter(location, &asm)?;
+    append_flag_setter(location, &mut asm)?;
 
     write_bytes(location, &asm)?;
     run_thread(location)

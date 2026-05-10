@@ -1,7 +1,7 @@
 use crate::{
     core::{
         attach::{Version, version},
-        common::{rel_i32, write_to_slice},
+        common::{write_rel_i32, write_to_slice},
     },
     er::{
         chr_ins::ChrIns,
@@ -24,14 +24,11 @@ pub fn install_target_hook() -> Result<()> {
     let saved_pointer = code_cave::base() + code_cave::TARGET_POINTER;
 
     let mut asm = ASM.get_function("save_target_hook").bytes.clone();
-    write_to_slice::<i32>(&mut asm, 10, rel_i32(saved_pointer, location + 14)?)?;
-    write_to_slice::<i32>(&mut asm, 15, rel_i32(hooks::locked_target_pointer() + 7, location + 19)?)?;
-
-    let mut hookbytes = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90];
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(location, hooks::locked_target_pointer() + 5)?)?;
+    write_rel_i32(&mut asm, location, 10, saved_pointer, 4)?;
+    write_rel_i32(&mut asm, location, 15, hooks::locked_target_pointer() + 7 , 4)?;
 
     write_bytes(location, &asm)?;
-    write_bytes(hooks::locked_target_pointer(), &hookbytes)
+    install_hook(location, hooks::locked_target_pointer(), 7)
 }
 
 const TARGET_HOOK_BYTES_ORIGINAL: [u8; 7] = [0x48, 0x8B, 0x8F, 0x88, 0x00, 0x00, 0x00];
@@ -74,25 +71,21 @@ pub fn force_act_sequence(act_sequence: Vec<i32>, npc_think_param_id: i32) -> Re
     let act_array: Vec<u8> = act_array.iter().flat_map(|&x| x.to_le_bytes()).collect();
 
     let mut asm = ASM.get_function("force_act_sequence_hook").bytes.clone();
-    write_to_slice::<i32>(&mut asm, 2, rel_i32(should_run_flag_location, location + 7)?)?;
+    write_rel_i32(&mut asm, location, 2, should_run_flag_location, 5)?;
     write_to_slice::<i32>(&mut asm, 12, npc_think_param_id)?;
-    write_to_slice::<i32>(&mut asm, 23, rel_i32(current_idx_location, location + 27)?)?;
-    write_to_slice::<i32>(&mut asm, 30, rel_i32(act_array_location, location + 34)?)?;
-    write_to_slice::<i32>(&mut asm, 42, rel_i32(current_idx_location, location + 46)?)?;
-    write_to_slice::<i32>(&mut asm, 53, rel_i32(should_run_flag_location, location + 58)?)?;
-    write_to_slice::<i32>(&mut asm, 62, rel_i32(hooks::get_force_act_idx() + 7, location + 66)?)?;
+    write_rel_i32(&mut asm, location, 23, current_idx_location, 4)?;
+    write_rel_i32(&mut asm, location, 30, act_array_location, 4)?;
+    write_rel_i32(&mut asm, location, 42, current_idx_location, 4)?;
+    write_rel_i32(&mut asm, location, 53, should_run_flag_location, 5)?;
+    write_rel_i32(&mut asm, location, 62, hooks::get_force_act_idx() + 7, 4)?;
     write_to_slice::<[u8; 7]>(&mut asm, 66, get_force_act_idx_original_bytes())?;
-    write_to_slice::<i32>(&mut asm, 74, rel_i32(hooks::get_force_act_idx() + 7, location + 78)?)?;
-
-    let mut hookbytes = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90];
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(location, hooks::get_force_act_idx() + 5)?)?;
+    write_rel_i32(&mut asm, location, 74, hooks::get_force_act_idx() + 7, 4)?;
 
     write::<i32>(current_idx_location, 0x0)?;
     write_bytes(act_array_location, &act_array)?;
-
     write_bytes(location, &asm)?;
     write::<u8>(should_run_flag_location, 0x1)?;
-    write_bytes(hooks::get_force_act_idx(), &hookbytes)
+    install_hook(location, hooks::get_force_act_idx(), 7)
 }
 
 pub fn install_stagger_hook() -> Result<()> {
@@ -100,14 +93,11 @@ pub fn install_stagger_hook() -> Result<()> {
     let target_ptr_location = code_cave::base() + code_cave::TARGET_POINTER;
 
     let mut asm = ASM.get_function("target_stagger_hook").bytes.clone();
-    write_to_slice::<i32>(&mut asm, 8, rel_i32(target_ptr_location, location + 12)?)?;
-    write_to_slice::<i32>(&mut asm, 24, rel_i32(hooks::target_no_stagger() + 8, location + 28)?)?;
-
-    let mut hookbytes = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90];
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(location, hooks::target_no_stagger() + 5)?)?;
+    write_rel_i32(&mut asm, location, 8, target_ptr_location, 4)?;
+    write_rel_i32(&mut asm, location, 24, hooks::target_no_stagger() + 8, 4)?;
 
     write_bytes(location, &asm)?;
-    write_bytes(hooks::target_no_stagger(), &hookbytes)
+    install_hook(location, hooks::target_no_stagger(), 8)
 }
 
 const TARGET_STAGGER_HOOK_BYTES_ORIGINAL: [u8; 8] = [0x48, 0x8B, 0x41, 0x08, 0x83, 0x48, 0x2C, 0x08];

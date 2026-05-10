@@ -3,7 +3,7 @@ use std::{thread, time::Duration};
 use anyhow::{Result, bail};
 
 use crate::{
-    core::common::{rel_i32, write_to_slice},
+    core::common::{write_rel_i32, write_to_slice},
     ds2::{
         mem::{ITEM_SPAWN_MUTEX, MASS_SPAWN_MUTEX, read, run_thread_release, write_bytes},
         offsets::{
@@ -82,25 +82,25 @@ fn write_item_shellcode_scholar(args_loc: u64) -> Result<()> {
     write_to_slice::<u64>(&mut asm, 215, functions::build_item_dialog())?;
     write_to_slice::<u64>(&mut asm, 242, functions::show_item_dialog())?;
     write_to_slice::<u64>(&mut asm, 262, read::<u64>(offsets::kernel32_sleep())?)?;
-    write_to_slice::<i32>(&mut asm, 2, rel_i32(args_loc + SHOULD_PROCESS_FLAG, location + 7)?)?;
-    write_to_slice::<i32>(&mut asm, 46, rel_i32(args_loc + SHOULD_PROCESS_FLAG, location + 51)?)?;
-    write_to_slice::<i32>(&mut asm, 53, rel_i32(args_loc + ADJUST_QUANTITY_FLAG, location + 58)?)?;
-    write_to_slice::<i32>(&mut asm, 67, rel_i32(args_loc + CURRENT_QUANTITY, location + 71)?)?;
-    write_to_slice::<i32>(&mut asm, 74, rel_i32(args_loc + STACK_COUNT, location + 78)?)?;
-    write_to_slice::<i32>(&mut asm, 81, rel_i32(item_struct + off::ITEM_ID, location + 85)?)?;
-    write_to_slice::<i32>(&mut asm, 109, rel_i32(item_struct + off::QUANTITY, location + 113)?)?;
-    write_to_slice::<i32>(&mut asm, 115, rel_i32(args_loc + CURRENT_QUANTITY, location + 119)?)?;
-    write_to_slice::<i32>(&mut asm, 121, rel_i32(args_loc + MAX_QUANTITY, location + 125)?)?;
-    write_to_slice::<i32>(&mut asm, 129, rel_i32(args_loc + MAX_QUANTITY, location + 133)?)?;
-    write_to_slice::<i32>(&mut asm, 135, rel_i32(args_loc + CURRENT_QUANTITY, location + 139)?)?;
-    write_to_slice::<i32>(&mut asm, 142, rel_i32(item_struct + off::QUANTITY, location + 146)?)?;
-    write_to_slice::<i32>(&mut asm, 159, rel_i32(item_struct, location + 163)?)?;
-    write_to_slice::<i32>(&mut asm, 166, rel_i32(args_loc + ITEM_COUNT, location + 170)?)?;
-    write_to_slice::<i32>(&mut asm, 189, rel_i32(stack_space, location + 193)?)?;
-    write_to_slice::<i32>(&mut asm, 196, rel_i32(item_struct, location + 200)?)?;
-    write_to_slice::<i32>(&mut asm, 203, rel_i32(args_loc + ITEM_COUNT, location + 207)?)?;
-    write_to_slice::<i32>(&mut asm, 236, rel_i32(stack_space, location + 240)?)?;
-    write_to_slice::<i32>(&mut asm, 281, rel_i32(args_loc + SHOULD_EXIT_FLAG, location + 286)?)?;
+    write_rel_i32(&mut asm, location, 2, args_loc + SHOULD_PROCESS_FLAG, 5)?;
+    write_rel_i32(&mut asm, location, 46, args_loc + SHOULD_PROCESS_FLAG, 5)?;
+    write_rel_i32(&mut asm, location, 53, args_loc + ADJUST_QUANTITY_FLAG, 5)?;
+    write_rel_i32(&mut asm, location, 67, args_loc + CURRENT_QUANTITY, 4)?;
+    write_rel_i32(&mut asm, location, 74, args_loc + STACK_COUNT, 4)?;
+    write_rel_i32(&mut asm, location, 81, item_struct + off::ITEM_ID, 4)?;
+    write_rel_i32(&mut asm, location, 109, item_struct + off::QUANTITY, 4)?;
+    write_rel_i32(&mut asm, location, 115, args_loc + CURRENT_QUANTITY, 4)?;
+    write_rel_i32(&mut asm, location, 121, args_loc + MAX_QUANTITY, 4)?;
+    write_rel_i32(&mut asm, location, 129, args_loc + MAX_QUANTITY, 4)?;
+    write_rel_i32(&mut asm, location, 135, args_loc + CURRENT_QUANTITY, 4)?;
+    write_rel_i32(&mut asm, location, 142, item_struct + off::QUANTITY, 4)?;
+    write_rel_i32(&mut asm, location, 159, item_struct, 4)?;
+    write_rel_i32(&mut asm, location, 166, args_loc + ITEM_COUNT, 4)?;
+    write_rel_i32(&mut asm, location, 189, stack_space, 4)?;
+    write_rel_i32(&mut asm, location, 196, item_struct, 4)?;
+    write_rel_i32(&mut asm, location, 203, args_loc + ITEM_COUNT, 4)?;
+    write_rel_i32(&mut asm, location, 236, stack_space, 4)?;
+    write_rel_i32(&mut asm, location, 281, args_loc + SHOULD_EXIT_FLAG, 5)?;
 
     write_bytes(location, &asm)
 }
@@ -133,10 +133,10 @@ fn write_item_shellcode_vanilla(args_loc: u64) -> Result<()> {
     write_to_slice::<u32>(&mut asm, 173, stack_space)?;
     write_to_slice::<u32>(&mut asm, 184, functions::sleep())?;
     write_to_slice::<u32>(&mut asm, 194, args_loc + SHOULD_EXIT_FLAG)?;
-    write_to_slice::<i32>(&mut asm, 71, rel_i32(functions::current_item_quantity_check(), location + 75)?)?;
-    write_to_slice::<i32>(&mut asm, 131, rel_i32(functions::item_give(), location + 135)?)?;
-    write_to_slice::<i32>(&mut asm, 158, rel_i32(functions::build_item_dialog(), location + 162)?)?;
-    write_to_slice::<i32>(&mut asm, 179, rel_i32(functions::show_item_dialog(), location + 183)?)?;
+    write_rel_i32(&mut asm, location, 71, functions::current_item_quantity_check(), 4)?;
+    write_rel_i32(&mut asm, location, 131, functions::item_give(), 4)?;
+    write_rel_i32(&mut asm, location, 158, functions::build_item_dialog(), 4)?;
+    write_rel_i32(&mut asm, location, 179, functions::show_item_dialog(), 4)?;
 
     write_bytes(location, &asm)
 }

@@ -2,8 +2,7 @@ use std::sync::{LazyLock, Mutex};
 
 use crate::{
     core::{
-        attach::{Game, game},
-        sys::*,
+        attach::{Game, game}, common::get_hook_bytes, sys::*
     },
     ds2::{
         offsets::{self, code_cave},
@@ -54,6 +53,11 @@ pub fn run_thread(address: u64) -> Result<()> {
     }
 }
 
+pub fn install_hook(code_location: u64, hook_location: u64, original_instruction_size: usize) -> Result<()> {
+    let hookbytes = get_hook_bytes(code_location, hook_location, original_instruction_size)?;
+    write_bytes(hook_location, &hookbytes)
+}
+
 pub fn run_thread_release(address: u64) -> Result<()> {
     ensure!(game() == Game::DarkSoulsII, "Not attached to Dark Souls II");
     if is_scholar() {
@@ -71,7 +75,7 @@ pub fn run_thread_release(address: u64) -> Result<()> {
     }
 }
 
-pub fn append_flag_setter(address: u64, asm_head: &[u8]) -> Result<Vec<u8>> {
+pub fn append_flag_setter(address: u64, asm_head: &mut Vec<u8>) -> Result<()> {
     ensure!(game() == Game::DarkSoulsII, "Not attached to Dark Souls II");
     if is_scholar() {
         append_64bit_flag_setter(address, asm_head)

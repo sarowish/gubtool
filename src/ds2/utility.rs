@@ -1,5 +1,5 @@
 use crate::{
-    core::common::{rel_i32, write_to_slice},
+    core::common::{write_rel_i32, write_to_slice},
     ds2::{
         mem::*,
         offsets::{code_cave, functions, game_manager_imp, hooks},
@@ -36,25 +36,19 @@ pub fn set_faster_menu(state: bool) -> Result<()> {
 fn install_menu_hook_scholar() -> Result<()> {
     let location = code_cave::base() + code_cave::FASTER_MENU_HOOK;
     let mut asm = scholar::ASM.get_function("faster_menu").bytes.clone();
-    write_to_slice::<i32>(&mut asm, 22, rel_i32(hooks::faster_menu() + 8, location + 26)?)?;
-
-    let mut hookbytes = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90];
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(location, hooks::faster_menu() + 5)?)?;
+    write_rel_i32(&mut asm, location, 22, hooks::faster_menu() + 8, 4)?;
 
     write_bytes(location, &asm)?;
-    write_bytes(hooks::faster_menu(), &hookbytes)
+    install_hook(location, hooks::faster_menu(), 8)
 }
 
 fn install_menu_hook_vanilla() -> Result<()> {
     let location = code_cave::base() + code_cave::FASTER_MENU_HOOK;
     let mut asm = vanilla::ASM.get_function("faster_menu").bytes.clone();
-    write_to_slice::<i32>(&mut asm, 16, rel_i32(hooks::faster_menu() + 5, location + 20)?)?;
-
-    let mut hookbytes = [0xE9, 0x00, 0x00, 0x00, 0x00];
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(location, hooks::faster_menu() + 5)?)?;
+    write_rel_i32(&mut asm, location, 16, hooks::faster_menu() + 5, 4)?;
 
     write_bytes(location, &asm)?;
-    write_bytes(hooks::faster_menu(), &hookbytes)
+    install_hook(location, hooks::faster_menu(), 5)
 }
 
 pub fn is_faster_menu() -> Result<bool> {
@@ -96,21 +90,15 @@ fn install_ivory_hooks_scholar() -> Result<()> {
     write_to_slice::<u64>(&mut skip_asm, 94, functions::get_map_entity_with_area_id_and_obj_id())?;
     write_to_slice::<u64>(&mut skip_asm, 104, functions::get_map_obj_state_act_component())?;
     write_to_slice::<u64>(&mut skip_asm, 114, functions::set_event())?;
-    write_to_slice::<i32>(&mut skip_asm, 215, rel_i32(functions::set_event() + 5, skip_location + 219)?)?;
+    write_rel_i32(&mut skip_asm, skip_location, 215, functions::set_event() + 5, 4)?;
 
     let mut knights_asm = scholar::ASM.get_function("ivory_knights").bytes.clone();
-    write_to_slice::<i32>(&mut knights_asm, 32, rel_i32(hooks::set_shared_flag() + 8, knights_location + 36)?)?;
-
-    let mut skip_hookbytes = [0xE9, 0x00, 0x00, 0x00, 0x00];
-    write_to_slice::<i32>(&mut skip_hookbytes, 1, rel_i32(skip_location, functions::set_event() + 5)?)?;
-
-    let mut knights_hookbytes = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90];
-    write_to_slice::<i32>(&mut knights_hookbytes, 1, rel_i32(knights_location, hooks::set_shared_flag() + 5)?)?;
+    write_rel_i32(&mut knights_asm, knights_location, 32, hooks::set_shared_flag() + 8, 4)?;
 
     write_bytes(skip_location, &skip_asm)?;
     write_bytes(knights_location, &knights_asm)?;
-    write_bytes(functions::set_event(), &skip_hookbytes)?;
-    write_bytes(hooks::set_shared_flag(), &knights_hookbytes)
+    install_hook(skip_location, functions::set_event(), 5)?;
+    install_hook(knights_location, hooks::set_shared_flag(), 8)
 }
 
 fn install_ivory_hooks_vanilla() -> Result<()> {
@@ -121,21 +109,15 @@ fn install_ivory_hooks_vanilla() -> Result<()> {
     write_to_slice::<u32>(&mut skip_asm, 38, functions::set_event())?;
     write_to_slice::<u32>(&mut skip_asm, 73, functions::get_map_entity_with_area_id_and_obj_id())?;
     write_to_slice::<u32>(&mut skip_asm, 80, functions::get_map_obj_state_act_component())?;
-    write_to_slice::<i32>(&mut skip_asm, 162, rel_i32(functions::set_event() + 6, skip_location + 167)?)?;
+    write_rel_i32(&mut skip_asm, skip_location, 162, functions::set_event() + 6, 5)?;
 
     let mut knights_asm = vanilla::ASM.get_function("ivory_knights").bytes.clone();
-    write_to_slice::<i32>(&mut knights_asm, 28, rel_i32(hooks::set_shared_flag() + 7, knights_location + 33)?)?;
-
-    let mut skip_hookbytes = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90];
-    write_to_slice::<i32>(&mut skip_hookbytes, 1, rel_i32(skip_location, functions::set_event() + 5)?)?;
-
-    let mut knights_hookbytes = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90];
-    write_to_slice::<i32>(&mut knights_hookbytes, 1, rel_i32(knights_location, hooks::set_shared_flag() + 5)?)?;
+    write_rel_i32(&mut knights_asm, knights_location, 28, hooks::set_shared_flag() + 7, 5)?;
 
     write_bytes(skip_location, &skip_asm)?;
     write_bytes(knights_location, &knights_asm)?;
-    write_bytes(functions::set_event(), &skip_hookbytes)?;
-    write_bytes(hooks::set_shared_flag(), &knights_hookbytes)
+    install_hook(skip_location, functions::set_event(), 6)?;
+    install_hook(knights_location, hooks::set_shared_flag(), 7)
 }
 
 pub fn is_ivory_skip() -> Result<bool> {
@@ -173,15 +155,12 @@ fn install_credits_hook_scholar() -> Result<()> {
     let modify_once = code_cave::base() + code_cave::CREDITS_MODIFY_ONCE_FLAG;
     write::<u8>(modify_once, 0)?;
 
-    write_to_slice::<i32>(&mut asm, 9, rel_i32(modify_once, location + 14)?)?;
-    write_to_slice::<i32>(&mut asm, 25, rel_i32(modify_once, location + 33)?)?;
-    write_to_slice::<i32>(&mut asm, 34, rel_i32(hooks::credits_skip() + 7, location + 38)?)?;
-
-    let mut hookbytes = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90];
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(location, hooks::credits_skip() + 5)?)?;
+    write_rel_i32(&mut asm, location, 9, modify_once, 5)?;
+    write_rel_i32(&mut asm, location, 25, modify_once, 8)?;
+    write_rel_i32(&mut asm, location, 34, hooks::credits_skip() + 7, 4)?;
 
     write_bytes(location, &asm)?;
-    write_bytes(hooks::credits_skip(), &hookbytes)
+    install_hook(location, hooks::credits_skip(), 7)
 }
 
 fn install_credits_hook_vanilla() -> Result<()> {
@@ -192,13 +171,10 @@ fn install_credits_hook_vanilla() -> Result<()> {
 
     write_to_slice::<u32>(&mut asm, 8, modify_once)?;
     write_to_slice::<u32>(&mut asm, 24, modify_once)?;
-    write_to_slice::<i32>(&mut asm, 33, rel_i32(hooks::credits_skip() + 6, location + 37)?)?;
-
-    let mut hookbytes = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90];
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(location, hooks::credits_skip() + 5)?)?;
+    write_rel_i32(&mut asm, location, 33, hooks::credits_skip() + 6, 4)?;
 
     write_bytes(location, &asm)?;
-    write_bytes(hooks::credits_skip(), &hookbytes)
+    install_hook(location, hooks::credits_skip(), 6)
 }
 
 pub fn is_credits_skip() -> Result<bool> {

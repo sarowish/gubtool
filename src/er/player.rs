@@ -1,7 +1,7 @@
 use crate::{
     core::{
         attach::{Version, version},
-        common::{read_from_slice, rel_i32, write_to_slice},
+        common::{read_from_slice, write_rel_i32, write_to_slice},
     },
     er::{
         chr_ins::{self, ChrIns, ChrInsExt},
@@ -69,7 +69,7 @@ pub fn give_runes(amount: i64) -> Result<()> {
         fun.reloc("fn_give_runes"),
         functions::give_runes(),
     )?;
-    let asm = append_flag_setter(location, &asm)?;
+    append_flag_setter(location, &mut asm)?;
 
     write_bytes(location, &asm)?;
     run_thread(location)
@@ -92,20 +92,13 @@ fn install_grab_hook() -> Result<()> {
     let location = code_cave::base() + code_cave::NO_GRAB_HOOK;
     let skip_grab_jmp_location = hooks::no_grab() + 0x95;
 
-    write_to_slice::<i32>(&mut asm, 4, rel_i32(world_chr_man::base(), location + 8)?)?;
+    write_rel_i32(&mut asm, location, 4, world_chr_man::base(), 4)?;
     write_to_slice::<i32>(&mut asm, 11, world_chr_man::player_ins())?;
-    write_to_slice::<i32>(
-        &mut asm,
-        22,
-        rel_i32(skip_grab_jmp_location, location + 26)?,
-    )?;
-    write_to_slice::<i32>(&mut asm, 36, rel_i32(hooks::no_grab() + 9, location + 40)?)?;
-
-    let mut hookbytes: [u8; 9] = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90, 0x90];
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(location, hooks::no_grab() + 5)?)?;
+    write_rel_i32(&mut asm, location, 22, skip_grab_jmp_location, 4)?;
+    write_rel_i32(&mut asm, location, 36, hooks::no_grab() + 9, 4)?;
 
     write_bytes(location, &asm)?;
-    write_bytes(hooks::no_grab(), &hookbytes)
+    install_hook(location, hooks::no_grab(), 9)
 }
 
 const GRAB_HOOK_BYTES_ORIGINAL: [u8; 9] = [0x41, 0x8B, 0x56, 0x44, 0x48, 0x8D, 0x4C, 0x24, 0x40];
@@ -117,30 +110,15 @@ fn install_infinite_poise_hook() -> Result<()> {
     let mut asm = ASM.get_function("infinite_poise_hook").bytes.clone();
     let location = code_cave::base() + code_cave::INFINITE_POISE_HOOK;
 
-    write_to_slice::<i32>(&mut asm, 11, rel_i32(world_chr_man::base(), location + 15)?)?;
+    write_rel_i32(&mut asm, location, 11, world_chr_man::base(), 4)?;
     write_to_slice::<i32>(&mut asm, 18, world_chr_man::player_ins())?;
     write_to_slice::<i32>(&mut asm, 27, world_chr_man::player_ins())?;
-    write_to_slice::<i32>(&mut asm, 64, rel_i32(world_chr_man::base(), location + 68)?)?;
-    write_to_slice::<i32>(
-        &mut asm,
-        84,
-        rel_i32(functions::get_chr_ins_by_entity_id(), location + 88)?,
-    )?;
-    write_to_slice::<i32>(
-        &mut asm,
-        107,
-        rel_i32(hooks::infinite_poise() + 7, location + 111)?,
-    )?;
-
-    let mut hookbytes: [u8; 7] = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90];
-    write_to_slice::<i32>(
-        &mut hookbytes,
-        1,
-        rel_i32(location, hooks::infinite_poise() + 5)?,
-    )?;
+    write_rel_i32(&mut asm, location, 64, world_chr_man::base(), 4)?;
+    write_rel_i32(&mut asm, location, 84, functions::get_chr_ins_by_entity_id(), 4)?;
+    write_rel_i32(&mut asm, location, 107, hooks::infinite_poise() + 7, 4)?;
 
     write_bytes(location, &asm)?;
-    write_bytes(hooks::infinite_poise(), &hookbytes)
+    install_hook(location, hooks::infinite_poise(), 7)
 }
 
 fn infinite_poise_bytes_original() -> [u8; 7] {

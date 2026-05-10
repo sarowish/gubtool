@@ -1,5 +1,5 @@
 use crate::{
-    core::common::{read_from_slice, rel_i32, write_to_slice},
+    core::common::{read_from_slice, write_rel_i32, write_to_slice},
     er::{
         chr_ins::ChrInsExt,
         event,
@@ -91,7 +91,7 @@ pub fn execute_emevd_command(group_id: i32, command_id: i32, args: &[u8]) -> Res
     write_to_slice::<u64>(&mut asm, fun.reloc("args_location"), args_location)?;
     write_to_slice::<u64>(&mut asm, fun.reloc("cs_emk_system_base"), offsets::cs_emk_system::base())?;
     write_to_slice::<u64>(&mut asm, fun.reloc("fn_emevd_switch"), functions::emevd_switch())?;
-    let asm = append_flag_setter(location, &asm)?;
+    append_flag_setter(location, &mut asm)?;
 
     let _handle = EXECUTE_EMEVD_COMMAND_MUTEX.lock().unwrap();
 
@@ -108,12 +108,12 @@ pub fn execute_talk_command(command_id: i32, params: &'static [i32], handle: u64
     let fun = ASM.get_function("execute_talk_command");
     let mut asm = fun.bytes.clone();
     write_to_slice::<i32>(&mut asm, 18, command_id)?;
-    write_to_slice::<i32>(&mut asm, 23, rel_i32(functions::external_event_temporary_ctor(), location + 27)?)?;
+    write_rel_i32(&mut asm, location, 23, functions::external_event_temporary_ctor(), 4)?;
     write_to_slice::<u64>(&mut asm, 65, handle)?;
     write_to_slice::<i32>(&mut asm, 78, params.len())?;
-    write_to_slice::<i32>(&mut asm, 93, rel_i32(params_location, location + 97)?)?;
-    write_to_slice::<i32>(&mut asm, 155, rel_i32(functions::execute_talk_command(), location + 159)?)?;
-    let asm = append_flag_setter(location, &asm)?;
+    write_rel_i32(&mut asm, location, 93, params_location, 4)?;
+    write_rel_i32(&mut asm, location, 155, functions::execute_talk_command(), 4)?;
+    append_flag_setter(location, &mut asm)?;
 
     write_bytes(params_location, &params)?;
     write_bytes(location, &asm)?;

@@ -277,19 +277,19 @@ impl App {
                     Game::EldenRing => self.elden_ring.handle_keys(key),
                     Game::DarkSoulsII => self.dark_souls_2.handle_keys(key),
                 }
+                match (key.code, key.modifiers) {
+                    (KeyCode::Char('a'), _) => self.current_screen = CurrentScreen::AttachOptions,
+                    (KeyCode::F(1), _) => self.current_screen = CurrentScreen::Help,
+                    (KeyCode::Char('p'), _) => self.current_screen = {
+                        self.process_selector.update_processes();
+                        CurrentScreen::ProcessSelection
+                    },
+                    (KeyCode::Char('o'), _) => self.current_screen = CurrentScreen::GameScreenSelection,
+                    (KeyCode::F(12), KeyModifiers::CONTROL) => self.current_screen = CurrentScreen::Debug,
+                    (KeyCode::F(12), _) => self.current_screen = CurrentScreen::ThemeSelection,
+                    _ => ()
+                }
             }
-        }
-        match (key.code, key.modifiers) {
-            (KeyCode::Char('a'), _) => self.current_screen = CurrentScreen::AttachOptions,
-            (KeyCode::F(1), _) => self.current_screen = CurrentScreen::Help,
-            (KeyCode::Char('p'), _) => self.current_screen = {
-                self.process_selector.update_processes();
-                CurrentScreen::ProcessSelection
-            },
-            (KeyCode::Char('o'), _) => self.current_screen = CurrentScreen::GameScreenSelection,
-            (KeyCode::F(12), KeyModifiers::CONTROL) => self.current_screen = CurrentScreen::Debug,
-            (KeyCode::F(12), _) => self.current_screen = CurrentScreen::ThemeSelection,
-            _ => ()
         }
     }
 

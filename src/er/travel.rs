@@ -1,5 +1,5 @@
 use crate::{
-    core::common::{rel_i32, write_to_slice},
+    core::common::{write_rel_i32, write_to_slice},
     er::{
         event,
         mem::*,
@@ -18,7 +18,7 @@ pub fn warp_to_grace(grace_id: i64) -> Result<()> {
     write_to_slice::<u64>(&mut asm, 2, world_chr_man::base())?;
     write_to_slice::<i64>(&mut asm, 20, grace_id)?;
     write_to_slice::<u64>(&mut asm, 30, functions::grace_warp())?;
-    let asm = append_flag_setter(location, &asm)?;
+    append_flag_setter(location, &mut asm)?;
 
     write_bytes(location, &asm)?;
     run_thread(location)
@@ -37,7 +37,7 @@ pub fn warp_to_block_id(block_id: i32, coords: [f32; 3], angle: f32, is_night: b
     write_to_slice::<i32>(&mut asm, 12, map)?;
     write_to_slice::<i32>(&mut asm, 18, alt_no)?;
     write_to_slice::<u64>(&mut asm, 24, functions::block_warp())?;
-    let asm = append_flag_setter(location, &asm)?;
+    append_flag_setter(location, &mut asm)?;
 
     write_bytes(location, &asm)?;
     run_thread(location)?;
@@ -61,23 +61,22 @@ fn hook_warp_coord_writes(coords: [f32; 3], angle: f32, is_night: bool) -> Resul
     let mut asm = ASM.get_function("warp_coord_angle_hook").bytes.clone();
 
     let warp_code_location = code_cave::base() + code_cave::WARP_COORDS_HOOK;
-    write_to_slice::<i32>(&mut asm, 3, rel_i32(target_coords_location, warp_code_location + 7)?)?;
-    write_to_slice::<i32>(&mut asm, 15, rel_i32(hooks::warp_coord_write() + 7, warp_code_location + 19)?)?;
+
+    write_rel_i32(&mut asm, warp_code_location, 3, target_coords_location, 4)?;
+    write_rel_i32(&mut asm, warp_code_location, 15, hooks::warp_coord_write() + 7, 4)?;
+
     write_bytes(warp_code_location, &asm)?;
 
     let angle_code_location = code_cave::base() + code_cave::WARP_ANGLE_HOOK;
-    write_to_slice::<i32>(&mut asm, 3, rel_i32(target_angle_location, angle_code_location + 7)?)?;
+    write_rel_i32(&mut asm, angle_code_location, 3, target_angle_location, 4)?;
     write_to_slice::<i32>(&mut asm, 10, angle_offset_in_struct)?;
-    write_to_slice::<i32>(&mut asm, 15, rel_i32(hooks::warp_angle_write() + 7, angle_code_location + 19)?)?;
+    write_rel_i32(&mut asm, angle_code_location, 15, hooks::warp_angle_write() + 7, 4)?;
 
     write_bytes(angle_code_location, &asm)?;
 
-    let mut hookbytes: [u8; 6] = [0xE9, 0x00, 0x00, 0x00, 0x00, 0x90];
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(warp_code_location, hooks::warp_coord_write() + 5)?)?;
-    write(hooks::warp_coord_write(), hookbytes)?;
+    install_hook(warp_code_location, hooks::warp_coord_write(), 6)?;
+    install_hook(angle_code_location, hooks::warp_angle_write(), 6)?;
 
-    write_to_slice::<i32>(&mut hookbytes, 1, rel_i32(angle_code_location, hooks::warp_angle_write() + 5)?)?;
-    write(hooks::warp_angle_write(), hookbytes)?;
     wait_to_unhook_warp(is_night)
 }
 
