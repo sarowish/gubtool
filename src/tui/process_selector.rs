@@ -95,7 +95,6 @@ impl ProcessSelector {
             Constraint::Max(20),
             Constraint::Max(10),
             Constraint::Fill(1),
-            Constraint::Fill(1),
         ];
         Table::new(rows, widths)
             .header(header)
@@ -105,7 +104,6 @@ impl ProcessSelector {
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent, current_screen: &mut CurrentScreen) -> Option<GameProcess> {
-        self.table.handle_keys(key);
         match (key.code, key.modifiers) {
             (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Game,
             (KeyCode::Enter, _) => {
@@ -119,11 +117,12 @@ impl ProcessSelector {
             (KeyCode::Char('k'), KeyModifiers::CONTROL) => {
                 if let Some(selected) = self.table.selected() {
                     Self::kill_process(self.available_processes[selected].pid).send_error();
+                    return None;
                 }
-
             }
             _ => (),
         }
+        self.table.handle_keys(key);
         None
     }
 

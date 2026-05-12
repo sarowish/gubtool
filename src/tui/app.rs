@@ -282,6 +282,7 @@ impl App {
                     (KeyCode::F(1), _) => self.current_screen = CurrentScreen::Help,
                     (KeyCode::Char('p'), _) => self.current_screen = {
                         self.process_selector.update_processes();
+                        self.process_selector.table.select(Some(0));
                         CurrentScreen::ProcessSelection
                     },
                     (KeyCode::Char('o'), _) => self.current_screen = CurrentScreen::GameScreenSelection,
