@@ -87,7 +87,7 @@ impl UtilityTab {
         let layout = [area_one, area_two, area_three];
 
         frame.render_stateful_widget(
-            TogglesItems::list(self),
+            TogglesItems::list(self, &er.state_flags),
             layout[OPTIONS_IDX],
             &mut self.tab.get_list_state(OPTIONS_IDX),
         );
@@ -153,7 +153,7 @@ impl UtilityTab {
         }
         match key.code {
             KeyCode::Char('s') => self.handle_input(),
-            KeyCode::Enter => self.handle_enter(er.dlc),
+            KeyCode::Enter => self.handle_enter(er.dlc, &er.state_flags),
             _ => (),
         }
     }
@@ -167,10 +167,10 @@ impl UtilityTab {
         }
     }
 
-    fn handle_enter(&self, dlc: bool) {
+    fn handle_enter(&self, dlc: bool, state_flags: &[u8; 0x100]) {
         if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
             match self.tab.current_list {
-                OPTIONS_IDX => TogglesItems::ARRAY[selected].execute(),
+                OPTIONS_IDX => TogglesItems::ARRAY[selected].execute(state_flags),
                 ACTIONS_IDX => ActionsItems::ARRAY[selected].execute(),
                 MENUS_IDX => MENUS[selected].execute().send_error(),
                 SHOPS_IDX => shops_array(dlc)[selected].execute().send_error(),
@@ -191,7 +191,7 @@ impl UtilityTab {
 }
 
 impl TogglesItems {
-    fn execute(&self) {
+    fn execute(&self, state_flags: &[u8; 0x100]) {
         match self {
             Self::ToggleMusic => {
                 let new_state = !utility::is_music_muted().unwrap_or_default();
@@ -210,24 +210,26 @@ impl TogglesItems {
                 utility::show_all_graces(new_state).send_error()
             }
             Self::StutterFix => {
-                let new_state = !game_state::get_state_flag(GameStateFlags::StutterFix);
+                let new_state = !game_state::is_state_flag(state_flags, GameStateFlags::StutterFix);
                 game_state::set_state_flag(GameStateFlags::StutterFix, new_state).send_error();
+                let _ = utility::set_stutter_fix(new_state);
             }
             Self::FreezeWorld => {
                 let new_state = !utility::is_freeze_world_on().unwrap_or_default();
                 utility::set_freeze_world(new_state).send_error()
             }
             Self::DisableAreaTitleCards => {
-                let new_state = !game_state::get_state_flag(GameStateFlags::TitleCards);
+                let new_state = !game_state::is_state_flag(state_flags, GameStateFlags::TitleCards);
                 game_state::set_state_flag(GameStateFlags::TitleCards, new_state).send_error();
             }
             Self::DrawHitboxesA => {
-                let new_state = !utility::is_hitboxes(false).unwrap_or_default();
-                utility::draw_hitboxes(new_state, false).send_error()
+                let new_state = !game_state::is_state_flag(state_flags, GameStateFlags::Hitboxes);
+                game_state::set_state_flag(GameStateFlags::Hitboxes, new_state).send_error();
+                let _ = utility::draw_hitboxes(new_state, false);
             }
         }
     }
-    fn to_list_item(&self) -> ListItem<'_> {
+    fn to_list_item(&self, state_flags: &[u8; 0x100]) -> ListItem<'_> {
         let text = match self {
             Self::ToggleMusic => {
                 let state = utility::is_music_muted().unwrap_or_default();
@@ -246,7 +248,7 @@ impl TogglesItems {
                 "Show All Graces".create_toggle_str(state)
             }
             Self::StutterFix => {
-                let state = game_state::get_state_flag(GameStateFlags::StutterFix);
+                let state = game_state::is_state_flag(state_flags, GameStateFlags::StutterFix);
                 "Stutter Fix".create_toggle_str(state)
             }
             Self::FreezeWorld => {
@@ -254,11 +256,11 @@ impl TogglesItems {
                 "Freeze World".create_toggle_str(state)
             }
             Self::DisableAreaTitleCards => {
-                let state = game_state::get_state_flag(GameStateFlags::TitleCards);
+                let state = game_state::is_state_flag(state_flags, GameStateFlags::TitleCards);
                 "Disable Area Title Cards".create_toggle_str(state)
             }
             Self::DrawHitboxesA => {
-                let state = utility::is_hitboxes(false).unwrap_or_default();
+                let state = game_state::is_state_flag(state_flags, GameStateFlags::Hitboxes);
                 "Draw Hitboxes".create_toggle_str(state)
             }
         };
@@ -274,8 +276,8 @@ impl TogglesItems {
         Self::ShowAllMaps,
         Self::StutterFix,
     ];
-    fn list(utility_tab: &UtilityTab) -> List<'static> {
-        let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item()).collect();
+    fn list(utility_tab: &UtilityTab, state_flags: &[u8; 0x100]) -> List<'static> {
+        let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item(state_flags)).collect();
         tabs_list(items, None, &utility_tab.tab, OPTIONS_IDX)
     }
 }

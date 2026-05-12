@@ -1,4 +1,4 @@
-use crate::er::{
+use crate::{core::common::read_from_slice, er::{
     chr_ins::{ChrInsExt, chr_ins_from_handle},
     event,
     mem::*,
@@ -7,7 +7,7 @@ use crate::er::{
     target::target_ins,
     utility,
     utils::{is_dlc_available, is_version_dlc_compat},
-};
+}};
 use anyhow::Result;
 
 #[derive(Default)]
@@ -52,17 +52,21 @@ impl GameStateHandler {
         Ok(())
     }
     fn on_loaded(&mut self) -> Result<()> {
-        if get_state_flag(GameStateFlags::PlayerNoDamage) {
+        let state_flags = state_flags()?;
+        if is_state_flag(&state_flags, GameStateFlags::PlayerNoDamage) {
             player_ins().set_no_damage(true)?;
         }
-        if get_state_flag(GameStateFlags::TitleCards) {
+        if is_state_flag(&state_flags, GameStateFlags::TitleCards) {
             event::disable_title_card()?;
         }
-        if get_state_flag(GameStateFlags::RuneArc) {
+        if is_state_flag(&state_flags, GameStateFlags::RuneArc) {
             player::set_rune_arc(true)?;
         }
-        if get_state_flag(GameStateFlags::StutterFix) {
+        if is_state_flag(&state_flags, GameStateFlags::StutterFix) {
             utility::set_stutter_fix(true)?;
+        }
+        if is_state_flag(&state_flags, GameStateFlags::Hitboxes) {
+            utility::draw_hitboxes(true, false)?;
         }
 
         let handle = read::<u64>(code_cave::base() + code_cave::TARGET_HANDLE)?;
@@ -73,10 +77,11 @@ impl GameStateHandler {
     }
 
     fn on_load_delayed(&self) -> Result<()> {
-        if get_state_flag(GameStateFlags::Rfbs) {
+        let state_flags = state_flags()?;
+        if is_state_flag(&state_flags, GameStateFlags::Rfbs) {
             player::set_rfbs()?;
         }
-        if get_state_flag(GameStateFlags::TorrentNoDeath) {
+        if is_state_flag(&state_flags, GameStateFlags::TorrentNoDeath) {
             torrent_ins().set_no_death(true)?;
         }
         Ok(())
@@ -117,10 +122,15 @@ pub enum GameStateFlags {
     RuneArc = 0x3,
     TorrentNoDeath = 0x4,
     StutterFix = 0x5,
+    Hitboxes = 0x6,
 }
 
-pub fn get_state_flag(flag_offset: GameStateFlags) -> bool {
-    read::<u8>(code_cave::base() + code_cave::STATE_HANDLER_FLAGS + flag_offset as u64)
+pub fn state_flags() -> Result<[u8; 0x100]> {
+    read::<[u8; 0x100]>(code_cave::base() + code_cave::STATE_HANDLER_FLAGS)
+}
+
+pub fn is_state_flag(state_flags: &[u8; 0x100], flag_offset: GameStateFlags) -> bool {
+    read_from_slice::<u8>(state_flags, flag_offset as u64)
         .map(|val| val == 0x1)
         .unwrap_or_default()
 }

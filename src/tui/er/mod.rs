@@ -6,7 +6,11 @@ mod target_tab;
 mod travel_tab;
 mod utility_tab;
 
-use crate::{config::{Config, user::AttachConfig}, tui::common::tabs_widget::TabsWidget};
+use crate::{
+    config::{Config, user::AttachConfig},
+    er::game_state::state_flags,
+    tui::common::tabs_widget::TabsWidget,
+};
 use anyhow::anyhow;
 use crossterm::event::KeyEvent;
 use ratatui::{Frame, layout::Rect};
@@ -41,6 +45,7 @@ pub struct ErInfo {
     loaded: bool,
     player_ins: ChrIns,
     target_ins: ChrIns,
+    state_flags: [u8; 0x100],
 }
 
 impl EldenRing {
@@ -56,6 +61,7 @@ impl EldenRing {
                 loaded: false,
                 player_ins: Err(anyhow!("")),
                 target_ins: Err(anyhow!("")),
+                state_flags: [0x0; 0x100],
             },
             game_state: GameStateHandler::new(),
             player: PlayerTab::new(),
@@ -105,6 +111,7 @@ impl EldenRing {
 
     pub fn render_tick(&mut self) {
         self.er_info.target_ins = target::target_ins();
+        self.er_info.state_flags = state_flags().unwrap_or([0x0; 0x100]);
     }
 
     pub fn on_unattach(&mut self) {

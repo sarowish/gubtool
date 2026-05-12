@@ -3,7 +3,7 @@ use crate::{
     er::{
         chr_ins::{ChrIns, ChrInsExt},
         event,
-        game_state::{self, GameStateFlags, get_state_flag},
+        game_state::{self, GameStateFlags, is_state_flag},
         offsets::{chr_dbg_flags::ChrDbgOffsets, game_data_man::player_game_data_offsets},
         player::{self, PlayerStats, is_chr_dbg_flag, torrent_ins},
     },
@@ -114,7 +114,7 @@ impl PlayerTab {
             &mut self.tab.get_list_state(ACTIONS_IDX),
         );
         frame.render_stateful_widget(
-            TogglesItems::list(self),
+            TogglesItems::list(self, &er.state_flags),
             layout[TOGGLES_IDX],
             &mut self.tab.get_list_state(TOGGLES_IDX),
         );
@@ -133,7 +133,7 @@ impl PlayerTab {
         self.tab.handle_keys(key);
         match key.code {
             KeyCode::Char('s') => self.handle_input(),
-            KeyCode::Enter => self.handle_enter(&er.player_ins),
+            KeyCode::Enter => self.handle_enter(&er.player_ins, &er.state_flags),
             _ => (),
         }
         if self.tab.current_list == STATS_IDX &&
@@ -163,12 +163,12 @@ impl PlayerTab {
             }
         }
     }
-    fn handle_enter(&mut self, player_ins: &ChrIns) {
+    fn handle_enter(&mut self, player_ins: &ChrIns, state_flags: &[u8; 0x100]) {
         let current_list = self.tab.current_list;
         if let Some(selected_index) = self.tab.lists_states[current_list].selected() {
             match current_list {
                 ACTIONS_IDX => ActionsItems::ARRAY[selected_index].execute(self, player_ins),
-                TOGGLES_IDX => TogglesItems::ARRAY[selected_index].execute(&self.stats, player_ins),
+                TOGGLES_IDX => TogglesItems::ARRAY[selected_index].execute(&self.stats, player_ins, state_flags),
                 STATS_IDX => Stats::ARRAY[selected_index].set_input(),
                 _ => (),
             }
@@ -250,19 +250,19 @@ impl ActionsItems {
 }
 
 impl TogglesItems {
-    fn execute(&self, stats: &PlayerStats, player_ins: &ChrIns) {
+    fn execute(&self, stats: &PlayerStats, player_ins: &ChrIns, state_flags: &[u8; 0x100]) {
         match self {
             Self::NoDeath => {
                 let new_state = !is_chr_dbg_flag(ChrDbgOffsets::PlayerNoDeath).unwrap_or_default();
                 player::set_chr_dbg_flag(ChrDbgOffsets::PlayerNoDeath, new_state).send_error();
             }
             Self::NoDamage => {
-                let new_state = !get_state_flag(GameStateFlags::PlayerNoDamage);
+                let new_state = !is_state_flag(state_flags, GameStateFlags::PlayerNoDamage);
                 game_state::set_state_flag(GameStateFlags::PlayerNoDamage, new_state).send_error();
                 player_ins.set_no_damage(new_state).ok();
             }
             Self::SetRfbsOnLoad => {
-                let new_state = !game_state::get_state_flag(GameStateFlags::Rfbs);
+                let new_state = !is_state_flag(state_flags, GameStateFlags::Rfbs);
                 game_state::set_state_flag(GameStateFlags::Rfbs, new_state).send_error();
             }
             Self::InfinitePoise => {
@@ -274,7 +274,7 @@ impl TogglesItems {
                 player::set_chr_dbg_flag(ChrDbgOffsets::OneShot, new_state).send_error();
             }
             Self::RuneArc => {
-                let new_state = !(stats.rune_arc || get_state_flag(GameStateFlags::RuneArc));
+                let new_state = !(stats.rune_arc || is_state_flag(state_flags, GameStateFlags::RuneArc));
                 game_state::set_state_flag(GameStateFlags::RuneArc, new_state).send_error();
                 player::set_rune_arc(new_state).ok();
             }
@@ -303,7 +303,7 @@ impl TogglesItems {
                 player::set_chr_dbg_flag(ChrDbgOffsets::InfiniteArrows, new_state).send_error();
             }
             Self::TorrentNoDeath => {
-                let new_state = !game_state::get_state_flag(GameStateFlags::TorrentNoDeath);
+                let new_state = !is_state_flag(state_flags, GameStateFlags::TorrentNoDeath);
                 game_state::set_state_flag(GameStateFlags::TorrentNoDeath, new_state).send_error();
                 let torrent_ins = torrent_ins();
                 torrent_ins.set_no_death(!torrent_ins.is_no_death().unwrap_or_default()).ok();
@@ -314,18 +314,18 @@ impl TogglesItems {
             }
         }
     }
-    fn to_list_item(&self, player_tab: &PlayerTab) -> ListItem<'_> {
+    fn to_list_item(&self, player_tab: &PlayerTab, state_flags: &[u8; 0x100]) -> ListItem<'_> {
         let text = match self {
             Self::NoDeath => {
                 let state = player::is_chr_dbg_flag(ChrDbgOffsets::PlayerNoDeath).unwrap_or_default();
                 "No Death".create_toggle_str(state)
             }
             Self::NoDamage => {
-                let state = get_state_flag(GameStateFlags::PlayerNoDamage);
+                let state = is_state_flag(state_flags, GameStateFlags::PlayerNoDamage);
                 "No Damage".create_toggle_str(state)
             }
             Self::SetRfbsOnLoad => {
-                let state = get_state_flag(GameStateFlags::Rfbs);
+                let state = is_state_flag(state_flags, GameStateFlags::Rfbs);
                 "Set RFBS on load".create_toggle_str(state)
             }
             Self::InfinitePoise => {
@@ -337,7 +337,7 @@ impl TogglesItems {
                 "One Shot".create_toggle_str(state)
             }
             Self::RuneArc => {
-                let state = player_tab.stats.rune_arc || get_state_flag(GameStateFlags::RuneArc);
+                let state = player_tab.stats.rune_arc || is_state_flag(state_flags, GameStateFlags::RuneArc);
                 "Rune Arc".create_toggle_str(state)
             }
             Self::InfiniteStamina => {
@@ -365,7 +365,7 @@ impl TogglesItems {
                 "Infinite Arrows".create_toggle_str(state)
             }
             Self::TorrentNoDeath => {
-                let state = get_state_flag(GameStateFlags::TorrentNoDeath);
+                let state = is_state_flag(state_flags, GameStateFlags::TorrentNoDeath);
                 "Torrent No Death".create_toggle_str(state)
             }
             Self::TorrentAnywhere=> {
@@ -391,8 +391,8 @@ impl TogglesItems {
         Self::TorrentAnywhere,
         Self::TorrentNoDeath,
     ];
-    fn list(player_tab: &PlayerTab) -> List<'static> {
-        let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item(player_tab)).collect();
+    fn list(player_tab: &PlayerTab, state_flags: &[u8; 0x100]) -> List<'static> {
+        let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item(player_tab, state_flags)).collect();
         tabs_list(items, None, &player_tab.tab, TOGGLES_IDX)
     }
 }
