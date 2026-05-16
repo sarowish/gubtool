@@ -28,7 +28,7 @@ impl ErAttach {
         }
         if self.no_damage {
             er::game_state::set_state_flag(GameStateFlags::PlayerNoDamage, true)?;
-            er::player::player_ins().set_no_damage(true)?
+            let _ = er::player::player_ins().set_no_damage(true);
         }
         if self.rfbs_on_load {
             er::game_state::set_state_flag(GameStateFlags::Rfbs, true)?
