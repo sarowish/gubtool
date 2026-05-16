@@ -12,10 +12,15 @@ pub enum Event {
     Key(KeyEvent),
     RenderTick,
     BackgroundTick,
-    Error(String),
+    Info((String, InfoType)),
     Search((Vec<Utf32String>, fn(&mut App))),
     Input(fn(String, &mut App)),
     ApplyAttach,
+}
+
+pub enum InfoType {
+    Error,
+    Success,
 }
 
 pub static SENDER: OnceLock<mpsc::Sender<Event>> = OnceLock::new();
@@ -70,6 +75,10 @@ macro_rules! send_input_event {
     }
 }
 
+pub fn send_success(text: String) {
+    send_event(Event::Info((text, InfoType::Success)));
+}
+
 pub trait ResultExt<T> {
     fn send_error(self);
 }
@@ -77,7 +86,7 @@ pub trait ResultExt<T> {
 impl<T> ResultExt<T> for Result<T> {
     fn send_error(self) {
         if let Err(err) = self {
-            send_event(Event::Error(err.to_string()))
+            send_event(Event::Info((err.to_string(), InfoType::Error)))
         }
     }
 }

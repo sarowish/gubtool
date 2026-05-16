@@ -48,15 +48,15 @@ pub const SAVED_TARGET_POINTER: u64 = 0x49B;            // u64
 
 pub const CREDITS_MODIFY_ONCE_FLAG: u64 = 0x600;        // u8
 
-pub const STATE_HANDLER_FLAGS: u64 = 0xF00;             // [u8; 256]
+pub const STATE_HANDLER_FLAGS: u64 = 0xF00;             // [u8; 0x100]
 
 // Hooks
 pub const WARP_COORDS_HOOK: u64 = 0x1000;               // [u8; 124]
-pub const IVORY_SKIP_HOOK: u64 = 0x1080;                // [u8; 219]
-pub const IVORY_KNIGHTS_HOOK: u64 = 0x1160;             // [u8; 36]
-pub const TARGET_POINTER_HOOK: u64 = 0x1190;            // [u8; 19]
-pub const CREDITS_SKIP_HOOK: u64 = 0x11B0;              // [u8; 38]
-pub const FASTER_MENU_HOOK: u64 = 0x11E0;               // [u8; 26]
+pub const IVORY_SKIP_HOOK: u64 = 0x10A0;                // [u8; 219]
+pub const IVORY_KNIGHTS_HOOK: u64 = 0x1190;             // [u8; 36]
+pub const TARGET_POINTER_HOOK: u64 = 0x11C0;            // [u8; 19]
+pub const CREDITS_SKIP_HOOK: u64 = 0x11E0;              // [u8; 38]
+pub const FASTER_MENU_HOOK: u64 = 0x1210;               // [u8; 26]
 
 // Shellcode
 pub const RUN_THREAD_ASM: u64 = 0x2000;                 // [u8; 39]
@@ -66,5 +66,10 @@ pub const SOULS_GIVE_ASM: u64 = 0x2030;                 // [u8; 41]
 pub const BONFIRE_WARP_ASM: u64 = 0x2070;               // [u8; 56]
 pub const EVENT_WARP_ASM: u64 = 0x20C0;                 // [u8; 37]
 pub const ITEM_SPAWN_ASM: u64 = 0x20F0;                 // [u8; 293]
+pub const EVENT_LOG_ASM: u64 = 0x2230;                  // [u8; 57]
+pub const SET_EVENT_ASM: u64 = 0x2280;                  // [u8; 47]
 
-pub const BONFIRE_WARP_OUTPUT: u64 = 0x4000;            //
+pub const BONFIRE_WARP_OUTPUT: u64 = 0x3000;            //
+
+pub const EVENT_LOG_WRITE_INDEX: u64 = 0x4000;          // i32
+pub const EVENT_LOG_BUFFER: u64 = 0x4004;               // [u8; 0x1000]

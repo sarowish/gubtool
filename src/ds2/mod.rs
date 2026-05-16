@@ -1,4 +1,5 @@
 pub mod chr_ctrl;
+pub mod event;
 pub mod game_state;
 pub mod item;
 mod mem;

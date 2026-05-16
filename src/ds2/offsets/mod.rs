@@ -23,3 +23,13 @@ pub fn kernel32_sleep() -> u64 {
         _ => 0x0,
     }
 }
+
+pub fn area_id() -> u64 {
+    module_handle() + match version() {
+        Version::Vanilla1_0_11 => 0x10CD2D0,
+        Version::Vanilla1_0_12 => 0x10D42D8,
+        Version::Scholar1_0_2 => 0x15641B4,
+        Version::Scholar1_0_3 => 0x156D1C4,
+        _ => 0x0,
+    }
+}

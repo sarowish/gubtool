@@ -13,9 +13,7 @@ use crate::{
     send_input_event,
     tui::{
         app::CurrentScreen,
-        common::{
-            StrExt, centered_rect, list, stateful_list::StatefulList,
-        },
+        common::{StrExt, centered_rect, list, stateful_list::StatefulList},
         event::ResultExt,
     },
 };
@@ -91,9 +89,11 @@ impl AttachOptions {
 
 enum Ds2Options {
     NoDeath,
-    IvorySkip,
+    GauntletSkip,
+    DisableLoyce,
     SkipCredits,
     FastQuitout,
+    StartEventLogger,
 }
 
 enum ErOptions {
@@ -117,11 +117,17 @@ impl Ds2Options {
             Self::SkipCredits => {
                 Ds2Attach::update(|c| c.skip_credits = !c.skip_credits).send_error()
             }
-            Self::IvorySkip => {
-                Ds2Attach::update(|c| c.ivory_skip = !c.ivory_skip).send_error()
+            Self::GauntletSkip => {
+                Ds2Attach::update(|c| c.gauntlet_skip = !c.gauntlet_skip).send_error()
+            }
+            Self::DisableLoyce => {
+                Ds2Attach::update(|c| c.disable_loyce = !c.disable_loyce).send_error()
             }
             Self::FastQuitout => {
                 Ds2Attach::update(|c| c.fast_quitout = !c.fast_quitout).send_error()
+            }
+            Self::StartEventLogger => {
+                Ds2Attach::update(|c| c.start_logger = !c.start_logger).send_error()
             }
         }
     }
@@ -130,14 +136,20 @@ impl Ds2Options {
             Self::NoDeath => {
                 "No Death".create_toggle_str(options.no_death)
             }
-            Self::IvorySkip => {
-                "Ivory Skip".create_toggle_str(options.ivory_skip)
+            Self::GauntletSkip => {
+                "Skip Ivory King Gauntlet".create_toggle_str(options.gauntlet_skip)
+            }
+            Self::DisableLoyce => {
+                "Disable Loyce Knights".create_toggle_str(options.disable_loyce)
             }
             Self::FastQuitout => {
                 "Fast Quitout".create_toggle_str(options.fast_quitout)
             }
             Self::SkipCredits => {
                 "Skip Credits".create_toggle_str(options.skip_credits)
+            }
+            Self::StartEventLogger => {
+                "Start Event Logger".create_toggle_str(options.start_logger)
             }
         };
         ListItem::new(text)
@@ -146,7 +158,9 @@ impl Ds2Options {
         Self::NoDeath,
         Self::FastQuitout,
         Self::SkipCredits,
-        Self::IvorySkip,
+        Self::GauntletSkip,
+        Self::DisableLoyce,
+        Self::StartEventLogger,
     ];
     fn list(ds2: &Ds2Attach) -> List<'static> {
         let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item(ds2)).collect();

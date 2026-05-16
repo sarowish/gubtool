@@ -49,3 +49,13 @@ pub fn faster_menu() -> u64 {
         _ => 0x0,
     }
 }
+
+pub fn event_log() -> u64 {
+    module_handle() + match version() {
+        Version::Vanilla1_0_11 => 0x47884B,
+        Version::Vanilla1_0_12 => 0x47FAEB,
+        Version::Scholar1_0_2 => 0x46DED0,
+        Version::Scholar1_0_3 => 0x4750C0,
+        _ => 0x0,
+    }
+}

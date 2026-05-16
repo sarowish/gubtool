@@ -25,6 +25,7 @@ phf = { version = "0.13.1", features = ["macros"]}
 libc = "0.2.186"
 object = "0.39.1"
 bincode = "1"
+chrono = "0.4.44"
 
 [build-dependencies]
 serde = { version = "1.0.228", features = ["derive"]}

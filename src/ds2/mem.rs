@@ -2,7 +2,9 @@ use std::sync::{LazyLock, Mutex};
 
 use crate::{
     core::{
-        attach::{Game, game}, common::get_hook_bytes, sys::*
+        attach::{Game, game},
+        common::{get_hook_bytes, read_from_slice},
+        sys::*,
     },
     ds2::{
         offsets::{self, code_cave},
@@ -107,4 +109,35 @@ pub fn follow_pointers(pointers: &[u64], read_final: bool) -> Result<u64> {
         }
     }
     Ok(pointer)
+}
+
+#[track_caller]
+pub fn read_address(address: u64) -> Result<u64> {
+    if is_scholar() {
+        read::<u64>(address)
+    } else {
+        read::<u32>(address).map(|addr| addr as u64)
+    }
+}
+
+pub fn read_addr_from_slice(array: &[u8], offset: u64) -> Result<u64> {
+    if is_scholar() {
+        read_from_slice::<u64>(array, offset)
+    } else {
+        read_from_slice::<u32>(array, offset).map(|addr| addr as u64)
+    }
+}
+
+pub fn is_bit_set(address: u64, mask: u8) -> Result<bool> {
+    read::<u8>(address)
+        .map(|byte| byte & mask != 0)
+}
+
+pub fn set_bit(address: u64, mask: u8, value: bool) -> Result<()> {
+    let current_byte = read::<u8>(address)?;
+    let new_byte = match value {
+        true => current_byte | mask,
+        false => current_byte & !mask,
+    };
+    write::<u8>(address, new_byte)
 }

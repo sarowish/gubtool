@@ -1,5 +1,8 @@
+pub mod areas;
+pub mod bonfires;
+pub mod bosses;
+pub mod event_flags;
 pub mod items;
-pub mod warps;
 
 pub(super) mod scholar {
     use crate::core::object::AsmFolder;

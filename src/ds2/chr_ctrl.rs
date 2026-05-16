@@ -2,9 +2,8 @@ use anyhow::{Result, anyhow};
 use phf::phf_map;
 
 use crate::ds2::{
-    mem::{read, write},
+    mem::{read, read_address, write},
     offsets::game_manager_imp::chr_ctrl_offsets,
-    utils::is_scholar,
 };
 
 pub type ChrCtrl = Result<u64>;
@@ -22,7 +21,8 @@ pub trait ChrCtrlExt {
     fn chr_id(&self) -> Result<i32>;
 
     fn chr_ctrl_pointer(&self) -> Result<u64>;
-    fn chr_param_pointer(&self) -> Result<u64>;
+    fn param_pointer(&self) -> Result<u64>;
+    fn stats_pointer(&self) -> Result<u64>;
 
     fn name_from_chr_id(&self) -> &'static str;
 }
@@ -31,9 +31,11 @@ impl ChrCtrlExt for ChrCtrl {
     fn get_hp(&self) -> Result<i32> {
         read::<i32>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::hp())
     }
+
     fn set_hp(&self, val: i32) -> Result<()> {
         write::<i32>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::hp(), val)
     }
+
     fn get_min_hp(&self) -> Result<i32> {
         read::<i32>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::min_hp())
     }
@@ -56,30 +58,27 @@ impl ChrCtrlExt for ChrCtrl {
     }
 
     fn chr_id(&self) -> Result<i32> {
-        read::<i32>(self.chr_param_pointer()? + 0x0)
+        read::<i32>(self.param_pointer()? + 0x0)
     }
 
     fn posture(&self) -> Result<f32> {
-        read::<f32>(self.chr_param_pointer()? + 0xFC)
+        read::<f32>(self.param_pointer()? + 0xFC)
     }
 
     fn chr_ctrl_pointer(&self) -> Result<u64> {
         Ok(*self.as_ref().map_err(|e| anyhow!("{e}"))?)
     }
 
-    fn chr_param_pointer(&self) -> Result<u64> {
-        if is_scholar() {
-            read::<u64>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::params_ptr())
-        } else {
-            read::<u32>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::params_ptr())
-                .map(|val| val as u64)
-        }
+    fn param_pointer(&self) -> Result<u64> {
+        read_address(self.chr_ctrl_pointer()? + chr_ctrl_offsets::params_ptr())
+    }
+
+    fn stats_pointer(&self) -> Result<u64> {
+        read_address(self.chr_ctrl_pointer()? + chr_ctrl_offsets::stats_ptr())
     }
 
     fn name_from_chr_id(&self) -> &'static str {
-        CHR_NAMES
-            .get(&self.chr_id().unwrap_or_default())
-            .map_or("", |v| *v)
+        CHR_NAMES.get(&self.chr_id().unwrap_or_default()).map_or("", |v| *v)
     }
 }
 

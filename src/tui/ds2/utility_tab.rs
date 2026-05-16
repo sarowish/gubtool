@@ -1,12 +1,13 @@
 use crate::{
     ds2::{
-        game_state,
+        game_state::{StateFlags, StateFlagsOffsets},
         utility::{self},
     },
     tui::{
         common::{
             StrExt, blockless_list, stateful_list::StatefulList, tab_state::TabState, tabs_list,
         },
+        ds2::state_flags,
         event::ResultExt,
     },
 };
@@ -18,13 +19,11 @@ use ratatui::{
 };
 
 enum OptionsItems {
-    IvorySkip,
     SkipCredits,
     FastQuitout,
 }
 
-enum TigglesItems {
-}
+enum TogglesItems {}
 
 const OPTIONS_IDX: usize = 0;
 const TOGGLES_IDX: usize = 1;
@@ -38,7 +37,7 @@ impl UtilityTab {
     pub fn new() -> Self {
         let mut list_states = vec![StatefulList::new(0); 4];
         list_states[OPTIONS_IDX] = StatefulList::new(OptionsItems::ARRAY.len());
-        list_states[TOGGLES_IDX] = StatefulList::new(TigglesItems::ARRAY.len());
+        list_states[TOGGLES_IDX] = StatefulList::new(TogglesItems::ARRAY.len());
         list_states[MENUS_IDX] = StatefulList::new(0);
         UtilityTab {
             tab: TabState::new(list_states),
@@ -83,7 +82,7 @@ impl UtilityTab {
         if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
             match self.tab.current_list {
                 OPTIONS_IDX => OptionsItems::ARRAY[selected].set_input(),
-                TOGGLES_IDX => TigglesItems::ARRAY[selected].set_input(),
+                TOGGLES_IDX => TogglesItems::ARRAY[selected].set_input(),
                 _ => (),
             }
         }
@@ -93,7 +92,7 @@ impl UtilityTab {
         if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
             match self.tab.current_list {
                 OPTIONS_IDX => OptionsItems::ARRAY[selected].execute(),
-                TOGGLES_IDX => TigglesItems::ARRAY[selected].execute(),
+                TOGGLES_IDX => TogglesItems::ARRAY[selected].execute(),
                 MENUS_IDX => (),
                 _ => (),
             }
@@ -104,17 +103,13 @@ impl UtilityTab {
 impl OptionsItems {
     fn execute(&self) {
         match self {
-            Self::IvorySkip => {
-                let new_state = !utility::is_ivory_skip().unwrap_or_default();
-                utility::set_ivory_skip(new_state).send_error();
-            }
             Self::SkipCredits => {
                 let new_state = !utility::is_credits_skip().unwrap_or_default();
                 utility::set_credits_skip(new_state).send_error();
             }
             Self::FastQuitout => {
-                let new_state = !game_state::get_state_flag(game_state::GameStateFlags::FastQuitout);
-                game_state::set_state_flag(game_state::GameStateFlags::FastQuitout, new_state).send_error();
+                let new_state = !state_flags().fast_quitout;
+                StateFlags::set(StateFlagsOffsets::FastQuitout, new_state).send_error();
             }
         }
     }
@@ -125,16 +120,12 @@ impl OptionsItems {
     }
     fn to_list_item(&self) -> ListItem<'_> {
         let text = match self {
-            Self::IvorySkip => {
-                let state = utility::is_ivory_skip().unwrap_or_default();
-                "Skip Ivory King Gauntlet".create_toggle_str(state)
-            }
             Self::SkipCredits => {
                 let state = utility::is_credits_skip().unwrap_or_default();
                 "Skip Credits".create_toggle_str(state)
             }
             Self::FastQuitout => {
-                let state = game_state::get_state_flag(game_state::GameStateFlags::FastQuitout);
+                let state = state_flags().fast_quitout;
                 "Fast Quitout".create_toggle_str(state)
             }
         };
@@ -143,7 +134,6 @@ impl OptionsItems {
     const ARRAY: &[OptionsItems] = &[
         Self::FastQuitout,
         Self::SkipCredits,
-        Self::IvorySkip,
     ];
     fn list(utility_tab: &UtilityTab) -> List<'static> {
         let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item()).collect();
@@ -151,7 +141,7 @@ impl OptionsItems {
     }
 }
 
-impl TigglesItems {
+impl TogglesItems {
     fn execute(&self) {
         match self {
             _ => ()
@@ -168,7 +158,7 @@ impl TigglesItems {
         };
         ListItem::new(text)
     }
-    const ARRAY: &[TigglesItems] = &[
+    const ARRAY: &[TogglesItems] = &[
     ];
     fn list(utility_tab: &UtilityTab) -> List<'static> {
         let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item()).collect();

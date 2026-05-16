@@ -42,6 +42,16 @@ pub fn loading_flag() -> u64 {
 
 pub mod event_manager_offsets {
 use crate::core::attach::{Version, version};
+    pub fn event_flag_manager() -> u64 {
+        match version() {
+            Version::Vanilla1_0_11 |
+            Version::Vanilla1_0_12 => 0x10,
+            Version::Scholar1_0_2 |
+            Version::Scholar1_0_3 => 0x20,
+            _ => 0x0,
+        }
+    }
+
     pub fn warp_event_entity() -> u64 {
         match version() {
             Version::Vanilla1_0_11 |
@@ -142,7 +152,7 @@ use crate::core::attach::{Version, version};
             Version::Vanilla1_0_12 => [0xC, 0x168, 0xC, 0x4, 0x120],
             Version::Scholar1_0_2 |
             Version::Scholar1_0_3 => [0x18, 0x1F8, 0x18, 0x8, 0x1A0],
-            _ => [0x0,0x0,0x0,0x0,0x0],
+            _ => [0x0; 5],
         }
     }
 }

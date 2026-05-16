@@ -1,12 +1,5 @@
 .intel_syntax noprefix
 
-cmp edx, 0x20024678
-jne check_next
-cmp r8d, 0x1
-jne exit
-xor r8d, r8d
-jmp exit
-check_next:
 cmp edx, 0x20024680
 jne exit
 cmp r8d, 0x1
@@ -26,9 +19,9 @@ mov r12, 0x32250000
 mov r13, 0x3
 mov r14, 0x3009bde
 mov rdi, 0x20024683
-movabs r15, 0x0
-movabs rbx, 0x0
-movabs rbp, 0x0
+movabs r15, OFFSET fn_get_map_entity
+movabs rbx, OFFSET fn_get_map_object
+movabs rbp, OFFSET fn_set_event_1
 mov rsi, rcx
 sub rsp, 0x28
 loop_start:
@@ -64,4 +57,4 @@ pop rdx
 pop rcx
 exit:
 mov [rsp+0x10], rsi
-jmp 0x0
+jmp OFFSET fn_set_event_2

@@ -1,8 +1,7 @@
 use crate::{
-    ds2::{chr_ctrl::ChrCtrlExt, game_state::{GameStateFlags, get_state_flag, set_state_flag}, player::player_ctrl},
+    ds2::{chr_ctrl::ChrCtrlExt, game_state::{StateFlags, StateFlagsOffsets}, player::player_ctrl},
     tui::{
-        common::{StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list},
-        event::ResultExt,
+        common::{StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list}, ds2::state_flags, event::ResultExt
     },
 };
 use anyhow::Result;
@@ -137,8 +136,8 @@ impl TogglesItems {
     fn execute(&self) {
         match self {
             Self::NoDeath => {
-                let new_state = !get_state_flag(GameStateFlags::PlayerNoDeath);
-                set_state_flag(GameStateFlags::PlayerNoDeath, new_state).send_error();
+                let new_state = !state_flags().player_no_death;
+                StateFlags::set(StateFlagsOffsets::PlayerNoDeath, new_state).send_error();
                 player_ctrl().set_no_death(new_state).ok();
             }
         }
@@ -146,7 +145,7 @@ impl TogglesItems {
     fn to_list_item(&self) -> ListItem<'_> {
         let text = match self {
             Self::NoDeath => {
-                let state = get_state_flag(GameStateFlags::PlayerNoDeath);
+                let state = state_flags().player_no_death;
                 "No Death".create_toggle_str(state)
             }
         };

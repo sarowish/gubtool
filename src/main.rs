@@ -4,6 +4,7 @@
 #![allow(clippy::type_complexity)]
 
 mod cli;
+mod common;
 mod config;
 mod core;
 mod ds2;

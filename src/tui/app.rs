@@ -4,11 +4,12 @@ use crate::{
         attach::{self, ATTACHED_PROCESS, Game, GameProcess, game, module_handle, pid, version},
         sys,
     },
+    ds2::{player, utility::get_area_id},
     tui::{
         attach_options::AttachOptions,
         ds2::DarkSouls2,
         er::EldenRing,
-        event::{Event, ResultExt, send_event, start_event_loop_thread},
+        event::{Event, InfoType, ResultExt, send_event, start_event_loop_thread},
         fuzzy_finder::FuzzyFinder,
         game_screen_selector::GameScreenSelector,
         help,
@@ -34,9 +35,10 @@ pub struct App {
     current_screen: CurrentScreen,
     pub game_screen: Game,
     attached: bool,
-    show_err: bool,
     show_input: bool,
-    err_message: String,
+    show_info: bool,
+    info_message: String,
+    info_type: InfoType,
 
     pub theme: ThemeName,
     theme_selector: ThemeSelector,
@@ -59,9 +61,10 @@ impl App {
             game_screen: Game::EldenRing,
             current_screen: CurrentScreen::Game,
             attached: false,
-            show_err: false,
             show_input: false,
-            err_message: "".to_string(),
+            show_info: false,
+            info_message: "".to_string(),
+            info_type: InfoType::Error,
 
             theme: ThemeName::default(),
             theme_selector: ThemeSelector::new(),
@@ -92,9 +95,10 @@ impl App {
                 Event::Key(key) => {
                     Self::handle_keys(&mut self, key)
                 }
-                Event::Error(err) => {
-                    self.err_message = err;
-                    self.show_err = true;
+                Event::Info((text, info_type)) => {
+                    self.info_message = text;
+                    self.info_type = info_type;
+                    self.show_info = true;
                 }
                 Event::BackgroundTick => {
                     if !self.attached {
@@ -142,7 +146,7 @@ impl App {
         let background = Block::default().bg(theme().bg);
         frame.render_widget(background, frame.area());
 
-        let constraints = if self.show_err || self.show_input {
+        let constraints = if self.show_info || self.show_input {
             vec![
                 Constraint::Length(1),
                 Constraint::Fill(1),
@@ -171,9 +175,13 @@ impl App {
         frame.render_widget(self.pid_paragraph(), pid_area);
         frame.render_widget(self.version_paragraph(), version_area);
 
-        if self.show_err {
-            let err_paragraph = Paragraph::new(self.err_message.to_string()).style(theme().error);
-            frame.render_widget(err_paragraph, layout[2]);
+        if self.show_info {
+            let style = match self.info_type {
+                InfoType::Error => theme().error,
+                InfoType::Success => theme().success,
+            };
+            let info_paragraph = Paragraph::new(self.info_message.to_string()).style(style);
+            frame.render_widget(info_paragraph, layout[2]);
         } else if self.show_input {
             let input = Paragraph::new(self.input.to_string()).style(theme().fg);
             self.input.set_cursor(frame, layout[2]);
@@ -217,8 +225,8 @@ impl App {
         key.modifiers == KeyModifiers::CONTROL {
             self.running = false
         }
-        if self.show_err {
-            self.show_err = false;
+        if self.show_info {
+            self.show_info = false;
         }
         if self.show_input {
             match key.code {
@@ -368,6 +376,8 @@ fn dbg_paragraph() -> Paragraph<'static> {
     let debug_info = [
         format!("Module Handle: {:#X}", module_handle()),
         format!("Process Uptime: {:.1}", sys::get_process_uptime(pid()).unwrap_or_default()),
+        format!("Area ID: {:#X}", get_area_id().unwrap_or_default()),
+        format!("Player Coords: {:?}", player::player_position().unwrap_or_default()),
     ];
 
     let lines: Vec<Line> = debug_info.iter().map(|f| Line::raw(f.to_string())).collect();

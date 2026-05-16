@@ -74,6 +74,14 @@ impl UiState {
         modifier(&mut er_state);
         Self::update(|c| c.elden_ring = er_state)
     }
+    pub fn update_ds2<F>(modifier: F) -> Result<()>
+    where
+        F: FnOnce(&mut Ds2State),
+    {
+        let mut ds2_state: Ds2State = Self::read().unwrap_or_default().dark_souls_2;
+        modifier(&mut ds2_state);
+        Self::update(|c| c.dark_souls_2 = ds2_state)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -143,11 +151,13 @@ impl ErState {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Ds2State {
+    pub event: Option<u32>,
 }
 
 impl Default for Ds2State {
     fn default() -> Self {
         Self {
+            event: None,
         }
     }
 }

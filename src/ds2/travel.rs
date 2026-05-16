@@ -8,35 +8,47 @@ use crate::{
             game_manager_imp::{self, event_manager_offsets, hk_hardware_info},
             hooks,
         },
-        resources::{scholar, vanilla, warps::Warp},
+        resources::{bonfires::Bonfire, bosses::Boss, scholar, vanilla},
         utils::{character_loaded_check, is_scholar},
     },
 };
 use anyhow::{Result, anyhow};
 use std::{thread, time::Duration};
 
-impl Warp {
+impl Boss {
     pub fn warp(&self) -> Result<()> {
         let _handle = TRAVEL_MUTEX.try_lock()
             .map_err(|_| anyhow!("Is already travelling"))?;
 
         character_loaded_check()?;
-        let event_warp_entity = follow_pointers(&[
-            game_manager_imp::base(),
-            game_manager_imp::event_manager(),
-            event_manager_offsets::warp_event_entity(),
-        ], true)?;
+
+        let event_warp_entity = read_address(game_manager_imp::base())
+            .and_then(|addr| read_address(addr + game_manager_imp::event_manager()))
+            .and_then(|addr| read_address(addr + event_manager_offsets::warp_event_entity()))?;
+
         if let Some(event_object_id) = self.event_object_id {
             event_warp(self.bonfire_id, event_object_id, event_warp_entity)?
         } else {
             bonfire_warp(self.bonfire_id, event_warp_entity)?
         }
-        if let Some(coords) = self.coordinates {
-            write_coords_hook(coords)?;
-            wait_for_loaded(true)
-        } else {
-            wait_for_loaded(false)
-        }
+        write_coords_hook(self.coordinates)?;
+        wait_for_loaded(true)
+    }
+}
+
+impl Bonfire {
+    pub fn warp(&self) -> Result<()> {
+        let _handle = TRAVEL_MUTEX.try_lock()
+            .map_err(|_| anyhow!("Is already travelling"))?;
+
+        character_loaded_check()?;
+
+        let event_warp_entity = read_address(game_manager_imp::base())
+            .and_then(|addr| read_address(addr + game_manager_imp::event_manager()))
+            .and_then(|addr| read_address(addr + event_manager_offsets::warp_event_entity()))?;
+
+        bonfire_warp(self.bonfire_id, event_warp_entity)?;
+        wait_for_loaded(false)
     }
 }
 
