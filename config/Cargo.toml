@@ -1,0 +1,17 @@
+[package]
+name = "config"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { workspace = true }
+ratatui-themes = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+
+engine = { version = "0.1.0", path = "../engine" }
+darksouls2 = { version = "0.1.0", path = "../darksouls2" }
+eldenring = { version = "0.1.0", path = "../eldenring" }
+
+[lints]
+workspace = true

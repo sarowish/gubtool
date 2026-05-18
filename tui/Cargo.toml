@@ -1,0 +1,27 @@
+[package]
+name = "tui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { workspace = true }
+color-eyre = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+ratatui-themes = { workspace = true }
+nucleo-matcher = { workspace = true }
+unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }
+nix = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+num-format = { workspace = true }
+
+config = { version = "0.1.0", path = "../config" }
+engine = { version = "0.1.0", path = "../engine" }
+darksouls2 = { version = "0.1.0", path = "../darksouls2" }
+eldenring = { version = "0.1.0", path = "../eldenring" }
+shared = { version = "0.1.0", path = "../shared" }
+
+[lints]
+workspace = true

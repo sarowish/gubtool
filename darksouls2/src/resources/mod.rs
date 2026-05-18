@@ -1,0 +1,23 @@
+pub mod areas;
+pub mod bonfires;
+pub mod bosses;
+pub mod event_flags;
+pub mod items;
+
+pub(super) mod scholar {
+    use shared::object::AsmFolder;
+    use std::sync::LazyLock;
+
+    static ASM_LIB_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/scholar.bin"));
+    pub static ASM: LazyLock<AsmFolder> =
+        LazyLock::new(|| bincode::deserialize(ASM_LIB_BYTES).unwrap());
+}
+
+pub(super) mod vanilla {
+    use shared::object::AsmFolder;
+    use std::sync::LazyLock;
+
+    static ASM_LIB_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/vanilla.bin"));
+    pub static ASM: LazyLock<AsmFolder> =
+        LazyLock::new(|| bincode::deserialize(ASM_LIB_BYTES).unwrap());
+}

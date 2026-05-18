@@ -1,9 +1,16 @@
-[package]
-name = "gubtool"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = [
+    "cli",
+    "config",
+    "darksouls2",
+    "eldenring",
+    "engine",
+    "shared",
+    "tui",
+]
+resolver = "3"
 
-[dependencies]
+[workspace.dependencies]
 nix = { version = "0.31.1", features = ["ptrace", "uio", "signal"] }
 pelite = "0.10.0"
 once_cell = "1.21.3"
@@ -27,8 +34,5 @@ object = "0.39.1"
 bincode = "1"
 chrono = "0.4.44"
 
-[build-dependencies]
-serde = { version = "1.0.228", features = ["derive"]}
-serde_derive = "1.0.228"
-bincode = "1"
-object = "0.39.1"
+[workspace.lints.rust]
+dead_code = "allow"
