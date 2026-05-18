@@ -103,6 +103,8 @@ enum ErOptions {
     RemoveLogo,
     DisableAreaTitleCards,
     StutterFix,
+    MapAnywhere,
+    TravelAnywhere,
 }
 
 impl Ds2Options {
@@ -207,6 +209,12 @@ impl ErOptions {
             Self::DisableAreaTitleCards => {
                 ErAttach::update(|c| c.disable_area_target_cards = !c.disable_area_target_cards).send_error()
             }
+            Self::MapAnywhere => {
+                ErAttach::update(|c| c.map_in_combat = !c.map_in_combat).send_error()
+            }
+            Self::TravelAnywhere => {
+                ErAttach::update(|c| c.travel_in_dungeon = !c.travel_in_dungeon).send_error()
+            }
         }
     }
     fn to_list_item(&self, options: &ErAttach) -> ListItem<'_> {
@@ -238,6 +246,12 @@ impl ErOptions {
             Self::DisableAreaTitleCards => {
                 "Disable Area Title Cards".create_toggle_str(options.disable_area_target_cards)
             }
+            Self::MapAnywhere => {
+                "Allow Map In Combat".create_toggle_str(options.map_in_combat)
+            }
+            Self::TravelAnywhere => {
+                "Allow Travel In Dungeons".create_toggle_str(options.travel_in_dungeon)
+            }
         };
         ListItem::new(text)
     }
@@ -251,6 +265,8 @@ impl ErOptions {
         Self::RemoveLogo,
         Self::DisableAreaTitleCards,
         Self::StutterFix,
+        Self::MapAnywhere,
+        Self::TravelAnywhere,
     ];
     fn list(er: &ErAttach) -> List<'static> {
         let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item(er)).collect();

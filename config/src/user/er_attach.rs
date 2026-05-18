@@ -20,6 +20,8 @@ pub struct ErAttach {
     pub mute_music: bool,
     pub disable_area_target_cards: bool,
     pub stutter_fix: bool,
+    pub map_in_combat: bool,
+    pub travel_in_dungeon: bool,
 }
 
 impl ErAttach {
@@ -51,6 +53,12 @@ impl ErAttach {
         }
         if self.disable_area_target_cards {
             game_state::set_state_flag(GameStateFlags::TitleCards, true)?
+        }
+        if self.map_in_combat {
+            utility::set_map_anywhere(true)?
+        }
+        if self.travel_in_dungeon {
+            utility::set_travel_anywhere(true)?
         }
         Ok(())
     }

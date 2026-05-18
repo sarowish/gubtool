@@ -28,6 +28,8 @@ enum TogglesItems {
     FreezeWorld,
     DisableAreaTitleCards,
     DrawHitboxesA,
+    MapAnywhere,
+    TravelAnywhere,
 }
 
 enum ActionsItems {
@@ -225,6 +227,14 @@ impl TogglesItems {
                 game_state::set_state_flag(GameStateFlags::Hitboxes, new_state).send_error();
                 let _ = utility::draw_hitboxes(new_state, false);
             }
+            Self::MapAnywhere => {
+                let new_state = !utility::is_map_anywhere().unwrap_or_default();
+                utility::set_map_anywhere(new_state).send_error()
+            }
+            Self::TravelAnywhere => {
+                let new_state = !utility::is_travel_anywhere().unwrap_or_default();
+                utility::set_travel_anywhere(new_state).send_error()
+            }
         }
     }
     fn to_list_item(&self, state_flags: &[u8; 0x100]) -> ListItem<'_> {
@@ -261,6 +271,14 @@ impl TogglesItems {
                 let state = game_state::is_state_flag(state_flags, GameStateFlags::Hitboxes);
                 "Draw Hitboxes".create_toggle_str(state)
             }
+            Self::MapAnywhere => {
+                let state = utility::is_map_anywhere().unwrap_or_default();
+                "Allow Map In Combat".create_toggle_str(state)
+            }
+            Self::TravelAnywhere => {
+                let state = utility::is_travel_anywhere().unwrap_or_default();
+                "Allow Travel In Dungeons".create_toggle_str(state)
+            }
         };
         ListItem::new(text)
     }
@@ -270,6 +288,8 @@ impl TogglesItems {
         Self::RemoveLogos,
         Self::DisableAreaTitleCards,
         Self::DrawHitboxesA,
+        Self::MapAnywhere,
+        Self::TravelAnywhere,
         Self::ShowAllGraces,
         Self::ShowAllMaps,
         Self::StutterFix,

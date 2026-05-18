@@ -185,3 +185,96 @@ pub fn whistle_disabled() -> u64 {
         _ => 0x0,
     }
 }
+
+pub fn open_map() -> u64 {
+    module_handle() + match version() {
+        Version::ER1_2_0 => 0x7C4CDA,
+        Version::ER1_2_1 |
+        Version::ER1_2_2 => 0x7C4D4A,
+        Version::ER1_2_3 => 0x7C4E1A,
+        Version::ER1_3_0 |
+        Version::ER1_3_1 => 0x7C6E1A,
+        Version::ER1_3_2 => 0x7C6DFA,
+        Version::ER1_4_0 => 0x7C777A,
+        Version::ER1_4_1 => 0x7C768A,
+        Version::ER1_5_0 => 0x7C94DA,
+        Version::ER1_6_0 => 0x7CB4DA,
+        Version::ER1_7_0 => 0x7CCC1A,
+        Version::ER1_8_0 |
+        Version::ER1_8_1 => 0x7DBEBA,
+        Version::ER1_9_0 => 0x7DCFBA,
+        Version::ER1_9_1 => 0x7DD01A,
+        Version::ER2_0_0 |
+        Version::ER2_0_1 => 0x7DD2AA,
+        Version::ER2_2_0 |
+        Version::ER2_2_3 => 0x7EE97A,
+        Version::ER2_3_0 => 0x7EEB6A,
+        Version::ER2_4_0 |
+        Version::ER2_5_0 => 0x7EEBCA,
+        Version::ER2_6_0 |
+        Version::ER2_6_1 => 0x7EED4A,
+        _ => 0x0,
+    }
+}
+
+pub fn close_map() -> u64 {
+    module_handle() + match version() {
+        Version::ER1_2_0 => 0x990BA5,
+        Version::ER1_2_1 |
+        Version::ER1_2_2 => 0x990C25,
+        Version::ER1_2_3 => 0x990D15,
+        Version::ER1_3_0 => 0x99593A,
+        Version::ER1_3_1 => 0x99594A,
+        Version::ER1_3_2 => 0x99592A,
+        Version::ER1_4_0 => 0x973A0A,
+        Version::ER1_4_1 => 0x97391A,
+        Version::ER1_5_0 => 0x977ADA,
+        Version::ER1_6_0 => 0x979B2A,
+        Version::ER1_7_0 => 0x97B26A,
+        Version::ER1_8_0 |
+        Version::ER1_8_1 => 0x9A14FA,
+        Version::ER1_9_0 => 0x9A354A,
+        Version::ER1_9_1 => 0x9A35AA,
+        Version::ER2_0_0 |
+        Version::ER2_0_1 => 0x9A383A,
+        Version::ER2_2_0 |
+        Version::ER2_2_3 => 0x9C35AE,
+        Version::ER2_3_0 => 0x9C374E,
+        Version::ER2_4_0 |
+        Version::ER2_5_0 => 0x9C37AE,
+        Version::ER2_6_0 |
+        Version::ER2_6_1 => 0x9C392E,
+        _ => 0x0,
+    }
+}
+
+pub fn can_fast_travel() -> u64 {
+    module_handle() + match version() {
+        Version::ER1_2_0 => 0x798300,
+        Version::ER1_2_1 |
+        Version::ER1_2_2 => 0x798370,
+        Version::ER1_2_3 => 0x798440,
+        Version::ER1_3_0 |
+        Version::ER1_3_1 => 0x79A320,
+        Version::ER1_3_2 => 0x79A300,
+        Version::ER1_4_0 => 0x79DD60,
+        Version::ER1_4_1 => 0x79DC70,
+        Version::ER1_5_0 => 0x79FAA0,
+        Version::ER1_6_0 => 0x7A1AA0,
+        Version::ER1_7_0 => 0x7A31E0,
+        Version::ER1_8_0 |
+        Version::ER1_8_1 => 0x7B2110,
+        Version::ER1_9_0 => 0x7B31B0,
+        Version::ER1_9_1 => 0x7B3210,
+        Version::ER2_0_0 |
+        Version::ER2_0_1 => 0x7B34A0,
+        Version::ER2_2_0 |
+        Version::ER2_2_3 => 0x7C4A90,
+        Version::ER2_3_0 => 0x7C4C80,
+        Version::ER2_4_0 |
+        Version::ER2_5_0 => 0x7C4CE0,
+        Version::ER2_6_0 |
+        Version::ER2_6_1 => 0x7C4E60,
+        _ => 0x0,
+    }
+}

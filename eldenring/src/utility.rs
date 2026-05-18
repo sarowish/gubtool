@@ -133,6 +133,37 @@ pub fn get_game_speed() -> Result<f32> {
         .and_then(|addr| read::<f32>(addr + cs_flipper_imp::game_speed()))
 }
 
+pub fn set_map_anywhere(state: bool) -> Result<()> {
+    match state {
+        true => {
+            write::<u8>(patches::open_map(), 0xEB)?;
+            write_bytes(patches::close_map(), &[0x90; 3])
+        }
+        false => {
+            write::<u8>(patches::open_map(), 0x74)?;
+            write_bytes(patches::close_map(), &[0xFF, 0x50, 0x60])
+        }
+    }
+}
+
+pub fn is_map_anywhere() -> Result<bool> {
+    read::<u8>(patches::open_map())
+        .map(|val| val != 0x74)
+}
+
+pub fn set_travel_anywhere(state: bool) -> Result<()> {
+    match state {
+        true => write_bytes(patches::can_fast_travel(), &[0xB0, 0x01, 0x90, 0x90, 0x90]),
+        false => write_bytes(patches::can_fast_travel(), &[0x84, 0xC0, 0x0F, 0x94, 0xC0]),
+    }
+}
+
+pub fn is_travel_anywhere() -> Result<bool> {
+    read::<[u8; 5]>(patches::can_fast_travel())
+        .map(|val| val != [0x84, 0xC0, 0x0F, 0x94, 0xC0])
+}
+
+
 /*
 pub fn set_music(val: u8) -> Result<()> {
     read::<u64>(game_data_man::base())
