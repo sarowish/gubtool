@@ -4,7 +4,7 @@ use std::{env, fs, path::PathBuf, process::Command};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AsmFolder {
-    functions: Vec<AsmFunction>,
+    pub functions: Vec<AsmFunction>,
 }
 
 impl AsmFolder {
@@ -14,11 +14,16 @@ impl AsmFolder {
     pub fn get_function(&self, name: &'static str) -> &AsmFunction {
         self.functions.iter().find(|s| s.name == name).unwrap()
     }
+    pub fn print_function_sizes(&self) {
+        self.functions.iter().for_each(|f| {
+            println!("{}, {:#X}", f.name, f.bytes.len())
+        });
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AsmFunction {
-    name: String,
+    pub name: String,
     bytes: Vec<u8>,
     relocations: Vec<Relocation>,
 }
@@ -71,6 +76,8 @@ pub fn build(folders: &[(&'static str, &'static str, bool)]) {
                 cmd.arg("-m32");
             }
             cmd.arg(&file_path);
+            cmd.arg("-Wa,-msyntax=intel");
+            cmd.arg("-Wa,-mnaked-reg");
             cmd.arg("-o");
             cmd.arg(&obj);
             let status = cmd.status().unwrap();

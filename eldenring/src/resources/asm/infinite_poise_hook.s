@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 mov r8, rdi
 movzx edx, bpl
 push rax

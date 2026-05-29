@@ -1,12 +1,16 @@
 pub mod aow;
+pub mod chr_names;
+pub(crate) mod entity_ids;
 pub mod bosses;
 pub mod graces;
 pub mod items;
+pub(crate) mod scan_patterns;
 pub mod talk_commands;
+pub mod versions_module_offsets;
 
 use shared::object::AsmFolder;
 use std::{env, sync::LazyLock};
 
 static ASM_LIB_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/eldenring.bin"));
 
-pub static ASM: LazyLock<AsmFolder> = LazyLock::new(|| bincode::deserialize(ASM_LIB_BYTES).unwrap());
+pub(crate) static ASM: LazyLock<AsmFolder> = LazyLock::new(|| bincode::deserialize(ASM_LIB_BYTES).unwrap());

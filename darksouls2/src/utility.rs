@@ -1,29 +1,30 @@
 use crate::{
     mem::*,
-    offsets::{self, code_cave, game_manager_imp, hooks, patches},
+    offsets::{self, code_cave::CaveOffset, game_manager_imp, hooks, patches},
     resources::{scholar, vanilla},
 };
 use anyhow::Result;
 use shared::slice_ops::*;
 
 pub fn quitout() -> Result<()> {
-    read::<u64>(game_manager_imp::base())
+    read::<u64>(game_manager_imp::base_ptr())
         .and_then(|addr| write::<u8>(addr + game_manager_imp::quitout(), 6))
 }
 
 pub fn get_area_id() -> Result<u32> {
-    read::<u32>(offsets::area_id())
+    read::<u32>(offsets::map_id())
 }
 
 pub fn set_faster_menu(state: bool) -> Result<()> {
+    let location = CaveOffset::FasterMenuHook.addr();
     match (state, is_scholar()) {
         (true, true) => {
                 write_bytes(patches::menu_transition(), &[0x74, 0xEA])?;
-                install_menu_hook_scholar()
+                install_menu_hook_scholar(location)
         }
         (true, false) => {
                 write_bytes(patches::menu_transition(), &[0x0F, 0x84])?;
-                install_menu_hook_vanilla()
+                install_menu_hook_vanilla(location)
         }
         (false, true) => {
                 write_bytes(patches::menu_transition(), &[0x75, 0xEA])?;
@@ -36,16 +37,14 @@ pub fn set_faster_menu(state: bool) -> Result<()> {
     }
 }
 
-fn install_menu_hook_scholar() -> Result<()> {
-    let location = code_cave::base() + code_cave::FASTER_MENU_HOOK;
+fn install_menu_hook_scholar(location: u64) -> Result<()> {
     let mut asm = scholar::ASM.get_function("faster_menu").get_bytes();
     write_rel_i32(&mut asm, location, 22, hooks::faster_menu() + 8, 4)?;
 
     install_hook(&asm, location, hooks::faster_menu(), 8)
 }
 
-fn install_menu_hook_vanilla() -> Result<()> {
-    let location = code_cave::base() + code_cave::FASTER_MENU_HOOK;
+fn install_menu_hook_vanilla(location: u64) -> Result<()> {
     let mut asm = vanilla::ASM.get_function("faster_menu").get_bytes();
     write_rel_i32(&mut asm, location, 16, hooks::faster_menu() + 5, 4)?;
 
@@ -63,47 +62,35 @@ pub fn is_faster_menu() -> Result<bool> {
 }
 
 pub fn set_credits_skip(state: bool) -> Result<()> {
-    match state {
-        true => {
-            if is_scholar() {
-                install_credits_hook_scholar()
-            } else {
-                install_credits_hook_vanilla()
-            }
-        }
-        false => {
-            if is_scholar() {
-                write_bytes(hooks::credits_skip(), &[0x48, 0x81, 0xEC, 0x20, 0x02, 0x00, 0x00])
-            } else {
-                write_bytes(hooks::credits_skip(), &[0x81, 0xEC, 0xFC, 0x01, 0x00, 0x00])
-            }
-        }
+    let location = CaveOffset::CreditsSkipHook.addr();
+    let modify_once = CaveOffset::CreditsModifyOnceFlag.addr();
+    match (state, is_scholar()) {
+        (true, true) => install_credits_hook_scholar(location, modify_once),
+        (true, false) => install_credits_hook_vanilla(location, modify_once),
+        (false, true) => write_bytes(hooks::credits_skip(), &[0x48, 0x81, 0xEC, 0x20, 0x02, 0x00, 0x00]),
+        (false, false) => write_bytes(hooks::credits_skip(), &[0x81, 0xEC, 0xFC, 0x01, 0x00, 0x00]),
     }
 }
 
-fn install_credits_hook_scholar() -> Result<()> {
-    let location = code_cave::base() + code_cave::CREDITS_SKIP_HOOK;
+fn install_credits_hook_scholar(location: u64, modify_once: u64) -> Result<()> {
     let mut asm = scholar::ASM.get_function("credits_skip").get_bytes();
-    let modify_once = code_cave::base() + code_cave::CREDITS_MODIFY_ONCE_FLAG;
-    write::<u8>(modify_once, 0)?;
 
     write_rel_i32(&mut asm, location, 9, modify_once, 5)?;
     write_rel_i32(&mut asm, location, 25, modify_once, 8)?;
     write_rel_i32(&mut asm, location, 34, hooks::credits_skip() + 7, 4)?;
 
+    write::<u8>(modify_once, 0)?;
     install_hook(&asm, location, hooks::credits_skip(), 7)
 }
 
-fn install_credits_hook_vanilla() -> Result<()> {
-    let location = code_cave::base() + code_cave::CREDITS_SKIP_HOOK;
+fn install_credits_hook_vanilla(location: u64, modify_once: u64) -> Result<()> {
     let mut asm = vanilla::ASM.get_function("credits_skip").get_bytes();
-    let modify_once = code_cave::base() + code_cave::CREDITS_MODIFY_ONCE_FLAG;
-    write::<u8>(modify_once, 0)?;
 
     write_to_slice::<u32>(&mut asm, 8, modify_once)?;
     write_to_slice::<u32>(&mut asm, 24, modify_once)?;
     write_rel_i32(&mut asm, location, 33, hooks::credits_skip() + 6, 4)?;
 
+    write::<u8>(modify_once, 0)?;
     install_hook(&asm, location, hooks::credits_skip(), 6)
 }
 

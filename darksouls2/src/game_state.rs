@@ -1,7 +1,7 @@
 use crate::{
     chr_ctrl::ChrCtrlExt,
     mem::*,
-    offsets::{code_cave, game_manager_imp},
+    offsets::{code_cave::CaveOffset, game_manager_imp},
     player, utility,
 };
 use anyhow::Result;
@@ -78,16 +78,13 @@ impl StateFlags {
         Ok(flags)
     }
     pub fn update(&mut self) -> Result<()> {
-        let flags = read::<[u8; 0x100]>(code_cave::base() + code_cave::STATE_HANDLER_FLAGS)?;
-        self.player_no_death = read_flag_from_slice(&flags, StateFlagsOffsets::PlayerNoDeath)?;
-        self.fast_quitout = read_flag_from_slice(&flags, StateFlagsOffsets::FastQuitout)?;
+        let flags = read::<[u8; 0x100]>(CaveOffset::StateHandlerFlags.addr())?;
+        self.player_no_death = read_flag_from_slice(&flags, StateFlagOffset::PlayerNoDeath)?;
+        self.fast_quitout = read_flag_from_slice(&flags, StateFlagOffset::FastQuitout)?;
         Ok(())
     }
-    pub fn set(flag_offset: StateFlagsOffsets, state: bool) -> Result<()> {
-        write::<u8>(
-            code_cave::base() + code_cave::STATE_HANDLER_FLAGS + flag_offset as u64,
-            state as u8,
-        )
+    pub fn set(flag_offset: StateFlagOffset, state: bool) -> Result<()> {
+        write::<u8>(CaveOffset::StateHandlerFlags.addr() + flag_offset as u64, state as u8)
     }
     pub const fn const_default() -> Self {
         Self {
@@ -98,23 +95,23 @@ impl StateFlags {
 }
 
 #[repr(u64)]
-pub enum StateFlagsOffsets {
+pub enum StateFlagOffset {
     PlayerNoDeath = 0x0,
     FastQuitout = 0x1,
 }
 
-fn read_flag_from_slice(flags: &[u8; 0x100], flag_offset: StateFlagsOffsets) -> Result<bool> {
+fn read_flag_from_slice(flags: &[u8; 0x100], flag_offset: StateFlagOffset) -> Result<bool> {
     read_from_slice::<u8>(flags, flag_offset as u64).map(|val| val != 0x0)
 }
 
 pub fn is_loading_screen() -> Result<bool> {
-    read::<u64>(game_manager_imp::base())
+    read::<u64>(game_manager_imp::base_ptr())
         .and_then(|addr| read::<u8>(addr + game_manager_imp::loading_flag()))
         .map(|val| val == 1)
 }
 
 pub fn is_loaded() -> Result<bool> {
-    read_address(game_manager_imp::base())
+    read_address(game_manager_imp::base_ptr())
         .and_then(|addr| read_address(addr + game_manager_imp::player_ctrl()))
         .map(|val| val != 0)
 }

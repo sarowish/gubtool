@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 sub esp, 0x48
 push 0x5
 push DWORD PTR ds:0x0

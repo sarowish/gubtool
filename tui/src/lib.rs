@@ -1,8 +1,8 @@
 mod app;
 mod attach_options;
 mod common;
-mod ds2;
-mod er;
+mod darksouls2_screen;
+mod eldenring_screen;
 mod event;
 mod fuzzy_finder;
 mod game_screen_selector;

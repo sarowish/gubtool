@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 cmp edx, 0x20024680
 jne exit
 cmp r8d, 0x1

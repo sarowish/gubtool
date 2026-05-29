@@ -3,7 +3,7 @@ use anyhow::Result;
 use eldenring::{
     chr_ins::ChrInsExt,
     game_state,
-    game_state::GameStateFlags,
+    game_state::StateFlagOffset,
     player::{self, ChrDbgOffsets},
     utility,
 };
@@ -30,11 +30,11 @@ impl ErAttach {
             player::set_chr_dbg_flag(ChrDbgOffsets::PlayerNoDeath, true)?
         }
         if self.no_damage {
-            game_state::set_state_flag(GameStateFlags::PlayerNoDamage, true)?;
+            game_state::StateFlags::set(StateFlagOffset::PlayerNoDamage, true)?;
             let _ = player::player_ins().set_no_damage(true);
         }
         if self.rfbs_on_load {
-            game_state::set_state_flag(GameStateFlags::Rfbs, true)?
+            game_state::StateFlags::set(StateFlagOffset::Rfbs, true)?
         }
         if self.infinite_poise {
             player::set_infinite_poise(true)?
@@ -49,10 +49,10 @@ impl ErAttach {
             utility::mute_music(true)?
         }
         if self.stutter_fix {
-            game_state::set_state_flag(GameStateFlags::StutterFix, true)?
+            game_state::StateFlags::set(StateFlagOffset::StutterFix, true)?
         }
         if self.disable_area_target_cards {
-            game_state::set_state_flag(GameStateFlags::TitleCards, true)?
+            game_state::StateFlags::set(StateFlagOffset::TitleCards, true)?
         }
         if self.map_in_combat {
             utility::set_map_anywhere(true)?

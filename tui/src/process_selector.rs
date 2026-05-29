@@ -1,12 +1,12 @@
 use crate::{
     app::CurrentScreen,
-    common::{ListExt, block, centered_rect, controls_line},
+    common::{ListExt, block, centered_rect, controls::draw_controls},
     event::ResultExt,
     theme::{self, theme},
 };
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use engine::{self, GameProcess, attach, pid};
+use engine::attached::{self, GameProcess};
 use nix::{
     sys::signal::{self, Signal},
     unistd::Pid,
@@ -42,18 +42,17 @@ impl ProcessSelector {
 
         let layout = centered_rect(75, 75, frame.area());
         frame.render_widget(Clear, layout);
-        let [_padding, path_area, help_area] = Layout::default()
+        let [_padding, path_area] = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![
                 Constraint::Fill(1),
-                Constraint::Length(1),
                 Constraint::Length(1),
             ])
             .areas(layout);
 
         frame.render_stateful_widget(Self::table(&self.available_processes), layout, &mut self.table);
         frame.render_widget(Self::path_paragraph(&self.available_processes, self.table.selected()), path_area);
-        frame.render_widget(controls_line(CONTROLS), help_area);
+        draw_controls(frame, layout, CONTROLS);
     }
 
     fn path_paragraph(processes: &[GameProcess], selected: Option<usize>) -> Paragraph<'static> {
@@ -70,7 +69,7 @@ impl ProcessSelector {
     fn table(processes: &[GameProcess]) -> Table<'static> {
         let mut rows: Vec<Row> = Vec::new();
         for process in processes {
-            let comm = if pid() == process.pid {
+            let comm = if attached::pid() == process.pid {
                     format!("*{}", process.comm)
                 } else {
                     format!(" {}", process.comm)
@@ -78,7 +77,7 @@ impl ProcessSelector {
             let row = Row::new(vec![
                 Cell::from(comm),
                 Cell::from(process.pid.to_string()),
-                Cell::from(format!("{}", process.version)),
+                Cell::from(format!("{}", process.game_version)),
             ]);
             rows.push(row);
         }
@@ -104,7 +103,7 @@ impl ProcessSelector {
             (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Game,
             (KeyCode::Enter, _) => {
                 if let Some(selected) = self.table.selected() {
-                    let mut processes = attach::get_processes();
+                    let mut processes = attached::get_processes();
                     if selected < processes.len() {
                         return Some(processes.remove(selected))
                     }
@@ -127,6 +126,6 @@ impl ProcessSelector {
     }
 
     pub fn update_processes(&mut self)  {
-        self.available_processes = attach::get_processes()
+        self.available_processes = attached::get_processes()
     }
 }

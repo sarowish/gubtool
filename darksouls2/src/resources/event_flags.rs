@@ -1,4 +1,4 @@
-use crate::{event, resources::areas::AreaId, utility, utils::character_loaded_check};
+use crate::{event, resources::areas::MapId, utility, utils::character_loaded_check};
 use anyhow::{Result, ensure};
 
 #[repr(u32)]
@@ -45,7 +45,7 @@ impl EventFlag {
         flags.iter().try_for_each(|(flag, state)| event::set_event_flag(*flag as u32, *state))
     }
 
-    pub fn set_area_conditional_event(&self, state: bool, area_id: AreaId) -> Result<()> {
+    pub fn set_area_conditional_event(&self, state: bool, area_id: MapId) -> Result<()> {
         character_loaded_check()?;
         ensure!(utility::get_area_id()? == area_id as u32, "Must be in general area");
         event::set_event_flag(*self as u32, state)

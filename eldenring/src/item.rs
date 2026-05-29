@@ -1,7 +1,7 @@
 use crate::{
     event,
     mem::*,
-    offsets::{self, code_cave, functions},
+    offsets::{self, code_cave::CaveOffset, functions},
     resources::{
         ASM,
         aow::{AFFINITIES, Affinity, Aow, aow_array},
@@ -21,10 +21,10 @@ use shared::slice_ops::*;
 
 fn itemspawn(item_id: i64, quantity: i64, aow_id: i64,
     is_quantity_adjustable: bool, max_quantity: i64) -> Result<()> {
-    let location = code_cave::base() + code_cave::ITEM_SPAWN_ASM;
-    let should_adjust_quantity = code_cave::base() + code_cave::SHOULD_CHECK_QUANTITY;
-    let max_quantity_location = code_cave::base() + code_cave::MAX_QUANTITY;
-    let item_struct_location = code_cave::base() + code_cave::ITEM_SPAWN_STRUCT;
+    let location = CaveOffset::ItemSpawnAsm.addr();
+    let should_adjust_quantity = CaveOffset::ShouldCheckQuantity.addr();
+    let max_quantity_location = CaveOffset::MaxQuantity.addr();
+    let item_struct_location = CaveOffset::ItemSpawnStruct.addr();
 
     let mut item_struct: [u8; 96] = [0x0; 96];
     write_to_slice::<i32>(&mut item_struct, 0x40, 1)?;
@@ -38,7 +38,7 @@ fn itemspawn(item_id: i64, quantity: i64, aow_id: i64,
     write_rel_i32(&mut asm, location, 13, should_adjust_quantity, 4)?;
     write_rel_i32(&mut asm, location, 25, functions::get_player_item_quantity_by_id(), 4)?;
     write_rel_i32(&mut asm, location, 31, max_quantity_location, 4)?;
-    write_rel_i32(&mut asm, location, 52, offsets::map_item_impl::base(), 4)?;
+    write_rel_i32(&mut asm, location, 52, offsets::map_item_impl::base_ptr(), 4)?;
     write_rel_i32(&mut asm, location, 71, functions::item_spawn(), 4)?;
     append_flag_setter(location, &mut asm)?;
 

@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 cmp DWORD PTR [ecx+0x28], 0xA7F80
 jne original
 test eax, eax

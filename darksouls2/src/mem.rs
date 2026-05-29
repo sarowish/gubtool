@@ -1,6 +1,10 @@
-use crate::offsets::{self, code_cave};
+use crate::offsets::{self, code_cave::CaveOffset};
 use anyhow::{Result, ensure};
-use engine::{Game, Version, game, sys::*, version};
+use engine::{
+    attached::{game, version},
+    game_version::{DarkSouls2Version::*, Game},
+    sys::*,
+};
 use pelite::Pod;
 use shared::slice_ops::*;
 use std::sync::{LazyLock, Mutex};
@@ -11,36 +15,38 @@ pub static TRAVEL_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[track_caller]
 pub fn read<T: Pod>(address: u64) -> Result<T> {
-    ensure!(game() == Game::DarkSoulsII, "Not attached to Dark Souls II");
+    ensure!(game() == Some(Game::DarkSouls2), "Not attached to Dark Souls II");
     read_unsafe(address)
 }
 
 #[track_caller]
 pub fn write<T: Pod>(address: u64, value: T) -> Result<()> {
-    ensure!(game() == Game::DarkSoulsII, "Not attached to Dark Souls II");
+    ensure!(game() == Some(Game::DarkSouls2), "Not attached to Dark Souls II");
     write_unsafe(address, value)
 }
 
 #[track_caller]
 pub fn write_bytes(address: u64, data: &[u8]) -> Result<()> {
-    ensure!(game() == Game::DarkSoulsII, "Not attached to Dark Souls II");
+    ensure!(game() == Some(Game::DarkSouls2), "Not attached to Dark Souls II");
     write_bytes_unsafe(address, data)
 }
 
 pub fn run_thread(address: u64) -> Result<()> {
-    ensure!(game() == Game::DarkSoulsII, "Not attached to Dark Souls II");
+    ensure!(game() == Some(Game::DarkSouls2), "Not attached to Dark Souls II");
     if is_scholar() {
         run_win_thread_wait(
             address,
-            code_cave::base() + code_cave::RUN_THREAD_ASM,
+            CaveOffset::RunThreadAsm.addr(),
             offsets::kernel32_create_thread(),
+            offsets::kernel32_close_handle(),
             false,
         )
     } else {
         run_win_thread_wait(
             address,
-            code_cave::base() + code_cave::RUN_THREAD_ASM,
+            CaveOffset::RunThreadAsm.addr(),
             offsets::kernel32_create_thread(),
+            offsets::kernel32_close_handle(),
             true,
         )
     }
@@ -58,24 +64,26 @@ pub fn install_hook(code: &[u8], code_location: u64, hook_location: u64, origina
 }
 
 pub fn run_thread_release(address: u64) -> Result<()> {
-    ensure!(game() == Game::DarkSoulsII, "Not attached to Dark Souls II");
+    ensure!(game() == Some(Game::DarkSouls2), "Not attached to Dark Souls II");
     if is_scholar() {
         run_win64_thread(
             address,
-            code_cave::base() + code_cave::RUN_THREAD_ASM,
-            offsets::kernel32_create_thread()
+            CaveOffset::RunThreadAsm.addr(),
+            offsets::kernel32_create_thread(),
+            offsets::kernel32_close_handle(),
         )
     } else {
         run_win32_thread(
             address,
-            code_cave::base() + code_cave::RUN_THREAD_ASM,
-            offsets::kernel32_create_thread()
+            CaveOffset::RunThreadAsm.addr(),
+            offsets::kernel32_create_thread(),
+            offsets::kernel32_close_handle(),
         )
     }
 }
 
 pub fn append_flag_setter(address: u64, asm_head: &mut Vec<u8>) -> Result<()> {
-    ensure!(game() == Game::DarkSoulsII, "Not attached to Dark Souls II");
+    ensure!(game() == Some(Game::DarkSouls2), "Not attached to Dark Souls II");
     if is_scholar() {
         append_64bit_flag_setter(address, asm_head)
     } else {
@@ -84,12 +92,9 @@ pub fn append_flag_setter(address: u64, asm_head: &mut Vec<u8>) -> Result<()> {
 }
 
 pub fn is_scholar() -> bool {
-    game() != Game::DarkSoulsII || matches!(
+    game() != Some(Game::DarkSouls2 )|| matches!(
         version(),
-        Version::Scholar1_0_1
-            | Version::Scholar1_0_2
-            | Version::Scholar1_0_3
-            | Version::ScholarUnknown
+        Some(Scholar1_0_1) | Some(Scholar1_0_2) | Some(Scholar1_0_3) | Some(ScholarUnknown)
     )
 }
 

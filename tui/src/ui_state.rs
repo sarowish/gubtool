@@ -1,7 +1,7 @@
 use crate::app::App;
 use anyhow::{Result, anyhow};
 use config::Config;
-use engine::Game;
+use engine::game_version::Game;
 use ratatui_themes::ThemeName;
 use serde::{Deserialize, Serialize};
 use std::{env, fs, path::PathBuf};
@@ -134,7 +134,7 @@ impl Default for ErState {
 }
 
 impl ErState {
-    fn apply(self, er: &mut crate::er::EldenRing) {
+    fn apply(self, er: &mut crate::eldenring_screen::EldenRing) {
         er.player.hp = self.player_set_health;
         er.player.runes = self.give_runes;
         er.target.hp_val = self.target_set_health;

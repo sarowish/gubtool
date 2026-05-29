@@ -5,7 +5,7 @@ use crate::{
 };
 use config::Config;
 use crossterm::event::{KeyCode, KeyEvent};
-use engine::Game;
+use engine::game_version::Game;
 use ratatui::{
     Frame,
     widgets::{Clear, List, ListItem},
@@ -13,7 +13,7 @@ use ratatui::{
 
 
 const GAMES: &[Game] = &[
-    Game::DarkSoulsII,
+    Game::DarkSouls2,
     Game::EldenRing,
 ];
 pub struct GameScreenSelector {

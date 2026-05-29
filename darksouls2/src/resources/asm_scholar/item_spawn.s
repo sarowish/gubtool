@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 main:
 cmp BYTE PTR [rip+0x0], 0x1
 jne nothing_to_process

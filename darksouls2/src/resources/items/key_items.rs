@@ -306,7 +306,7 @@ pub static KEY_ITEMS: &[Item; 67] = &[
     },
     Item {
         id: 50885000,
-        name: "Small Smooth &amp; Silky Stone",
+        name: "Small Smooth & Silky Stone",
         stack_size: 99,
         ..Item::default_key_item()
     },
@@ -324,7 +324,7 @@ pub static KEY_ITEMS: &[Item; 67] = &[
     },
     Item {
         id: 50880000,
-        name: "Smooth &amp; Silky Stone",
+        name: "Smooth & Silky Stone",
         stack_size: 99,
         ..Item::default_key_item()
     },

@@ -1,5 +1,6 @@
 #[repr(u32)]
-pub enum AreaId {
+#[derive(Clone, Copy)]
+pub enum MapId {
     ThingsBetwixed = 0xA020000,
     Majula = 0xA040000,
     ForestOfFallenGiants = 0xA0A0000,

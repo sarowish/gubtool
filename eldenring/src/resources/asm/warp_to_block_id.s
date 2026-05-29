@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 mov ecx, 0x0
 mov edx, 0x0
 mov r8d, 0x0

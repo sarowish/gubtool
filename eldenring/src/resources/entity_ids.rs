@@ -1,0 +1,14 @@
+pub const MARGIT_BOSS: u32 = 10000850;
+pub const GODRICK: u32 = 10000800;
+pub const MORGOTT: u32 = 11000800;
+pub const CLERGYMAN: u32 = 13000801;
+pub const MALIKETH: u32 = 13000800;
+pub const STARSCOURGE_RADAHN: u32 = 1052380800;
+pub const DTS_BOSS: u32 = 1045520800;
+pub const MOHG_LOB: u32 = 12050800;
+pub const FORTISSAX: u32 = 12030850;
+pub const FIRE_GIANT_P1: u32 = 1052520801;
+pub const FIRE_GIANT_P2: u32 = 1052520800;
+pub const NOBLE_MANOR: u32 = 16000850;
+pub const NOBLE_DUO: u32 = 13000852;
+pub const APOSTLE_DUO: u32 = 13000851;

@@ -1,8 +1,8 @@
-use anyhow::Result;
+use anyhow::{Ok, Result, ensure};
 use clap::{Parser, Subcommand, ValueEnum};
 use darksouls2;
-use eldenring;
-use engine::{Game, attach, game};
+use eldenring::{self, chr_ins::ChrInsExt};
+use engine::{attached::{self, game}, game_version::Game};
 use std::{thread, time::Duration};
 use tui::tui;
 
@@ -17,6 +17,8 @@ pub struct Cli {
 pub enum Commands {
     Quitout,
     KillTarget,
+    NextPhase,
+    AobScan,
     Test,
 }
 
@@ -27,14 +29,16 @@ pub fn run() -> Result<()> {
         return Ok(());
     }
 
-    attach::auto_attach()?;
+    ensure!(attached::auto_attach().is_some(), "Game not found");
+
+    let game = game().unwrap();
 
     match cli.command.unwrap() {
-        Commands::Quitout => match game() {
+        Commands::Quitout => match game {
             Game::EldenRing => eldenring::utility::quitout(),
-            Game::DarkSoulsII => darksouls2::utility::quitout(),
+            Game::DarkSouls2 => darksouls2::utility::quitout(),
         },
-        Commands::KillTarget => match game() {
+        Commands::KillTarget => match game {
             Game::EldenRing => {
                 if !eldenring::target::is_target_hook_active()? {
                     eldenring::target::install_target_hook()?;
@@ -42,7 +46,7 @@ pub fn run() -> Result<()> {
                 }
                 eldenring::chr_ins::ChrInsExt::set_hp(&eldenring::target::target_ins(), 0)
             }
-            Game::DarkSoulsII => {
+            Game::DarkSouls2 => {
                 if !darksouls2::target::is_target_hook_active()? {
                     darksouls2::target::install_target_hook()?;
                     thread::sleep(Duration::from_millis(50));
@@ -50,8 +54,17 @@ pub fn run() -> Result<()> {
                 darksouls2::chr_ctrl::ChrCtrlExt::set_hp(&darksouls2::target::target_ctrl(), 0)
             }
         },
+        Commands::NextPhase => match game {
+            Game::EldenRing => eldenring::target::target_ins().next_phase(),
+            Game::DarkSouls2 => Ok(()),
+        },
+        Commands::AobScan => match game {
+            Game::EldenRing => eldenring::utils::scan_and_print_base_offsets(),
+            Game::DarkSouls2 => darksouls2::utils::scan_and_print_base_offsets(),
+        },
         Commands::Test => {
-            darksouls2::utility::set_faster_menu(true)
+            eldenring::utils::print_asm_sizes();
+            Ok(())
         },
     }
 }

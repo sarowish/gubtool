@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 mov rbp, rsp
 sub rsp, 0x598
 lea rcx, [rbp-0x420]

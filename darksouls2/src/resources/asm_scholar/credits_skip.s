@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 sub rsp, 0x220
 cmp DWORD PTR [rip+0x0], 0x0
 jne skip

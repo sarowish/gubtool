@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 push rcx
 movabs rcx, OFFSET game_man
 mov rcx, QWORD PTR [rcx]

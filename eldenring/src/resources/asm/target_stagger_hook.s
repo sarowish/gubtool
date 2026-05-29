@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 mov rax, QWORD PTR [rcx+0x8]
 push rcx
 mov rcx, QWORD PTR [rip+0x0]

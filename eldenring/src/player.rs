@@ -1,9 +1,11 @@
+pub use crate::offsets::{chr_dbg_flags::ChrDbgOffsets, game_data_man::PlayerGameDataOffset};
 use crate::{
     chr_ins::{self, ChrIns, ChrInsExt},
     mem::*,
     offsets::{
         chr_dbg_flags::{self},
-        code_cave, functions, game_data_man,
+        code_cave::CaveOffset,
+        functions, game_data_man,
         hooks::{self},
         patches, world_chr_man,
     },
@@ -11,20 +13,21 @@ use crate::{
     utils::{character_loaded_check, dlc_check},
 };
 use anyhow::{Result, anyhow, ensure};
-use engine::{Version, version};
+use engine::{
+    attached::version,
+    game_version::EldenRingVersion::*,
+};
 use shared::slice_ops::*;
-
-pub use crate::offsets::{chr_dbg_flags::ChrDbgOffsets, game_data_man::PlayerGameDataOffset};
 
 
 pub fn player_ins() -> ChrIns {
-    read::<u64>(world_chr_man::base())
+    read::<u64>(world_chr_man::base_ptr())
         .and_then(|addr| read::<u64>(addr + world_chr_man::player_ins()))
         .map_err(|_| anyhow!("Character not loaded"))
 }
 
 pub fn torrent_ins() -> ChrIns {
-    let handle = read::<u64>(game_data_man::base())
+    let handle = read::<u64>(game_data_man::base_ptr())
         .and_then(|addr| read::<u64>(addr + game_data_man::PLAYER_GAME_DATA))
         .and_then(|addr| read::<u64>(addr + game_data_man::torrent_handle()))?;
     chr_ins::chr_ins_from_handle(handle)
@@ -39,7 +42,7 @@ pub fn is_chr_dbg_flag(offset: ChrDbgOffsets) -> Result<bool> {
 }
 
 pub fn set_rune_arc(state: bool) -> Result<()> {
-    read::<u64>(game_data_man::base())
+    read::<u64>(game_data_man::base_ptr())
         .and_then(|addr| read::<u64>(addr + game_data_man::PLAYER_GAME_DATA))
         .and_then(|addr| write::<u8>(addr + PlayerGameDataOffset::RuneArc as u64, state as u8))
 }
@@ -53,8 +56,8 @@ pub fn set_rfbs() -> Result<()> {
 pub fn give_runes(amount: i64) -> Result<()> {
     character_loaded_check()?;
 
-    let location = code_cave::base() + code_cave::RUNE_GIVE_ASM;
-    let player_game_data = read::<u64>(game_data_man::base())
+    let location = CaveOffset::GiveRunesAsm.addr();
+    let player_game_data = read::<u64>(game_data_man::base_ptr())
         .and_then(|addr| read::<u64>(addr + game_data_man::PLAYER_GAME_DATA))?;
 
     let fun = ASM.get_function("give_runes");
@@ -83,50 +86,50 @@ pub fn map_angle() -> Result<f32> {
 
 fn install_grab_hook() -> Result<()> {
     let mut asm = ASM.get_function("grab_hook").get_bytes();
-    let location = code_cave::base() + code_cave::NO_GRAB_HOOK;
-    let skip_grab_jmp_location = hooks::no_grab() + 0x95;
+    let location = CaveOffset::NoGrabHook.addr();
+    let skip_grab_jmp_location = hooks::player_no_grab() + 0x95;
 
-    write_rel_i32(&mut asm, location, 4, world_chr_man::base(), 4)?;
+    write_rel_i32(&mut asm, location, 4, world_chr_man::base_ptr(), 4)?;
     write_to_slice::<i32>(&mut asm, 11, world_chr_man::player_ins())?;
     write_rel_i32(&mut asm, location, 22, skip_grab_jmp_location, 4)?;
-    write_rel_i32(&mut asm, location, 36, hooks::no_grab() + 9, 4)?;
+    write_rel_i32(&mut asm, location, 36, hooks::player_no_grab() + 9, 4)?;
 
-    install_hook(&asm, location, hooks::no_grab(), 9)
+    install_hook(&asm, location, hooks::player_no_grab(), 9)
 }
 
 const GRAB_HOOK_BYTES_ORIGINAL: [u8; 9] = [0x41, 0x8B, 0x56, 0x44, 0x48, 0x8D, 0x4C, 0x24, 0x40];
 fn uninstall_grab_hook() -> Result<()> {
-    write_bytes(hooks::no_grab(), &GRAB_HOOK_BYTES_ORIGINAL)
+    write_bytes(hooks::player_no_grab(), &GRAB_HOOK_BYTES_ORIGINAL)
 }
 
 fn install_infinite_poise_hook() -> Result<()> {
     let mut asm = ASM.get_function("infinite_poise_hook").get_bytes();
-    let location = code_cave::base() + code_cave::INFINITE_POISE_HOOK;
+    let location = CaveOffset::InfinitePoiseHook.addr();
 
-    write_rel_i32(&mut asm, location, 11, world_chr_man::base(), 4)?;
+    write_rel_i32(&mut asm, location, 11, world_chr_man::base_ptr(), 4)?;
     write_to_slice::<i32>(&mut asm, 18, world_chr_man::player_ins())?;
     write_to_slice::<i32>(&mut asm, 27, world_chr_man::player_ins())?;
-    write_rel_i32(&mut asm, location, 64, world_chr_man::base(), 4)?;
+    write_rel_i32(&mut asm, location, 64, world_chr_man::base_ptr(), 4)?;
     write_rel_i32(&mut asm, location, 84, functions::get_chr_ins_by_entity_id(), 4)?;
-    write_rel_i32(&mut asm, location, 107, hooks::infinite_poise() + 7, 4)?;
+    write_rel_i32(&mut asm, location, 107, hooks::player_infinite_poise() + 7, 4)?;
 
-    install_hook(&asm, location, hooks::infinite_poise(), 7)
+    install_hook(&asm, location, hooks::player_infinite_poise(), 7)
 }
 
 fn infinite_poise_bytes_original() -> [u8; 7] {
     match version() {
-        Version::ER1_2_0 | Version::ER1_2_1 | Version::ER1_2_2 | Version::ER1_2_3 => {
+        Some(Version1_2_0) | Some(Version1_2_1) | Some(Version1_2_2) | Some(Version1_2_3) => {
             [0x4C, 0x8B, 0xC7, 0x41, 0x0F, 0xB6, 0xD6]
         }
         _ => [0x4C, 0x8B, 0xC7, 0x40, 0x0F, 0xB6, 0xD5],
     }
 }
 fn uninstall_infinite_poise_hook() -> Result<()> {
-    write_bytes(hooks::infinite_poise(), &infinite_poise_bytes_original())
+    write_bytes(hooks::player_infinite_poise(), &infinite_poise_bytes_original())
 }
 
 pub fn is_infinite_poise() -> Result<bool> {
-    read::<[u8; 7]>(hooks::infinite_poise()).map(|val| val != infinite_poise_bytes_original())
+    read::<[u8; 7]>(hooks::player_infinite_poise()).map(|val| val != infinite_poise_bytes_original())
 }
 
 pub fn set_infinite_poise(val: bool) -> Result<()> {
@@ -160,7 +163,7 @@ pub fn is_torrent_anywhere() -> Result<bool> {
 }
 
 fn player_game_data() -> Result<u64> {
-    read::<u64>(game_data_man::base())
+    read::<u64>(game_data_man::base_ptr())
         .and_then(|addr| read::<u64>(addr + game_data_man::PLAYER_GAME_DATA))
 }
 

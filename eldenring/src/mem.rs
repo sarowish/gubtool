@@ -1,6 +1,6 @@
-use crate::offsets::{self, code_cave};
+use crate::offsets::{code_cave::CaveOffset, external_function_pointers};
 use anyhow::{Result, ensure};
-use engine::{Game, game, sys::*};
+use engine::{attached::game, game_version::Game, sys::*};
 use pelite::Pod;
 use shared::slice_ops::*;
 use std::sync::{LazyLock, Mutex};
@@ -10,28 +10,29 @@ pub static EXECUTE_EMEVD_COMMAND_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| M
 
 #[track_caller]
 pub fn read<T: Pod>(address: u64) -> Result<T> {
-    ensure!(game() == Game::EldenRing, "Not attached to Elden Ring");
+    ensure!(game() == Some(Game::EldenRing), "Not attached to Elden Ring");
     read_unsafe(address)
 }
 
 #[track_caller]
 pub fn write<T: Pod>(address: u64, value: T) -> Result<()> {
-    ensure!(game() == Game::EldenRing, "Not attached to Elden Ring");
+    ensure!(game() == Some(Game::EldenRing), "Not attached to Elden Ring");
     write_unsafe(address, value)
 }
 
 #[track_caller]
 pub fn write_bytes(address: u64, data: &[u8]) -> Result<()> {
-    ensure!(game() == Game::EldenRing, "Not attached to Elden Ring");
+    ensure!(game() == Some(Game::EldenRing), "Not attached to Elden Ring");
     write_bytes_unsafe(address, data)
 }
 
 pub fn run_thread(address: u64) -> Result<()> {
-    ensure!(game() == Game::EldenRing, "Not attached to Elden Ring");
+    ensure!(game() == Some(Game::EldenRing), "Not attached to Elden Ring");
     run_win_thread_wait(
         address,
-        code_cave::base() + code_cave::RUN_THREAD_ASM,
-        offsets::kernel32_create_thread(),
+        CaveOffset::RunThreadAsm.addr(),
+        external_function_pointers::kernel32_create_thread(),
+        external_function_pointers::kernel32_close_handle(),
         false,
     )
 }

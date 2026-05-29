@@ -1,4 +1,3 @@
-.intel_syntax noprefix
 push eax
 mov eax, ds:OFFSET game_man
 mov eax, DWORD PTR [eax+0x74]

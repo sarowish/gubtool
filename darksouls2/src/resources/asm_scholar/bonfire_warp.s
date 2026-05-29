@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 sub rsp, 0x60
 lea rcx, [rip+0x0]
 movzx edx, WORD PTR [rip+0x0]

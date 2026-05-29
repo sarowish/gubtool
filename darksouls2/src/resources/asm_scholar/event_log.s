@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 push rax
 push rbx
 push rdi

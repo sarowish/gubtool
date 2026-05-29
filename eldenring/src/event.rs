@@ -3,8 +3,7 @@ use crate::{
     event,
     mem::*,
     offsets::{
-        self, code_cave, functions,
-        virtual_memory_flag::{self, node_offsets},
+        code_cave::CaveOffset, functions, virtual_memory_flag,
     },
     player::player_ins,
     resources::{
@@ -14,128 +13,132 @@ use crate::{
     },
     utils::{character_loaded_check, dlc_check},
 };
-use anyhow::{Result, bail, ensure};
-use shared::slice_ops::*;
+use anyhow::{Ok, Result, anyhow, bail, ensure};
+use shared::{
+    event_log::{EventLog, EventLogger},
+    slice_ops::*,
+};
 
 pub fn get_event(event_id: u32) -> Result<bool> {
-    let (data_ptr, block_offset) = traverse_event_tree(event_id)?;
+    let (data_ptr, block_offset) = event_flag_lookup(event_id)?;
     let mask = 1 << (7 - (block_offset & 7));
     is_bit_set(data_ptr + (block_offset >> 3) as u64, mask)
 }
 
-pub fn set_event(event_id: u32, state: bool) -> Result<()> {
-    let (data_ptr, block_offset) = traverse_event_tree(event_id)?;
+pub fn _set_event_direct(event_id: u32, state: bool) -> Result<()> {
+    let (data_ptr, block_offset) = event_flag_lookup(event_id)?;
     let mask = 1 << (7 - (block_offset & 7));
     set_bit(data_ptr + (block_offset >> 3) as u64, mask, state)
 }
 
-fn traverse_event_tree(event_id: u32) -> Result<(u64, u32)> {
-    let virt_flag_info =
-        read::<u64>(virtual_memory_flag::base()).and_then(|addr| read::<[u8; 0x50]>(addr))?;
-    let block_size = read_from_slice::<u32>(&virt_flag_info, virtual_memory_flag::BLOCK_SIZE)?;
-    let block_index = event_id / block_size;
-    let block_offset = event_id % block_size;
-    let root = read_from_slice::<u64>(&virt_flag_info, virtual_memory_flag::EVENT_TREE_ROOT)?;
+pub fn set_event(event_id: u32, state: bool) -> Result<()> {
+    let location = CaveOffset::SetEventAsm.addr();
+    let virt_mem_flag = read::<u64>(virtual_memory_flag::base_ptr())?;
 
-    let mut last_valid_node = root;
-    let mut last_valid_node_data = read::<[u8; 0x38]>(root)?;
-    let mut current = read_from_slice::<u64>(&last_valid_node_data, 0x8)?;
-    let mut current_data: [u8; 0x38];
-
-    loop {
-        current_data = read::<[u8; 0x38]>(current)?;
-        if current_data[node_offsets::IS_LEAF as usize] != 0 {
-            break;
-        }
-        let current_block_index = read_from_slice::<u32>(&current_data, node_offsets::BLOCK_INDEX)?;
-
-        if current_block_index < block_index {
-            current = read_from_slice::<u64>(&current_data, node_offsets::RIGHT_CHILD)?
-        } else {
-            last_valid_node = current;
-            last_valid_node_data = current_data;
-            current = read_from_slice::<u64>(&current_data, node_offsets::LEFT_CHILD)?
-        };
-    }
-    if last_valid_node == root
-        || block_index < read_from_slice::<u32>(&last_valid_node_data, node_offsets::BLOCK_INDEX)?
-    {
-        bail!("Node is root")
-    }
-
-    let node_type = read_from_slice::<i32>(&last_valid_node_data, node_offsets::TYPE)?;
-    let index = read_from_slice::<i32>(&last_valid_node_data, node_offsets::DATA_INDEX)? as u64;
-    let data_ptr = if node_type == 1 {
-        let stride = read_from_slice::<i32>(&virt_flag_info, virtual_memory_flag::STRIDE)? as u64;
-        let base = read_from_slice::<u64>(&virt_flag_info, virtual_memory_flag::EVENT_TREE_BASE)?;
-        index * stride + base
-    } else if node_type == 2 {
-        index
-    } else {
-        bail!("Node type invalid")
-    };
-    ensure!(data_ptr != 0, "Block pointer is null after bitmap lookup");
-    Ok((data_ptr, block_offset))
-}
-
-pub fn execute_emevd_command(group_id: i32, command_id: i32, args: &[u8]) -> Result<()> {
-    let location = code_cave::base() + code_cave::EMEVD_ASM;
-    let args_location = code_cave::base() + code_cave::EMEVD_ARGS;
-
-    let fun = ASM.get_function("execute_emevd_command");
+    let fun = ASM.get_function("set_event");
     let mut asm = fun.get_bytes();
-    write_to_slice::<u64>(
-        &mut asm,
-        fun.reloc("fn_emk_event_ins_ctor"),
-        functions::emk_event_ins_ctor(),
-    )?;
-    write_to_slice::<i32>(&mut asm, fun.reloc("group_id"), group_id)?;
-    write_to_slice::<i32>(&mut asm, fun.reloc("command_id"), command_id)?;
-    write_to_slice::<u64>(&mut asm, fun.reloc("args_location"), args_location)?;
-    write_to_slice::<u64>(
-        &mut asm,
-        fun.reloc("cs_emk_system_base"),
-        offsets::cs_emk_system::base(),
-    )?;
-    write_to_slice::<u64>(
-        &mut asm,
-        fun.reloc("fn_emevd_switch"),
-        functions::emevd_switch(),
-    )?;
+
+    write_to_slice::<i64>(&mut asm, fun.reloc("virt_mem_flag"), virt_mem_flag)?;
+    write_to_slice::<i64>(&mut asm, fun.reloc("event_id"), event_id)?;
+    write_to_slice::<i64>(&mut asm, fun.reloc("state"), state)?;
+    write_to_slice::<i64>(&mut asm, fun.reloc("fn_set_event"), functions::set_event())?;
     append_flag_setter(location, &mut asm)?;
 
-    let _handle = EXECUTE_EMEVD_COMMAND_MUTEX.lock().unwrap();
-
-    write_bytes(args_location, args)?;
     write_bytes(location, &asm)?;
     run_thread(location)
 }
 
+struct VirtMemInfo {
+    block_size: u32,
+    stride: u32,
+    mem_base: u64,
+    lookup_tree_root: u64,
+}
+
+impl VirtMemInfo {
+    pub fn read() -> Result<Self> {
+        let bytes = read::<u64>(virtual_memory_flag::base_ptr())
+            .and_then(|addr| read::<[u8; 0x40]>(addr))?;
+        Ok(Self {
+            block_size: read_from_slice::<u32>(&bytes, 0x1C)?,
+            stride: read_from_slice::<u32>(&bytes, 0x20)?,
+            mem_base: read_from_slice::<u64>(&bytes, 0x28)?,
+            lookup_tree_root: read_from_slice::<u64>(&bytes, 0x38)?,
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Node {
+    left_child: u64,
+    right_child: u64,
+    is_leaf: bool,
+    block_idx: u32,
+    block_type: u32,
+    data_idx: u32,
+}
+
+impl Node {
+    fn read_at(address: u64) -> Result<Self> {
+        let bytes = read::<[u8; 0x34]>(address)?;
+        Ok(Self {
+            left_child: read_from_slice::<u64>(&bytes, 0x0)?,
+            right_child: read_from_slice::<u64>(&bytes, 0x10)?,
+            is_leaf: read_from_slice::<u8>(&bytes, 0x19)? != 0x0,
+            block_idx: read_from_slice::<u32>(&bytes, 0x20)?,
+            block_type: read_from_slice::<u32>(&bytes, 0x28)?,
+            data_idx: read_from_slice::<u32>(&bytes, 0x30)?,
+        })
+    }
+}
+
+fn event_flag_lookup(event_id: u32) -> Result<(u64, u32)> {
+    let virt_mem_info = VirtMemInfo::read()?;
+    let block_idx = event_id / virt_mem_info.block_size;
+    let block_offset = event_id % virt_mem_info.block_size;
+
+    let mut last_valid_node: Option<Node> = None;
+    let mut current_node_ptr = read::<u64>(virt_mem_info.lookup_tree_root + 0x8)?;
+
+    loop {
+        let current_node = Node::read_at(current_node_ptr)?;
+
+        if current_node.is_leaf {
+            break;
+        }
+
+        if current_node.block_idx < block_idx {
+            current_node_ptr = current_node.right_child;
+        } else {
+            last_valid_node = Some(current_node);
+            current_node_ptr = current_node.left_child;
+        };
+    }
+    if let Some(node) = last_valid_node && node.block_idx <= block_idx {
+        let data_ptr = match node.block_type {
+            1 => node.data_idx as u64 * virt_mem_info.stride as u64 + virt_mem_info.mem_base,
+            2 => node.data_idx as u64,
+            _ => bail!("block type invalid")
+        };
+        ensure!(data_ptr != 0x0, "block pointer is null");
+        return Ok((data_ptr, block_offset));
+    }
+    Err(anyhow!("flag not found"))
+}
+
 pub fn execute_talk_command(command_id: i32, params: &'static [i32], handle: u64) -> Result<()> {
-    let location = code_cave::base() + code_cave::EZ_STATE_TALK_ASM;
-    let params_location = code_cave::base() + code_cave::EZ_STATE_TALK_PARAMS;
+    let location = CaveOffset::EzStateTalkAsm.addr();
+    let params_location = CaveOffset::EzStateParams.addr();
     let params: Vec<u8> = params.iter().flat_map(|&x| x.to_le_bytes()).collect();
 
     let fun = ASM.get_function("execute_talk_command");
     let mut asm = fun.get_bytes();
     write_to_slice::<i32>(&mut asm, 18, command_id)?;
-    write_rel_i32(
-        &mut asm,
-        location,
-        23,
-        functions::external_event_temporary_ctor(),
-        4,
-    )?;
+    write_rel_i32(&mut asm, location, 23, functions::external_event_temp_ctor(), 4)?;
     write_to_slice::<u64>(&mut asm, 65, handle)?;
     write_to_slice::<i32>(&mut asm, 78, params.len())?;
     write_rel_i32(&mut asm, location, 93, params_location, 4)?;
-    write_rel_i32(
-        &mut asm,
-        location,
-        155,
-        functions::execute_talk_command(),
-        4,
-    )?;
+    write_rel_i32(&mut asm, location, 155, functions::execute_talk_command(), 4)?;
     append_flag_setter(location, &mut asm)?;
 
     write_bytes(params_location, &params)?;
@@ -159,18 +162,61 @@ impl TalkCommand {
     }
 }
 
-pub fn set_night() -> Result<()> {
-    let mut param_data: [u8; 20] = [0x0; 20];
-    write_to_slice::<u8>(&mut param_data, 0, 20)?;
-    write_to_slice::<u8>(&mut param_data, 5, 1)?;
-    write_to_slice::<f32>(&mut param_data, 8, 0.75)?;
-    write_to_slice::<f32>(&mut param_data, 12, 2.0)?;
-    write_to_slice::<f32>(&mut param_data, 16, 0.0)?;
-    execute_emevd_command(2001, 4, &param_data)
+#[derive(Default)]
+pub struct ErEventLogger {
+    event_log: EventLog,
 }
 
-pub fn rest() -> Result<()> {
-    execute_emevd_command(2004, 47, &[])
+impl EventLogger for ErEventLogger {
+    fn event_log(&self) -> &EventLog {
+        &self.event_log
+    }
+    fn event_log_mut(&mut self) -> &mut EventLog {
+        &mut self.event_log
+    }
+    fn file_prefix(&self) -> &'static str {
+        "eldenring"
+    }
+    fn write_idx(&self) -> Result<i32> {
+        read::<i32>(CaveOffset::EventLogWriteIdx.addr())
+    }
+    fn read_buffer(&self) -> Result<[u8; 0x1000]> {
+        read::<[u8; 0x1000]>(CaveOffset::EventLogBuffer.addr())
+    }
+    fn clear_cave(&self) -> Result<()> {
+        write::<i32>(CaveOffset::EventLogWriteIdx.addr(), 0x0)?;
+        write_bytes(CaveOffset::EventLogBuffer.addr(), &[0x0; 0x1000])
+    }
+}
+
+const EVENT_LOG_HOOK_ORIGINAL: [u8; 5] = [0x48, 0x89, 0x5C, 0x24, 0x08];
+
+pub fn set_event_log_hook(state: bool) -> Result<()> {
+    match state {
+        true => install_event_log_hook(),
+        false => write_bytes(functions::set_event(), &EVENT_LOG_HOOK_ORIGINAL),
+    }
+}
+
+pub fn is_event_log_hook() -> Result<bool> {
+    read::<[u8; 5]>(functions::set_event())
+        .map(|bytes| bytes != EVENT_LOG_HOOK_ORIGINAL)
+}
+
+fn install_event_log_hook() -> Result<()> {
+    let location = CaveOffset::EventLogHook.addr();
+    let write_index = CaveOffset::EventLogWriteIdx.addr();
+    let buffer = CaveOffset::EventLogBuffer.addr();
+
+    let fun = ASM.get_function("event_log");
+    let mut asm = fun.get_bytes();
+
+    write_rel_i32(&mut asm, location, fun.reloc("write_index_1"), write_index, 4)?;
+    write_rel_i32(&mut asm, location, fun.reloc("buffer"), buffer, 4)?;
+    write_rel_i32(&mut asm, location, fun.reloc("write_index_2"), write_index, 4)?;
+    write_rel_i32(&mut asm, location, fun.reloc("hook_loc"), functions::set_event() + 5, 4)?;
+
+    install_hook(&asm, location, functions::set_event(), 5)
 }
 
 pub fn fight_fortissax() -> Result<()> {
@@ -188,16 +234,6 @@ pub fn fight_elden_beast() -> Result<()> {
     );
     set_event(19002802, true)?;
     set_event(19002805, true)
-}
-
-pub fn disable_title_card() -> Result<()> {
-    execute_emevd_command(2012, 8, &[])
-}
-
-pub fn reset_character_position(entity_id: u32) -> Result<()> {
-    let mut param_data: [u8; 20] = [0x0; 20];
-    write_to_slice::<u32>(&mut param_data, 0, entity_id)?;
-    execute_emevd_command(2004, 81, &param_data)
 }
 
 pub fn set_dlc_clear(state: bool) -> Result<()> {

@@ -1,4 +1,4 @@
-use engine::{Version, version};
+use engine::{attached::version, game_version::EldenRingVersion::*};
 
 pub const HANDLE: u64 = 0x8;
 pub const BLOCK_ID: u64 = 0x38;
@@ -10,20 +10,12 @@ pub const SPECIAL_EFFECT: u64 = 0x178;
 
 pub fn entity_id() -> u64 {
     match version() {
-        Version::ER1_2_0 |
-        Version::ER1_2_1 |
-        Version::ER1_2_2 |
-        Version::ER1_2_3 |
-        Version::ER1_3_0 |
-        Version::ER1_3_1 |
-        Version::ER1_3_2 |
-        Version::ER1_4_0 |
-        Version::ER1_4_1 |
-        Version::ER1_5_0 |
-        Version::ER1_6_0 |
-        Version::ER1_7_0 => 0x1E4,
+        Some(Version1_2_0) | Some(Version1_2_1) | Some(Version1_2_2) |
+        Some(Version1_2_3) | Some(Version1_3_0) | Some(Version1_3_1) |
+        Some(Version1_3_2) | Some(Version1_4_0) | Some(Version1_4_1) |
+        Some(Version1_5_0) | Some(Version1_6_0) | Some(Version1_7_0) => 0x1E4,
     _ => 0x1E8,
-}
+    }
 }
 
 pub const MODULES: u64 = 0x190;
@@ -65,44 +57,40 @@ pub mod behavior_offsets {
     pub const ANIMATION_SPEED: u64 = 0x17C8;
 }
 
+pub mod speffect_offsets {
+    pub const HEAD: u64 = 0x8;
+}
+
+pub mod speffect_entry {
+    pub const PARAM_DATA: u64 = 0x0;
+    pub const ID: u64 = 0x8;
+    pub const NEXT: u64 = 0x30;
+    pub const TIME_LEFT: u64 = 0x40;
+    pub const DURATION: u64 = 0x48;
+}
+
 pub mod ai_think_offsets {
-use engine::{Version, version};
+    use engine::{attached::version, game_version::EldenRingVersion::*};
     pub const NPC_THINK_PARAM_ID: u64 = 0x28;
     pub const LUA_TIMERS_ARRAY: u64 = 0x8C;
     pub const LUA_NUMBERS_ARRAY: u64 = 0x6CC;
 
     pub fn last_act() -> u64 {
         match version() {
-            Version::ER1_2_0 |
-            Version::ER1_2_1 |
-            Version::ER1_2_2 |
-            Version::ER1_2_3 |
-            Version::ER1_3_0 |
-            Version::ER1_3_1 |
-            Version::ER1_3_2 |
-            Version::ER1_4_0 |
-            Version::ER1_4_1 |
-            Version::ER1_5_0 |
-            Version::ER1_6_0 |
-            Version::ER1_7_0 => 0xE9B2,
+            Some(Version1_2_0) | Some(Version1_2_1) | Some(Version1_2_2) |
+            Some(Version1_2_3) | Some(Version1_3_0) | Some(Version1_3_1) |
+            Some(Version1_3_2) | Some(Version1_4_0) | Some(Version1_4_1) |
+            Some(Version1_5_0) | Some(Version1_6_0) | Some(Version1_7_0) => 0xE9B2,
             _ => 0xE9C2,
         }
     }
 
     pub fn force_act() -> u64 {
         match version() {
-            Version::ER1_2_0 |
-            Version::ER1_2_1 |
-            Version::ER1_2_2 |
-            Version::ER1_2_3 |
-            Version::ER1_3_0 |
-            Version::ER1_3_1 |
-            Version::ER1_3_2 |
-            Version::ER1_4_0 |
-            Version::ER1_4_1 |
-            Version::ER1_5_0 |
-            Version::ER1_6_0 |
-            Version::ER1_7_0 => 0xE9B1,
+            Some(Version1_2_0) | Some(Version1_2_1) | Some(Version1_2_2) |
+            Some(Version1_2_3) | Some(Version1_3_0) | Some(Version1_3_1) |
+            Some(Version1_3_2) | Some(Version1_4_0) | Some(Version1_4_1) |
+            Some(Version1_5_0) | Some(Version1_6_0) | Some(Version1_7_0) => 0xE9B1,
             _ => 0xE9C1,
         }
     }
@@ -114,13 +102,8 @@ pub mod ride_offsets {
 
 pub fn data_flags() -> u64 {
     match version() {
-        Version::ER1_2_0 |
-        Version::ER1_2_1 |
-        Version::ER1_2_2 |
-        Version::ER1_2_3 |
-        Version::ER1_3_0 |
-        Version::ER1_3_1 |
-        Version::ER1_3_2 => 0x197,
+        Some(Version1_2_0) | Some(Version1_2_1) | Some(Version1_2_2) |
+        Some(Version1_2_3) | Some(Version1_3_0) | Some(Version1_3_1) | Some(Version1_3_2) => 0x197,
         _ => 0x19B,
     }
 }
@@ -133,18 +116,10 @@ pub mod bit_flags {
 
 pub fn manipulator() -> u64 {
     match version() {
-        Version::ER1_2_0 |
-        Version::ER1_2_1 |
-        Version::ER1_2_2 |
-        Version::ER1_2_3 |
-        Version::ER1_3_0 |
-        Version::ER1_3_1 |
-        Version::ER1_3_2 |
-        Version::ER1_4_0 |
-        Version::ER1_4_1 |
-        Version::ER1_5_0 |
-        Version::ER1_6_0 |
-        Version::ER1_7_0 => 0x570,
+        Some(Version1_2_0) | Some(Version1_2_1) | Some(Version1_2_2) |
+        Some(Version1_2_3) | Some(Version1_3_0) | Some(Version1_3_1) |
+        Some(Version1_3_2) | Some(Version1_4_0) | Some(Version1_4_1) |
+        Some(Version1_5_0) | Some(Version1_6_0) | Some(Version1_7_0) => 0x570,
         _ => 0x580,
     }
 }

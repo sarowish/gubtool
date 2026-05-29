@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 cmp DWORD PTR [esp+0x4], 0x20024680
 jne original_set_event
 cmp DWORD PTR [esp+0x8], 0x1

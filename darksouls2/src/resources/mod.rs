@@ -3,6 +3,9 @@ pub mod bonfires;
 pub mod bosses;
 pub mod event_flags;
 pub mod items;
+pub mod scholar_patterns;
+pub mod vanilla_patterns;
+pub mod versions_module_offsets;
 
 pub(super) mod scholar {
     use shared::object::AsmFolder;

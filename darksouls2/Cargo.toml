@@ -10,6 +10,7 @@ pelite = { workspace = true }
 thiserror = { workspace = true }
 bincode = { workspace = true }
 once_cell = { workspace = true }
+glam = { workspace = true }
 
 engine = { version = "0.1.0", path = "../engine" }
 shared = { version = "0.1.0", path = "../shared" }

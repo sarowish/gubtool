@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 cmp DWORD PTR [rcx+0x4c], 0xa7f80
 jne normal
 test rax, rax

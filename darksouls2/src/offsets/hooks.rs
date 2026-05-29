@@ -1,81 +1,30 @@
-use engine::{Version, module_handle, version};
-
-pub fn warp_coord_write() -> u64 {
-    module_handle() + match version() {
-        Version::Vanilla1_0_11 => 0x7F9FB0,
-        Version::Vanilla1_0_12 => 0x8015B0,
-        Version::Scholar1_0_2 => 0x711939,
-        Version::Scholar1_0_3 => 0x718E99,
-        _ => 0x0,
-    }
-}
+use crate::offsets::module_offsets::module_offsets;
+use engine::attached::module_base;
 
 pub fn set_shared_flag() -> u64 {
-    module_handle() + match version() {
-        Version::Vanilla1_0_11 => 0x43120B,
-        Version::Vanilla1_0_12 => 0x43849B,
-        Version::Scholar1_0_2 => 0x41F452,
-        Version::Scholar1_0_3 => 0x4265D2,
-        _ => 0x0,
-    }
+    module_base() + module_offsets().hooks.set_shared_flag
 }
 
-pub fn locked_target() -> u64 {
-    module_handle() + match version() {
-        Version::Vanilla1_0_11 => 0x49E271,
-        Version::Vanilla1_0_12 => 0x4A54F1,
-        Version::Scholar1_0_2 => 0x495FB2,
-        Version::Scholar1_0_3 => 0x49D192,
-        _ => 0x0,
-    }
+pub fn locked_target_pointer() -> u64 {
+    module_base() + module_offsets().hooks.locked_target_pointer
 }
 
 pub fn credits_skip() -> u64 {
-    module_handle() + match version() {
-        Version::Vanilla1_0_11 => 0x11BD53,
-        Version::Vanilla1_0_12 => 0x11BE23,
-        Version::Scholar1_0_2 => 0x599D4,
-        Version::Scholar1_0_3 => 0x59A64,
-        _ => 0x0,
-    }
+    module_base() + module_offsets().hooks.credits_skip
 }
 
 pub fn faster_menu() -> u64 {
-    module_handle() + match version() {
-        Version::Vanilla1_0_11 => 0x19979E,
-        Version::Vanilla1_0_12 => 0x1999BE,
-        Version::Scholar1_0_2 => 0x1053B3,
-        Version::Scholar1_0_3 => 0x105473,
-        _ => 0x0,
-    }
+    module_base() + module_offsets().hooks.faster_menu
 }
 
 pub fn event_log() -> u64 {
-    module_handle() + match version() {
-        Version::Vanilla1_0_11 => 0x47884B,
-        Version::Vanilla1_0_12 => 0x47FAEB,
-        Version::Scholar1_0_2 => 0x46DED0,
-        Version::Scholar1_0_3 => 0x4750C0,
-        _ => 0x0,
-    }
+    module_base() + module_offsets().hooks.event_log
 }
 
 pub fn infinite_poise() -> u64 {
-    module_handle() + match version() {
-        Version::Vanilla1_0_11 => 0x1C8F33,
-        Version::Vanilla1_0_12 => 0x1CA4A3,
-        Version::Scholar1_0_2 => 0x133F6A,
-        Version::Scholar1_0_3 => 0x1365DA,
-        _ => 0x0,
-    }
+    module_base() + module_offsets().hooks.infinite_poise
 }
 
 pub fn player_no_damage() -> u64 {
-    module_handle() + match version() {
-        Version::Vanilla1_0_11 => 0x1F33D1,
-        Version::Vanilla1_0_12 => 0x1F5AD1,
-        Version::Scholar1_0_2 => 0x16727A,
-        Version::Scholar1_0_3 => 0x16A39A,
-        _ => 0x0,
-    }
+    module_base() + module_offsets().hooks.player_no_damage
 }

@@ -1,23 +1,26 @@
 use crate::{
     chr_ins::ChrIns,
     mem::*,
-    offsets::{code_cave, field_area, hooks},
+    offsets::{code_cave::CaveOffset, field_area, hooks},
     resources::ASM,
 };
 use anyhow::{Result, anyhow, bail, ensure};
-use engine::{Version, version};
+use engine::{
+    attached::version,
+    game_version::EldenRingVersion::*,
+};
 use shared::slice_ops::*;
 
 pub fn target_ins() -> ChrIns {
-    let addr = read::<u64>(code_cave::base() + code_cave::TARGET_POINTER)
+    let addr = read::<u64>(CaveOffset::SavedTargetPointer.addr())
         .map_err(|_| anyhow!("Could not read target pointer"))?;
     ensure!(addr != 0x0, "Target not found");
     Ok(addr)
 }
 
 pub fn install_target_hook() -> Result<()> {
-    let location = code_cave::base() + code_cave::TARGET_POINTER_HOOK;
-    let saved_pointer = code_cave::base() + code_cave::TARGET_POINTER;
+    let location = CaveOffset::SaveTargetHook.addr();
+    let saved_pointer = CaveOffset::SavedTargetPointer.addr();
 
     let mut asm = ASM.get_function("save_target_hook").get_bytes();
     write_rel_i32(&mut asm, location, 10, saved_pointer, 4)?;
@@ -38,17 +41,17 @@ pub fn is_target_hook_active() -> Result<bool> {
 
 fn get_force_act_idx_original_bytes() -> [u8; 7] {
     match version() {
-        Version::ER1_2_0 |
-        Version::ER1_2_1 |
-        Version::ER1_2_2 |
-        Version::ER1_2_3 |
-        Version::ER1_3_0 |
-        Version::ER1_3_1 |
-        Version::ER1_3_2 |
-        Version::ER1_4_0 |
-        Version::ER1_4_1 |
-        Version::ER1_5_0 |
-        Version::ER1_6_0 => [0x0F, 0xBE, 0x80, 0xB1, 0xE9, 0x00, 0x00],
+        Some(Version1_2_0) |
+        Some(Version1_2_1) |
+        Some(Version1_2_2) |
+        Some(Version1_2_3) |
+        Some(Version1_3_0) |
+        Some(Version1_3_1) |
+        Some(Version1_3_2) |
+        Some(Version1_4_0) |
+        Some(Version1_4_1) |
+        Some(Version1_5_0) |
+        Some(Version1_6_0) => [0x0F, 0xBE, 0x80, 0xB1, 0xE9, 0x00, 0x00],
         _ => [0x0F, 0xBE, 0x80, 0xC1, 0xE9, 0x00, 0x00],
     }
 }
@@ -56,10 +59,10 @@ fn get_force_act_idx_original_bytes() -> [u8; 7] {
 pub fn force_act_sequence(act_sequence: Vec<i32>, npc_think_param_id: i32) -> Result<()> {
     ensure!(act_sequence.len() <= 10, "Max number of acts is 10");
 
-    let location = code_cave::base() + code_cave::FORCE_ACT_SEQUENCE_HOOK;
-    let current_idx_location = code_cave::base() + code_cave::CURRENT_IDX;
-    let should_run_flag_location = code_cave::base() + code_cave::SHOULD_RUN;
-    let act_array_location = code_cave::base() + code_cave::ACT_ARRAY;
+    let location = CaveOffset::ForceActSequenceHook.addr();
+    let current_idx_location = CaveOffset::CurrentActIdx.addr();
+    let should_run_flag_location = CaveOffset::ActSeqeunceShouldRun.addr();
+    let act_array_location = CaveOffset::ActArray.addr();
 
     let mut act_array = act_sequence;
     act_array.resize(10, 0);
@@ -83,8 +86,8 @@ pub fn force_act_sequence(act_sequence: Vec<i32>, npc_think_param_id: i32) -> Re
 }
 
 pub fn install_stagger_hook() -> Result<()> {
-    let location = code_cave::base() + code_cave::TARGET_NO_STAGGER_HOOK;
-    let target_ptr_location = code_cave::base() + code_cave::TARGET_POINTER;
+    let location = CaveOffset::TargetNoStaggerHook.addr();
+    let target_ptr_location = CaveOffset::SavedTargetPointer.addr();
 
     let mut asm = ASM.get_function("target_stagger_hook").get_bytes();
     write_rel_i32(&mut asm, location, 8, target_ptr_location, 4)?;
@@ -112,7 +115,7 @@ pub fn toggle_stagger_hook() -> Result<()> {
 
 pub fn world_block_info_from_block_id(block_id: u32) -> Result<u64> {
     let target_area = (block_id >> 24) & 0xFF;
-    let world_info_owner = read::<u64>(field_area::base())
+    let world_info_owner = read::<u64>(field_area::base_ptr())
         .and_then(|addr| read::<u64>(addr + field_area::WORLD_INFO_OWNER))?;
     let area_count = read::<i32>(world_info_owner + field_area::world_info_owner_offsets::AREA_COUNT)?;
 

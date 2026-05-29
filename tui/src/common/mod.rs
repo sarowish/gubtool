@@ -1,3 +1,5 @@
+pub mod controls;
+pub mod event_log_table;
 pub mod stateful_list;
 pub mod tab_state;
 pub mod tabs_widget;
@@ -9,15 +11,16 @@ use crate::{
 use anyhow::{Result, anyhow, ensure};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::Stylize,
-    text::{Line, Span},
+    text::Line,
     widgets::{Block, Borders, List, ListItem, TableState},
 };
 use ratatui_themes::Style;
 
 pub trait StrExt {
     fn create_toggle_str(self, val: bool) -> String;
+    fn create_toggle_str_append(self, val: bool) -> String;
 }
 
 impl StrExt for &str {
@@ -27,6 +30,13 @@ impl StrExt for &str {
             false => "[ ]",
         };
         format!("{ret} {self}")
+    }
+    fn create_toggle_str_append(self, val: bool) -> String {
+        let ret = match val {
+            true => "(X)",
+            false => "( )",
+        };
+        format!("{self} {ret}")
     }
 }
 
@@ -48,26 +58,6 @@ pub fn centered_rect(percent_x: u16, percent_y: u16, layout: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
-}
-
-
-pub fn controls_line(controls: &[(&str, &str)]) -> Line<'static> {
-    let mut spans = controls
-        .iter()
-        .flat_map(|(key, action)| {
-            vec![
-                Span::raw("[").style(theme().fg),
-                Span::raw(key.to_string()).style(theme().info),
-                Span::raw("→ ").style(theme().fg),
-                Span::raw(action.to_string()).style(theme().fg),
-                Span::raw("] ").style(theme().fg),
-            ]
-        })
-        .collect::<Vec<_>>();
-    spans.pop();
-    spans.push(Span::raw("]").style(theme().fg));
-    Line::from(spans)
-        .alignment(Alignment::Center)
 }
 
 pub fn block<'a>(title: Option<&'a str>, style: Option<Style>) -> Block<'a> {

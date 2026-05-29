@@ -2,7 +2,7 @@ use crate::{Config, user::AttachConfig};
 use anyhow::Result;
 use darksouls2::{
     event,
-    game_state::{self, StateFlagsOffsets},
+    game_state::{self, StateFlagOffset},
     utility,
 };
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ pub struct Ds2Attach {
 impl Ds2Attach {
     pub fn apply(&self) -> Result<()> {
         if self.no_death {
-            game_state::StateFlags::set(StateFlagsOffsets::PlayerNoDeath, true)?
+            game_state::StateFlags::set(StateFlagOffset::PlayerNoDeath, true)?
         }
         if self.gauntlet_skip {
             event::set_ivory_gauntlet_skip(true)?
@@ -32,7 +32,7 @@ impl Ds2Attach {
             utility::set_credits_skip(true)?
         }
         if self.fast_quitout {
-            game_state::StateFlags::set(StateFlagsOffsets::FastQuitout, true)?
+            game_state::StateFlags::set(StateFlagOffset::FastQuitout, true)?
         }
         if self.start_logger {
             event::set_event_log_hook(true)?

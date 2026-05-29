@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 push eax
 push ebx
 push edi

@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 cmp BYTE PTR [rip+0x0], 0x1
 jne normal
 cmp dword ptr [rax+0x28], 0xfefefefe

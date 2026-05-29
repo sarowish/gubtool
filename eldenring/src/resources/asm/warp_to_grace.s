@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 movabs rax, ds:0x0
 mov rcx, QWORD PTR [rax+0x18]
 mov rdx, QWORD PTR [rax+0x08]

@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 sub esp, 0x1FC
 cmp DWORD PTR ds:0x0, 0x0
 jne skip

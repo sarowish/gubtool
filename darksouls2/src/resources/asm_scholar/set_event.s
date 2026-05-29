@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 movabs rcx, OFFSET event_flag_man
 movabs rdx, OFFSET event_id
 mov r8d, OFFSET state

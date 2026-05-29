@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 movabs rcx, OFFSET player_game_data
 movabs rdx, OFFSET amount
 movabs rax, OFFSET fn_give_runes

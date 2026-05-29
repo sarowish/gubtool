@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 push rax
 movabs rax, OFFSET game_man
 mov rax, QWORD PTR [rax]

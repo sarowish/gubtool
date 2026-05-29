@@ -427,6 +427,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "engine",
+ "glam",
  "once_cell",
  "pelite",
  "phf 0.13.1",
@@ -565,6 +566,7 @@ name = "engine"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "libc",
  "nix 0.31.3",
  "pelite",
@@ -744,6 +746,12 @@ name = "gimli"
 version = "0.32.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
+
+[[package]]
+name = "glam"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fb167719045debebe9f532320accc7b5c993c5a3b813f5696a11d5ca7bdc57b"
 
 [[package]]
 name = "gubtool"

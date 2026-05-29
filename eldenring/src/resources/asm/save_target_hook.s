@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 mov rcx, [rdi+0x88]
 mov [rip+0x0], rax
 jmp 0x0

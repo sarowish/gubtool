@@ -2,7 +2,7 @@ use crate::{
     chr_ctrl::{ChrCtrl, ChrCtrlExt},
     mem::*,
     offsets::{
-        code_cave, functions,
+        code_cave::CaveOffset, functions,
         game_manager_imp::{self, px_world_offsets},
         hooks, patches,
     },
@@ -12,20 +12,19 @@ use anyhow::Result;
 use shared::slice_ops::*;
 
 pub fn player_ctrl() -> ChrCtrl {
-    read_address(game_manager_imp::base())
+    read_address(game_manager_imp::base_ptr())
         .and_then(|addr| read_address(addr + game_manager_imp::player_ctrl()))
 }
 
 pub fn give_souls(amount: i32) -> Result<()> {
+    let location = CaveOffset::GiveSoulsAsm.addr();
     match is_scholar() {
-        true => give_souls_scholar(amount),
-        false => give_souls_vanilla(amount),
+        true => give_souls_scholar(location, amount),
+        false => give_souls_vanilla(location, amount),
     }
 }
 
-fn give_souls_scholar(amount: i32) -> Result<()> {
-    let location = code_cave::base() + code_cave::SOULS_GIVE_ASM;
-
+fn give_souls_scholar(location: u64, amount: i32) -> Result<()> {
     let mut asm = scholar::ASM.get_function("give_souls").get_bytes();
     write_to_slice::<u64>(&mut asm, 2, player_ctrl().stats_pointer()?)?;
     write_to_slice::<i64>(&mut asm, 12, amount)?;
@@ -36,9 +35,7 @@ fn give_souls_scholar(amount: i32) -> Result<()> {
     run_thread(location)
 }
 
-fn give_souls_vanilla(amount: i32) -> Result<()> {
-    let location = code_cave::base() + code_cave::SOULS_GIVE_ASM;
-
+fn give_souls_vanilla(location: u64, amount: i32) -> Result<()> {
     let mut asm = vanilla::ASM.get_function("give_souls").get_bytes();
     write_to_slice::<i32>(&mut asm, 1, amount)?;
     write_to_slice::<u32>(&mut asm, 7, player_ctrl().stats_pointer()?)?;
@@ -51,7 +48,7 @@ fn give_souls_vanilla(amount: i32) -> Result<()> {
 
 pub fn player_position() -> Result<[f32; 16]> {
     let mut pointers = vec![
-        game_manager_imp::base(),
+        game_manager_imp::base_ptr(),
         game_manager_imp::px_world(),
     ];
     pointers.extend_from_slice(&px_world_offsets::player_coords_chain());
@@ -60,9 +57,10 @@ pub fn player_position() -> Result<[f32; 16]> {
 }
 
 pub fn set_infinite_poise(state: bool) -> Result<()> {
+    let location = CaveOffset::InfinitePoiseHook.addr();
     match (state, is_scholar()) {
-        (true, true) => install_infinite_poise_scholar(),
-        (true, false) => install_infinite_poise_vanilla(),
+        (true, true) => install_infinite_poise_scholar(location),
+        (true, false) => install_infinite_poise_vanilla(location),
         (false, true) => write_bytes(hooks::infinite_poise(), &[0x39, 0x9D, 0xEC, 0x05, 0x00, 0x00]),
         (false, false) => write_bytes(hooks::infinite_poise(), &[0x83, 0xBB, 0xEC, 0x05, 0x00, 0x00, 0x00]),
     }
@@ -78,34 +76,31 @@ pub fn is_infinite_poise() -> Result<bool> {
     }
 }
 
-fn install_infinite_poise_scholar() -> Result<()> {
-    let location = code_cave::base() + code_cave::INFINITE_POISE_HOOK;
-
+fn install_infinite_poise_scholar(location: u64) -> Result<()> {
     let fun = scholar::ASM.get_function("infinite_poise_hook");
     let mut asm = fun.get_bytes();
 
-    write_to_slice::<u64>(&mut asm, fun.reloc("game_man"), game_manager_imp::base())?;
+    write_to_slice::<u64>(&mut asm, fun.reloc("game_man"), game_manager_imp::base_ptr())?;
     write_rel_i32(&mut asm, location, fun.reloc("hook_loc"), hooks::infinite_poise() + 6, 4)?;
 
     install_hook(&asm, location, hooks::infinite_poise(), 6)
 }
 
-fn install_infinite_poise_vanilla() -> Result<()> {
-    let location = code_cave::base() + code_cave::INFINITE_POISE_HOOK;
-
+fn install_infinite_poise_vanilla(location: u64) -> Result<()> {
     let fun = vanilla::ASM.get_function("infinite_poise_hook");
     let mut asm = fun.get_bytes();
 
-    write_to_slice::<u32>(&mut asm, fun.reloc("game_man"), game_manager_imp::base())?;
+    write_to_slice::<u32>(&mut asm, fun.reloc("game_man"), game_manager_imp::base_ptr())?;
     write_rel_i32(&mut asm, location, fun.reloc("hook_loc"), hooks::infinite_poise() + 7, 4)?;
 
     install_hook(&asm, location, hooks::infinite_poise(), 7)
 }
 
 pub fn set_no_damage(state: bool) -> Result<()> {
+    let location = CaveOffset::PlayerNoDamageHook.addr();
     match (state, is_scholar()) {
-        (true, true) => install_no_damage_scholar(),
-        (true, false) => install_no_damage_vanilla(),
+        (true, true) => install_no_damage_scholar(location),
+        (true, false) => install_no_damage_vanilla(location),
         (false, true) => write_bytes(hooks::player_no_damage(), &[0x89, 0x83, 0x68, 0x01, 0x00, 0x00]),
         (false, false) => write_bytes(hooks::player_no_damage(), &[0x89, 0x8E, 0xFC, 0x00, 0x00, 0x00]),
     }
@@ -121,25 +116,21 @@ pub fn is_no_damage() -> Result<bool> {
     }
 }
 
-fn install_no_damage_scholar() -> Result<()> {
-    let location = code_cave::base() + code_cave::PLAYER_NO_DAMAGE_HOOK;
-
+fn install_no_damage_scholar(location: u64) -> Result<()> {
     let fun = scholar::ASM.get_function("player_no_damage");
     let mut asm = fun.get_bytes();
 
-    write_to_slice::<u64>(&mut asm, fun.reloc("game_man"), game_manager_imp::base())?;
+    write_to_slice::<u64>(&mut asm, fun.reloc("game_man"), game_manager_imp::base_ptr())?;
     write_rel_i32(&mut asm, location, fun.reloc("hook_loc"), hooks::player_no_damage() + 6, 4)?;
 
     install_hook(&asm, location, hooks::player_no_damage(), 6)
 }
 
-fn install_no_damage_vanilla() -> Result<()> {
-    let location = code_cave::base() + code_cave::PLAYER_NO_DAMAGE_HOOK;
-
+fn install_no_damage_vanilla(location: u64) -> Result<()> {
     let fun = vanilla::ASM.get_function("player_no_damage");
     let mut asm = fun.get_bytes();
 
-    write_to_slice::<u32>(&mut asm, fun.reloc("game_man"), game_manager_imp::base())?;
+    write_to_slice::<u32>(&mut asm, fun.reloc("game_man"), game_manager_imp::base_ptr())?;
     write_rel_i32(&mut asm, location, fun.reloc("hook_loc"), hooks::player_no_damage() + 6, 4)?;
 
     install_hook(&asm, location, hooks::player_no_damage(), 6)
@@ -257,28 +248,30 @@ pub fn is_hidden() -> Result<bool> {
 }
 
 pub fn set_silent(state: bool) -> Result<()> {
-    let bytes: &[u8] = match (state, is_scholar()) {
-        (true, true) => &[0x90; 5],
-        (true, false) => &[0x90; 16],
-        (false, true) => &[0xE8, 0x85, 0xFE, 0xFF, 0xFF],
-        (false, false) => &[
-            0x10, 0xF3, 0x0F, 0x11, 0x04, 0x24, 0x51, 0x52, 0x53, 0x8B, 0xCF, 0xE8, 0xE0, 0xFE,
-            0xFF, 0xFF,
-        ],
+    let bytes: Vec<u8> = match (state, is_scholar()) {
+        (true, true) => vec![0x90; 5],
+        (true, false) => vec![0x90, 0xB0, 0x01, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90],
+        (false, true) => {
+            let mut bytes = vec![0xE8; 5];
+            write_rel_i32(&mut bytes, patches::player_silent(), 1, functions::make_sound(), 4)?;
+            bytes
+        }
+        (false, false) => {
+            let mut bytes = vec![0xE8; 5];
+            write_rel_i32(&mut bytes, patches::player_silent(), 1, functions::make_sound(), 4)?;
+            bytes
+        }
     };
-    write_bytes(patches::player_silent(), bytes)
+    write_bytes(patches::player_silent() + 1, &bytes)
 }
 
 pub fn is_silent() -> Result<bool> {
     if is_scholar() {
         read::<[u8; 5]> (patches::player_silent())
-            .map(|val| val != [0xE8, 0x85, 0xFE, 0xFF, 0xFF])
+            .map(|val| val == [0x90; 5])
     } else {
-        read::<[u8; 16]>(patches::player_silent()).map(|val| {
-            val != [
-                0x10, 0xF3, 0x0F, 0x11, 0x04, 0x24, 0x51, 0x52, 0x53, 0x8B, 0xCF, 0xE8, 0xE0, 0xFE,
-                0xFF, 0xFF,
-            ]
+        read::<[u8; 5]>(patches::player_silent() + 1).map(|val| {
+            val == [0x83, 0xC4, 0x0C, 0xB0, 0x01]
         })
     }
 }

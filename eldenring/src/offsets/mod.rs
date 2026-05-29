@@ -1,152 +1,182 @@
-pub mod chr_dbg_flags;
 pub mod chr_ins;
 pub mod code_cave;
-pub mod cs_dlc_imp;
-pub mod cs_flipper_imp;
-pub mod damage_manager;
-pub mod field_area;
 pub mod functions;
 pub mod game_data_man;
-pub mod game_man;
 pub mod hooks;
-pub mod map_debug_flags;
-pub mod menu_man;
+pub mod module_offsets;
 pub mod patches;
-pub mod virtual_memory_flag;
 pub mod world_chr_man;
 
-use engine::{Version, module_handle, version};
+pub use module_offsets::module_offsets;
 
-pub fn kernel32_create_thread() -> u64 {
-    module_handle() + match version() {
-        Version::ER1_2_0 => 0x48CC70C,
-        Version::ER1_2_1 => 0x48CC6EC,
-        Version::ER1_2_2 => 0x48CC71C,
-        Version::ER1_2_3 => 0x48CF71C,
-        Version::ER1_3_0 |
-        Version::ER1_3_1 |
-        Version::ER1_3_2 => 0x48E271C,
-        Version::ER1_4_0 |
-        Version::ER1_4_1 => 0x487E734,
-        Version::ER1_5_0 => 0x4897734,
-        Version::ER1_6_0 => 0x48AA734,
-        Version::ER1_7_0 => 0x48C5734,
-        Version::ER1_8_0 |
-        Version::ER1_8_1 => 0x495C734,
-        Version::ER1_9_0 |
-        Version::ER1_9_1 |
-        Version::ER2_0_0 |
-        Version::ER2_0_1 => 0x495F6C4,
-        Version::ER2_2_0 |
-        Version::ER2_2_3 => 0x4C0C6BC,
-        Version::ER2_3_0 |
-        Version::ER2_4_0 |
-        Version::ER2_5_0 |
-        Version::ER2_6_0 |
-        Version::ER2_6_1 => 0x4C0C714,
-        _ => 0x0,
+pub mod field_area {
+    pub fn base_ptr() -> u64 {
+        engine::attached::module_base() + super::module_offsets().base_ptrs.field_area
+    }
+
+    pub const WORLD_INFO_OWNER: u64 = 0x10;
+
+    pub mod world_info_owner_offsets {
+        pub const AREA_COUNT: u64 = 0x28;
+        pub const AREA_ARRAY_BASE: u64 = 0x30;
+    }
+}
+
+pub mod chr_dbg_flags {
+    pub fn base() -> u64 {
+        engine::attached::module_base() + super::module_offsets().data.chr_dbg_flags
+    }
+
+    #[repr(u64)]
+    pub enum ChrDbgOffsets {
+        PlayerNoDeath = 0x0,
+        OneShot = 0x2,
+        InfiniteGoods = 0x3,
+        InfiniteStam = 0x4,
+        InfiniteFp = 0x5,
+        InfiniteArrows = 0x6,
+        Hidden = 0x8,
+        Silent = 0x9,
+        AllNoDeath = 0xA,
+        AllNoDamage = 0xB,
+        AllNoHit = 0xC,
+        AllNoAttack = 0xD,
+        AllNoMove = 0xE,
+        AllDisableAi = 0xF,
+    }
+}
+
+pub mod game_man {
+    use engine::{
+        attached::{module_base, version},
+        game_version::EldenRingVersion::*,
+    };
+
+    pub fn base_ptr() -> u64 {
+        module_base() + super::module_offsets().base_ptrs.game_man
+    }
+
+    pub fn start_new_game() -> u64 {
+        match version() {
+            Some(Version1_2_0) | Some(Version1_2_1) | Some(Version1_2_2) |
+            Some(Version1_2_3) | Some(Version1_3_0) | Some(Version1_3_1) |
+            Some(Version1_3_2) | Some(Version1_4_0) | Some(Version1_4_1) |
+            Some(Version1_5_0) | Some(Version1_6_0) | Some(Version1_7_0) |
+            Some(Version1_8_0) | Some(Version1_8_1) | Some(Version1_9_0) |
+            Some(Version1_9_1) | Some(Version2_0_0) | Some(Version2_0_1) => 0xB4D,
+            _ => 0xB7D,
+        }
+    }
+}
+
+pub mod damage_manager {
+    pub fn base_ptr() -> u64 {
+        engine::attached::module_base() + super::module_offsets().base_ptrs.damage_manager
+    }
+
+    pub const HITBOXVIEW_A: u64 = 0xA0;
+    pub const HITBOXVIEW_B: u64 = 0xA1;
+}
+
+pub mod cs_flipper_imp {
+    use engine::{
+        attached::{module_base, version},
+        game_version::EldenRingVersion::*,
+    };
+
+    pub fn base_ptr() -> u64 {
+        module_base() + super::module_offsets().base_ptrs.cs_flipper_imp
+    }
+
+    pub fn game_speed() -> u64 {
+        match version() {
+            Some(Version1_2_0) | Some(Version1_2_1) | Some(Version1_2_2) |
+            Some(Version1_2_3) | Some(Version1_3_0) | Some(Version1_3_1) |
+            Some(Version1_3_2) | Some(Version1_4_0) | Some(Version1_4_1) |
+            Some(Version1_5_0) | Some(Version1_6_0) | Some(Version1_7_0) |
+            Some(Version1_8_0) | Some(Version1_8_1) | Some(Version1_9_0) |
+            Some(Version1_9_1) | Some(Version2_0_0) | Some(Version2_0_1) => 0x2D4,
+            _ => 0x2CC,
+        }
+    }
+}
+
+pub mod cs_dlc_imp {
+    pub fn base_ptr() -> u64 {
+        engine::attached::module_base() + super::module_offsets().base_ptrs.cs_dlc_imp
+    }
+    pub const BYTE_FLAGS: u64 = 0x10;
+    pub mod flags {
+        pub const DLC_CHECK: u64 = 0x1;
     }
 }
 
 pub mod map_item_impl {
-use engine::{Version, module_handle, version};
-    pub fn base() -> u64 {
-        module_handle() + match version() {
-            Version::ER1_2_0 => 0x3C51CF0,
-            Version::ER1_2_1 => 0x3C51D10,
-            Version::ER1_2_2 => 0x3C51D30,
-            Version::ER1_2_3 => 0x3C54D50,
-            Version::ER1_3_0 |
-            Version::ER1_3_1 |
-            Version::ER1_3_2 => 0x3C668C0,
-            Version::ER1_4_0 |
-            Version::ER1_4_1 => 0x3C09B50,
-            Version::ER1_5_0 => 0x3C21900,
-            Version::ER1_6_0 => 0x3C32B20,
-            Version::ER1_7_0 => 0x3C4D4E0,
-            Version::ER1_8_0 |
-            Version::ER1_8_1 => 0x3CDB400,
-            Version::ER1_9_0 |
-            Version::ER1_9_1 |
-            Version::ER2_0_0 |
-            Version::ER2_0_1 => 0x3CDE840,
-            Version::ER2_2_0 => 0x3D67A50,
-            Version::ER2_2_3 |
-            Version::ER2_3_0 => 0x3D67A70,
-            Version::ER2_4_0 |
-            Version::ER2_5_0 |
-            Version::ER2_6_0 |
-            Version::ER2_6_1 => 0x3D67A50,
-            _ => 0x0,
-        }
+    pub fn base_ptr() -> u64 {
+        engine::attached::module_base() + super::module_offsets().base_ptrs.map_item_man_impl
     }
 }
 
-pub mod user_input_manager {
-use engine::{Version, module_handle, version};
-    pub fn base() -> u64 {
-        module_handle() + match version() {
-            Version::ER1_2_0 => 0x45255C8,
-            Version::ER1_2_1 => 0x45251E8,
-            Version::ER1_2_2 => 0x4525208,
-            Version::ER1_2_3 => 0x4528228,
-            Version::ER1_3_0 => 0x4539DA8,
-            Version::ER1_3_1 |
-            Version::ER1_3_2 => 0x4539D98,
-            Version::ER1_4_0 |
-            Version::ER1_4_1 => 0x44DD6E8,
-            Version::ER1_5_0 => 0x44F5828,
-            Version::ER1_6_0 => 0x45075C8,
-            Version::ER1_7_0 => 0x4521F88,
-            Version::ER1_8_0 |
-            Version::ER1_8_1 => 0x45B1918,
-            Version::ER1_9_0 |
-            Version::ER1_9_1 |
-            Version::ER2_0_0 |
-            Version::ER2_0_1 => 0x45B4D48,
-            Version::ER2_2_0 => 0x485DB68,
-            Version::ER2_2_3 |
-            Version::ER2_3_0 => 0x485DB88,
-            Version::ER2_4_0 |
-            Version::ER2_5_0 |
-            Version::ER2_6_0 |
-            Version::ER2_6_1 => 0x485DC18,
-            _ => 0x0,
-        }
+pub mod dl_user_input_manager_impl {
+    pub fn base_ptr() -> u64 {
+        engine::attached::module_base() + super::module_offsets().base_ptrs.dl_user_input_manager_impl
     }
     pub const STEAM_INPUT: u64 = 0x88B;
 }
 
 pub mod cs_emk_system {
-use engine::{Version, module_handle, version};
-    pub fn base() -> u64 {
-        module_handle() + match version() {
-            Version::ER1_2_0 => 0x3C51E78,
-            Version::ER1_2_1 => 0x3C51E98,
-            Version::ER1_2_2 => 0x3C51EB8,
-            Version::ER1_2_3 => 0x3C54ED8,
-            Version::ER1_3_0 |
-            Version::ER1_3_1 |
-            Version::ER1_3_2 => 0x3C66A40,
-            Version::ER1_4_0 |
-            Version::ER1_4_1 => 0x3C09CD0,
-            Version::ER1_5_0 => 0x3C21A80,
-            Version::ER1_6_0 => 0x3C32CA0,
-            Version::ER1_7_0 => 0x3C4D660,
-            Version::ER1_8_0 |
-            Version::ER1_8_1 => 0x3CDB580,
-            Version::ER1_9_0 |
-            Version::ER1_9_1 |
-            Version::ER2_0_0 |
-            Version::ER2_0_1 => 0x3CDE9C0,
-            Version::ER2_2_0 => 0x3D67BD0,
-            Version::ER2_2_3 |
-            Version::ER2_3_0 => 0x3D67BF0,
-            Version::ER2_4_0 |
-            Version::ER2_5_0 |
-            Version::ER2_6_0 |
-            Version::ER2_6_1 => 0x3D67BD0,
-            _ => 0x0,
+    pub fn base_ptr() -> u64 {
+        engine::attached::module_base() + super::module_offsets().base_ptrs.cs_emk_system
+    }
+}
+
+pub mod menu_man {
+    use crate::offsets::module_offsets;
+    use engine::{
+        attached::{module_base, version},
+        game_version::EldenRingVersion::*,
+    };
+
+    pub fn base_ptr() -> u64 {
+        module_base() + module_offsets().base_ptrs.menu_man
+    }
+
+    pub const FLAG_ARRAY: u64 = 0x90;
+    pub const IS_LOADED: u64 = 0x94;
+
+    pub fn is_fading() -> u64 {
+        match version() {
+            Some(Version1_2_0) | Some(Version1_2_1) | Some(Version1_2_2) |
+            Some(Version1_2_3) | Some(Version1_3_0) | Some(Version1_3_1) |
+            Some(Version1_3_2) => 0x8E,
+            _ => 0x96,
         }
+    }
+
+    pub mod fade_bit_flags {
+        pub const IS_FADE_SCREEN: u8 = 0b00000010;
+    }
+}
+
+pub mod map_dbg_flags {
+    pub fn base() -> u64 {
+        engine::attached::module_base() + super::module_offsets().data.map_dbg_flags
+    }
+    pub const SHOW_ALL_MAPS: u64 = 0x0;
+    pub const SHOW_ALL_GRACES: u64 = 0x1;
+}
+
+pub mod virtual_memory_flag {
+    pub fn base_ptr() -> u64 {
+        engine::attached::module_base() + super::module_offsets().base_ptrs.virtual_mem_flag
+    }
+}
+
+pub mod external_function_pointers {
+    pub fn kernel32_create_thread() -> u64 {
+        engine::attached::module_base() + super::module_offsets().external_fn_ptrs.kernel32_create_thread
+    }
+    pub fn kernel32_close_handle() -> u64 {
+        engine::attached::module_base() + super::module_offsets().external_fn_ptrs.kernel32_close_handle
     }
 }

@@ -2,37 +2,39 @@ use crate::{
     event,
     mem::*,
     offsets::{
-        cs_flipper_imp, damage_manager, game_data_man, game_man, map_debug_flags, patches,
-        user_input_manager,
+        code_cave::CaveOffset, cs_flipper_imp, damage_manager, dl_user_input_manager_impl, game_data_man,
+        game_man, hooks, map_dbg_flags, patches,
     },
+    resources::ASM,
     utils::character_loaded_check,
 };
 use anyhow::Result;
+use shared::slice_ops::write_rel_i32;
 
 pub fn quitout() -> Result<()> {
     character_loaded_check()?;
-    read::<u64>(game_man::base())
+    read::<u64>(game_man::base_ptr())
         .and_then(|addr| write::<u8>(addr + 0x10, 0x1))
 }
 
 pub fn get_ng_cycle() -> Result<i32> {
-    read::<u64>(game_data_man::base())
+    read::<u64>(game_data_man::base_ptr())
         .and_then(|addr| read::<i32>(addr + game_data_man::NEW_GAME))
 }
 
-const EVENT_IDS: [u32; 8] = [50, 51, 52, 53, 54, 55, 56, 57];
+const NG_EVENT_IDS: [u32; 8] = [50, 51, 52, 53, 54, 55, 56, 57];
 pub fn set_ng_cycle(val: i32) -> Result<()> {
-    read::<u64>(game_data_man::base())
+    read::<u64>(game_data_man::base_ptr())
         .and_then(|addr| write::<i32>(addr + game_data_man::NEW_GAME, val))?;
 
     let current_ng = get_ng_cycle()?.clamp(0, 7);
-    EVENT_IDS.iter().enumerate()
+    NG_EVENT_IDS.iter().enumerate()
         .try_for_each(|(i, &id)| event::set_event(id, i == current_ng as usize))
 }
 
 pub fn trigger_new_game() -> Result<()> {
     character_loaded_check()?;
-    read::<u64>(game_man::base())
+    read::<u64>(game_man::base_ptr())
         .and_then(|addr| write::<u8>(addr + game_man::start_new_game(), 0x1))
 }
 
@@ -83,53 +85,53 @@ pub fn is_music_muted() -> Result<bool> {
 
 pub fn draw_hitboxes(val: bool, is_view_b: bool) -> Result<()> {
     let offset = if is_view_b { damage_manager::HITBOXVIEW_B } else { damage_manager::HITBOXVIEW_A };
-    read::<u64>(damage_manager::base())
+    read::<u64>(damage_manager::base_ptr())
         .map(|addr| write::<i64>(addr + offset, val as i64))?
 }
 
 pub fn is_hitboxes(is_view_b: bool) -> Result<bool> {
     let offset = if is_view_b { damage_manager::HITBOXVIEW_B } else { damage_manager::HITBOXVIEW_A };
-    read::<u64>(damage_manager::base())
+    read::<u64>(damage_manager::base_ptr())
         .and_then(|addr| read::<i64>(addr + offset))
         .map(|val| val == 1)
 }
 
 pub fn show_all_graces(val: bool) -> Result<()> {
-    write::<u8>(map_debug_flags::base() + map_debug_flags::SHOW_ALL_GRACES, val as u8)
+    write::<u8>(map_dbg_flags::base() + map_dbg_flags::SHOW_ALL_GRACES, val as u8)
 }
 
 pub fn is_show_all_graces_on() -> Result<bool> {
-    read::<u8>(map_debug_flags::base() + map_debug_flags::SHOW_ALL_GRACES)
+    read::<u8>(map_dbg_flags::base() + map_dbg_flags::SHOW_ALL_GRACES)
         .map(|val| val == 1)
 }
 
 pub fn show_all_maps(val: bool) -> Result<()> {
-    write::<u8>(map_debug_flags::base() + map_debug_flags::SHOW_ALL_MAPS, val as u8)
+    write::<u8>(map_dbg_flags::base() + map_dbg_flags::SHOW_ALL_MAPS, val as u8)
 }
 
 pub fn is_show_all_maps_on() -> Result<bool> {
-    read::<u8>(map_debug_flags::base() + map_debug_flags::SHOW_ALL_MAPS)
+    read::<u8>(map_dbg_flags::base() + map_dbg_flags::SHOW_ALL_MAPS)
         .map(|val| val == 1)
 }
 
 pub fn set_stutter_fix(val: bool) -> Result<()> {
-    read::<u64>(user_input_manager::base())
-        .and_then(|addr| write::<u8>(addr + user_input_manager::STEAM_INPUT, val as u8))
+    read::<u64>(dl_user_input_manager_impl::base_ptr())
+        .and_then(|addr| write::<u8>(addr + dl_user_input_manager_impl::STEAM_INPUT, val as u8))
 }
 
 pub fn is_stutter_fix_on() -> Result<bool> {
-    read::<u64>(user_input_manager::base())
-        .and_then(|addr| read::<u8>(addr + user_input_manager::STEAM_INPUT))
+    read::<u64>(dl_user_input_manager_impl::base_ptr())
+        .and_then(|addr| read::<u8>(addr + dl_user_input_manager_impl::STEAM_INPUT))
         .map(|val| val == 1)
 }
 
 pub fn set_game_speed(val: f32) -> Result<()> {
-    read::<u64>(cs_flipper_imp::base())
+    read::<u64>(cs_flipper_imp::base_ptr())
         .and_then(|addr| write::<f32>(addr + cs_flipper_imp::game_speed(), val))
 }
 
 pub fn get_game_speed() -> Result<f32> {
-    read::<u64>(cs_flipper_imp::base())
+    read::<u64>(cs_flipper_imp::base_ptr())
         .and_then(|addr| read::<f32>(addr + cs_flipper_imp::game_speed()))
 }
 
@@ -164,10 +166,62 @@ pub fn is_travel_anywhere() -> Result<bool> {
 }
 
 
+fn install_action_hook() -> Result<()> {
+    let location = CaveOffset::ActionHook.addr();
+    let roll_flag = CaveOffset::DisableRollFlag.addr();
+    let jump_flag = CaveOffset::DisableJumpFlag.addr();
+    let backstep_flag = CaveOffset::DisableBackstepFlag.addr();
+
+    let fun = ASM.get_function("action_hook");
+    let mut asm = fun.get_bytes();
+
+    write_rel_i32(&mut asm, location, fun.reloc("roll_flag"), roll_flag, 5)?;
+    write_rel_i32(&mut asm, location, fun.reloc("jump_flag"), jump_flag, 5)?;
+    write_rel_i32(&mut asm, location, fun.reloc("backstep_flag"), backstep_flag, 5)?;
+
+    install_hook(&asm, location, hooks::set_action_requested(), 5)
+}
+
+pub fn set_disable_roll(state: bool) -> Result<()> {
+    if state {
+        install_action_hook()?;
+    }
+    write::<u8>(CaveOffset::DisableRollFlag.addr(), state as u8)
+}
+
+pub fn is_roll_disabled() -> Result<bool> {
+    read::<u8>(CaveOffset::DisableRollFlag.addr())
+        .map(|val| val != 0x0)
+}
+
+pub fn set_disable_jump(state: bool) -> Result<()> {
+    if state {
+        install_action_hook()?;
+    }
+    write::<u8>(CaveOffset::DisableJumpFlag.addr(), state as u8)
+}
+
+pub fn is_jump_disabled() -> Result<bool> {
+    read::<u8>(CaveOffset::DisableJumpFlag.addr())
+        .map(|val| val != 0x0)
+}
+
+pub fn set_disable_backstep(state: bool) -> Result<()> {
+    if state {
+        install_action_hook()?;
+    }
+    write::<u8>(CaveOffset::DisableBackstepFlag.addr(), state as u8)
+}
+
+pub fn is_backstep_disabled() -> Result<bool> {
+    read::<u8>(CaveOffset::DisableBackstepFlag.addr())
+        .map(|val| val != 0x0)
+}
+
 /*
 pub fn set_music(val: u8) -> Result<()> {
     read::<u64>(game_data_man::base())
         .and_then(|addr| read::<u64>(addr + game_data_man::OPTIONS))
         .and_then(|addr| write::<u8>(addr + game_data_man::options_offsets::MUSIC, val))
 }
- */
+*/

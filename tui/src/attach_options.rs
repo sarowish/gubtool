@@ -9,7 +9,7 @@ use config::{
     user::{AttachConfig, ds2_attach::Ds2Attach, er_attach::ErAttach},
 };
 use crossterm::event::{KeyCode, KeyEvent};
-use engine::Game;
+use engine::game_version::Game;
 use ratatui::{
     Frame,
     widgets::{Clear, List, ListItem},
@@ -37,7 +37,7 @@ impl AttachOptions {
         frame.render_widget(Clear, layout);
 
         match game_screen {
-            Game::DarkSoulsII => {
+            Game::DarkSouls2 => {
                 frame.render_stateful_widget(
                     Ds2Options::list(&self.attach_config.dark_souls_2),
                     layout,
@@ -56,7 +56,7 @@ impl AttachOptions {
 
     pub fn handle_keys(&mut self, key: KeyEvent, game_screen: &Game, current_screen: &mut CurrentScreen) {
         match game_screen {
-            Game::DarkSoulsII => {
+            Game::DarkSouls2 => {
                 self.ds2_list.handle_keys(key);
             }
             Game::EldenRing => {
@@ -67,7 +67,7 @@ impl AttachOptions {
             (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Game,
             (KeyCode::Enter, _) => {
                 match game_screen {
-                    Game::DarkSoulsII => {
+                    Game::DarkSouls2 => {
                         if let Some(selected) = self.ds2_list.selected() {
                             Ds2Options::ARRAY[selected].execute();
                         }

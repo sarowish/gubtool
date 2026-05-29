@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 sub rsp, 0x28
 lea rbx, [rip+0x0]
 cmp BYTE PTR [rip+0x0], 0x0

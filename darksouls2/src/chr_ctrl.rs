@@ -1,6 +1,6 @@
 use crate::{
     mem::{read, read_address, write},
-    offsets::game_manager_imp::chr_ctrl_offsets,
+    offsets,
 };
 use anyhow::{Result, anyhow};
 use phf::phf_map;
@@ -12,10 +12,16 @@ pub trait ChrCtrlExt {
     fn set_hp(&self, val: i32) -> Result<()>;
     fn get_min_hp(&self) -> Result<i32>;
     fn set_min_hp(&self, val: i32) -> Result<()>;
+    fn max_hp(&self) -> Result<i32>;
     fn is_no_death(&self) -> Result<bool>;
     fn set_no_death(&self, state: bool) -> Result<()>;
     fn coords(&self) -> Result<[f32; 3]>;
+    fn poise(&self) -> Result<f32>;
+    fn max_poise(&self) -> Result<f32>;
     fn posture(&self) -> Result<f32>;
+    fn max_posture(&self) -> Result<f32>;
+
+    fn rot_quaternion(&self) -> Result<[f32; 4]>;
 
     fn chr_id(&self) -> Result<i32>;
 
@@ -28,19 +34,23 @@ pub trait ChrCtrlExt {
 
 impl ChrCtrlExt for ChrCtrl {
     fn get_hp(&self) -> Result<i32> {
-        read::<i32>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::hp())
+        read::<i32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::health())
     }
 
     fn set_hp(&self, val: i32) -> Result<()> {
-        write::<i32>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::hp(), val)
+        write::<i32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::health(), val)
     }
 
     fn get_min_hp(&self) -> Result<i32> {
-        read::<i32>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::min_hp())
+        read::<i32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::min_health())
     }
 
     fn set_min_hp(&self, val: i32) -> Result<()> {
-        write::<i32>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::min_hp(), val)
+        write::<i32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::min_health(), val)
+    }
+
+    fn max_hp(&self) -> Result<i32> {
+        read::<i32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::max_health())
     }
 
     fn is_no_death(&self) -> Result<bool> {
@@ -53,15 +63,41 @@ impl ChrCtrlExt for ChrCtrl {
     }
 
     fn coords(&self) -> Result<[f32; 3]> {
-        read::<[f32; 3]>(self.chr_ctrl_pointer()? + chr_ctrl_offsets::coords())
+        read::<[f32; 3]>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::coords())
     }
 
     fn chr_id(&self) -> Result<i32> {
-        read::<i32>(self.param_pointer()? + 0x0)
+        read::<i32>(self.param_pointer()? + offsets::chr_ctrl::chr_id())
+    }
+
+    fn poise(&self) -> Result<f32> {
+        read::<f32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::poise())
+    }
+
+    fn max_poise(&self) -> Result<f32> {
+        read::<f32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::max_poise())
     }
 
     fn posture(&self) -> Result<f32> {
-        read::<f32>(self.param_pointer()? + 0xFC)
+        read::<f32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::posture())
+    }
+
+    fn max_posture(&self) -> Result<f32> {
+        read::<f32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::max_posture())
+    }
+
+    fn rot_quaternion(&self) -> Result<[f32; 4]> {
+        let [m00, m01, m02, _, m10, m11, m12, _, m20, m21, m22, _] =
+            read::<[f32; 12]>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::rotation())?;
+
+        let matrix = glam::Mat3::from_cols(
+            glam::Vec3::new(m00, m01, m02),
+            glam::Vec3::new(m10, m11, m12),
+            glam::Vec3::new(m20, m21, m22),
+        );
+        let q = glam::Quat::from_mat3(&matrix);
+
+        Ok([q.x, q.y, q.z, q.w])
     }
 
     fn chr_ctrl_pointer(&self) -> Result<u64> {
@@ -69,11 +105,11 @@ impl ChrCtrlExt for ChrCtrl {
     }
 
     fn param_pointer(&self) -> Result<u64> {
-        read_address(self.chr_ctrl_pointer()? + chr_ctrl_offsets::params_ptr())
+        read_address(self.chr_ctrl_pointer()? + offsets::chr_ctrl::params_ptr())
     }
 
     fn stats_pointer(&self) -> Result<u64> {
-        read_address(self.chr_ctrl_pointer()? + chr_ctrl_offsets::stats_ptr())
+        read_address(self.chr_ctrl_pointer()? + offsets::chr_ctrl::stats_ptr())
     }
 
     fn name_from_chr_id(&self) -> &'static str {
@@ -179,8 +215,8 @@ static CHR_NAMES: phf::Map<i32, &'static str> = phf_map! {
     3180 => "The Pursuer",
     3190 => "Alonne Knight",
     3210 => "Mimic",
-    3240 => "Belfry Gargoyles",
-    3250 => "Ruin Sentinels",
+    3240 => "Belfry Gargoyle",
+    3250 => "Ruin Sentinel",
     3260 => "The Rotten",
     3270 => "Dragon Skeleton",
     3300 => "Old Knight",

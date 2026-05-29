@@ -1,7 +1,7 @@
 use crate::{
     attach_options::AttachOptions,
-    ds2::DarkSouls2,
-    er::EldenRing,
+    darksouls2_screen::{self, DarkSouls2},
+    eldenring_screen::{self, EldenRing},
     event::{Event, InfoType, ResultExt, send_event, start_event_loop_thread},
     fuzzy_finder::FuzzyFinder,
     game_screen_selector::GameScreenSelector,
@@ -11,11 +11,11 @@ use crate::{
     theme::{THEME, ThemeSelector, theme},
     ui_state::UiState,
 };
+use anyhow::anyhow;
 use color_eyre::eyre::Result;
 use config::Config;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use darksouls2::{player, utility::get_area_id};
-use engine::{Game, GameProcess, attach, game, module_handle, pid, sys, version};
+use engine::{attached::{self, GameProcess, game}, game_version::Game, sys};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Alignment, Constraint, Direction, Layout},
@@ -99,21 +99,21 @@ impl App {
                 Event::BackgroundTick => {
                     if !self.attached {
                         self.try_attach(None).send_error()
-                    } else if !attach::is_pid_valid() {
+                    } else if !attached::is_pid_valid() {
                         self.detach()
                     }
-                    if self.attached && game() == self.game_screen {
+                    if self.attached && game() == Some(self.game_screen) {
                         match self.game_screen {
                             Game::EldenRing => self.elden_ring.background_tick(),
-                            Game::DarkSoulsII => self.dark_souls_2.background_tick(),
+                            Game::DarkSouls2 => self.dark_souls_2.background_tick(),
                         }
                     }
                 }
                 Event::RenderTick => {
-                    if self.attached && game() == self.game_screen {
+                    if self.attached && game() == Some(self.game_screen) {
                         match self.game_screen {
                             Game::EldenRing => self.elden_ring.render_tick(),
-                            Game::DarkSoulsII => self.dark_souls_2.render_tick(),
+                            Game::DarkSouls2 => self.dark_souls_2.render_tick(),
                         }
                     }
                 }
@@ -129,8 +129,9 @@ impl App {
                 }
                 Event::ApplyAttach => {
                     match game() {
-                        Game::EldenRing => self.elden_ring.on_attach(),
-                        Game::DarkSoulsII => self.dark_souls_2.on_attach(),
+                        Some(Game::EldenRing) => self.elden_ring.on_attach(),
+                        Some(Game::DarkSouls2) => self.dark_souls_2.on_attach(),
+                        None => Ok(()),
                     }.send_error()
                 }
             }
@@ -186,7 +187,7 @@ impl App {
 
         match self.game_screen {
             Game::EldenRing => self.elden_ring.draw(frame, layout[1]),
-            Game::DarkSoulsII => self.dark_souls_2.draw(frame, layout[1]),
+            Game::DarkSouls2 => self.dark_souls_2.draw(frame, layout[1]),
         }
 
         match self.current_screen {
@@ -210,7 +211,7 @@ impl App {
             }
             CurrentScreen::Debug => {
                 frame.render_widget(Clear, frame.area());
-                frame.render_widget(dbg_paragraph(), frame.area());
+                frame.render_widget(self.dbg_paragraph(), frame.area());
             }
             _ => (),
         }
@@ -279,7 +280,7 @@ impl App {
             CurrentScreen::Game => {
                 match self.game_screen {
                     Game::EldenRing => self.elden_ring.handle_keys(key),
-                    Game::DarkSoulsII => self.dark_souls_2.handle_keys(key),
+                    Game::DarkSouls2 => self.dark_souls_2.handle_keys(key),
                 }
                 match (key.code, key.modifiers) {
                     (KeyCode::Char('a'), _) => self.current_screen = CurrentScreen::AttachOptions,
@@ -301,21 +302,25 @@ impl App {
     fn try_attach(&mut self, process: Option<GameProcess>) -> anyhow::Result<()> {
         let mut result = Ok(());
         if let Some(process) = process {
-            if let Err(err) = attach::attach_to_process(process) {
-                result = Err(err)
+            if let Some(err) = attached::attach_to_process(process) {
+                result = Err(anyhow!(err))
             }
         } else {
-            match attach::auto_attach() {
-                Ok(val) => if !val { return Ok(()) },
-                Err(err) => result = Err(err),
+            match attached::auto_attach() {
+                Some(err) => if !err.is_none() {
+                    result = Err(anyhow!(err.unwrap()))
+                },
+                None => return Ok(()),
             }
         }
 
         self.attached = true;
-        self.game_screen = game();
-        let _ = UiState::update(|c| c.global.game_screen = game() );
+        if let Some(game) = attached::game() {
+            self.game_screen = game;
+            let _ = UiState::update(|c| c.global.game_screen = game );
+        }
 
-        let time_to_wait = 6.0 - sys::get_process_uptime(pid()).unwrap_or_default();
+        let time_to_wait = 6.0 - sys::get_process_uptime(attached::pid()).unwrap_or_default();
         if time_to_wait > 0.0 {
             thread::spawn(move || {
                 thread::sleep(Duration::from_secs_f64(time_to_wait));
@@ -328,28 +333,44 @@ impl App {
     }
 
     fn detach(&mut self) {
-        engine::detach();
         match game() {
-            Game::EldenRing => self.elden_ring.on_unattach(),
-            Game::DarkSoulsII => self.dark_souls_2.on_unattach(),
+            Some(Game::EldenRing) => self.elden_ring.on_unattach(),
+            Some(Game::DarkSouls2) => self.dark_souls_2.on_unattach(),
+            None => (),
         }
+        attached::detach();
         self.attached = false;
     }
 
     fn pid_paragraph(&self) -> Paragraph<'static> {
         if self.attached {
-            Paragraph::new(format!("Process ID: {}", pid()))
+            Paragraph::new(format!("Process ID: {}", attached::pid()))
         } else {
             Paragraph::new("Scanning for game...")
         }.style(theme().fg)
     }
     fn version_paragraph(&self) -> Paragraph<'static> {
-        if self.attached {
-            Paragraph::new(format!("{}", version()))
+        if let Some(game_version)  = attached::game_version() {
+            Paragraph::new(format!("{}", game_version))
         } else {
             Paragraph::new("")
-        } .style(theme().fg)
+        }.style(theme().fg)
             .alignment(Alignment::Right)
+    }
+
+    fn dbg_paragraph(&self) -> Paragraph<'static> {
+        let debug_info = [
+            format!("Module Handle: {:#X}", attached::module_base()),
+            format!("Process Uptime: {:.1}", sys::get_process_uptime(attached::pid()).unwrap_or_default()),
+        ];
+
+        let mut lines: Vec<Line> = debug_info.iter().map(|f| Line::raw(f.to_string())).collect();
+
+        match self.game_screen {
+            Game::DarkSouls2 => lines.append(&mut darksouls2_screen::dbg_lines()),
+            Game::EldenRing => lines.append(&mut eldenring_screen::dbg_lines()),
+        }
+        Paragraph::new(Text::from(lines))
     }
 }
 
@@ -363,17 +384,4 @@ pub enum CurrentScreen {
     GameScreenSelection,
     AttachOptions,
     Debug,
-}
-
-fn dbg_paragraph() -> Paragraph<'static> {
-
-    let debug_info = [
-        format!("Module Handle: {:#X}", module_handle()),
-        format!("Process Uptime: {:.1}", sys::get_process_uptime(pid()).unwrap_or_default()),
-        format!("Area ID: {:#X}", get_area_id().unwrap_or_default()),
-        format!("Player Coords: {:?}", player::player_position().unwrap_or_default()),
-    ];
-
-    let lines: Vec<Line> = debug_info.iter().map(|f| Line::raw(f.to_string())).collect();
-    Paragraph::new(Text::from(lines))
 }

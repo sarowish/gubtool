@@ -1,5 +1,3 @@
-.intel_syntax noprefix
-
 mov ecx, OFFSET event_flag_man
 push OFFSET state
 push OFFSET event_id
