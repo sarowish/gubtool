@@ -5,18 +5,17 @@ use std::{
 
 use crate::{
     event::get_event,
-    game_state::is_loaded,
+    game_state,
     mem::*,
-    offsets::{self, cs_dlc_imp},
+    offsets::{self, ChainReadExt, cs_dlc_imp},
     resources::ASM,
 };
-use anyhow::{Result, anyhow, bail, ensure};
-use engine::{
-    attached::{game, module_base, version},
+use anyhow::{bail};
+use gubtool_core::{
+    attached::version,
     game_version::{
         EldenRingVersion::*,
-        Game,
-    },
+    }, sys::error::{PointerType::PlayerIns, ProcResult, ProcessError},
 };
 use thiserror::Error;
 
@@ -28,45 +27,54 @@ pub struct DlcError;
 #[error("Requires version 1.12 or above")]
 pub struct VersionError;
 
-pub fn is_dlc_available() -> Result<bool> {
+pub fn is_dlc_available() -> ProcResult<bool> {
     read::<u64>(cs_dlc_imp::base_ptr())
-        .and_then(|addr| read::<u8>(addr + cs_dlc_imp::BYTE_FLAGS + cs_dlc_imp::flags::DLC_CHECK))
+        .add_offset(cs_dlc_imp::BYTE_FLAGS)
+        .add_offset(cs_dlc_imp::flags::DLC_CHECK)
+        .read::<u8>()
         .map(|val| val == 1)
 }
 
-pub fn dlc_check() -> Result<()> {
-    ensure!(is_dlc_available()?, DlcError);
-    Ok(())
-}
-
-pub fn is_version_dlc_compat() -> bool {
-    if game() == Some(Game::EldenRing) && module_base() != 0 {
-        matches!(version(),
-            Some(Version2_2_0) |
-            Some(Version2_2_3) |
-            Some(Version2_3_0) |
-            Some(Version2_4_0) |
-            Some(Version2_5_0) |
-            Some(Version2_6_0) |
-            Some(Version2_6_1) |
-            Some(Version2_6_2))
+pub fn dlc_check() -> Result<(), DlcError> {
+    if !is_dlc_available().unwrap_or_default() {
+        Err(DlcError)
     } else {
-        true
+        Ok(())
     }
 }
 
-pub fn version_check() -> Result<()> {
-    ensure!(is_version_dlc_compat(), VersionError);
-    Ok(())
+pub fn is_version_dlc_compat() -> bool {
+    match version() {
+        Some(Version2_2_0) |
+        Some(Version2_2_3) |
+        Some(Version2_3_0) |
+        Some(Version2_4_0) |
+        Some(Version2_5_0) |
+        Some(Version2_6_0) |
+        Some(Version2_6_1) |
+        Some(Version2_6_2) |
+        None => true,
+        _ => false
+    }
 }
 
-pub fn character_loaded_check() -> Result<()> {
-    let loaded = is_loaded().map_err(|_| anyhow!("Character not loaded"))?;
-    ensure!(loaded, "Character not loaded");
-    Ok(())
+pub fn version_check() -> Result<(), VersionError> {
+    if !is_version_dlc_compat() {
+        Err(VersionError)
+    } else {
+        Ok(())
+    }
 }
 
-pub(crate) fn wait_for_event(event_id: u32, state: bool, timeout_secs: u64) -> Result<()> {
+pub fn character_loaded_check() -> ProcResult {
+    if !game_state::is_loaded() {
+        Err(ProcessError::InvalidPointer { pointer_type: PlayerIns })
+    } else {
+        Ok(())
+    }
+}
+
+pub(crate) fn wait_for_event(event_id: u32, state: bool, timeout_secs: u64) -> anyhow::Result<()> {
     let start = Instant::now();
     let timeout = Duration::from_secs(timeout_secs);
     while get_event(event_id)? != state {
@@ -78,19 +86,19 @@ pub(crate) fn wait_for_event(event_id: u32, state: bool, timeout_secs: u64) -> R
     Ok(())
 }
 
-pub(crate) fn wait_for_cutscence_completion() -> Result<()> {
-    wait_for_event(2200, true, 5)?;
-    wait_for_event(2200, false, 60)
+pub(crate) fn wait_for_cutscence_completion() -> anyhow::Result<()> {
+    wait_for_event(2200, true, 30)?;
+    wait_for_event(2200, false, 120)
 }
 
 
-pub fn scan_and_print_base_offsets() -> Result<()> {
+pub fn scan_and_print_base_offsets() -> anyhow::Result<()> {
     let base_offsets = offsets::module_offsets::scan()?;
     println!("{:#X?}", base_offsets);
     Ok(())
 }
 
-pub fn read_base_pointers() -> Result<()> {
+pub fn read_base_pointers() -> ProcResult {
     println!("world_chr_man: {:#X}", read::<u64>(offsets::world_chr_man::base_ptr())?);
     println!("field_area: {:#X}", read::<u64>(offsets::field_area::base_ptr())?);
     println!("game_man: {:#X}", read::<u64>(offsets::game_man::base_ptr())?);

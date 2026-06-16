@@ -1,5 +1,5 @@
 use crate::offsets::module_offsets;
-use engine::{
+use gubtool_core::{
     attached::{module_base, version},
     game_version::EldenRingVersion::*,
 };
@@ -33,7 +33,7 @@ pub fn player_ins() -> u64 {
 }
 
 pub mod player_ins_offsets {
-    use engine::{attached::version, game_version::EldenRingVersion::*};
+    use gubtool_core::{attached::version, game_version::EldenRingVersion::*};
 
 
     pub fn current_block_id() -> u64 {

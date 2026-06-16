@@ -1,3 +1,2 @@
+pub mod act_array;
 pub mod event_log;
-pub mod object;
-pub mod slice_ops;

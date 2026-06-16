@@ -14,7 +14,7 @@ use crate::{
             arrows::ARROWS,
             consumables::CONSUMABLES,
             gestures::GESTURES,
-            infusions::{INFUSION_IDS, INFUSIONS, Infusions},
+            infusions::{INFUSION_IDS, INFUSIONS, Infusion},
             key_items::KEY_ITEMS,
             rings::RINGS,
             spells::SPELLS,
@@ -25,8 +25,8 @@ use crate::{
     },
     utils::{ScholarError, character_loaded_check},
 };
-use anyhow::{Result, bail};
-use shared::slice_ops::*;
+use gubtool_core::sys::error::ProcResult;
+use utils::slice_ops::*;
 use std::{thread, time::Duration};
 
 
@@ -37,7 +37,7 @@ fn itemspawn(
     quantity: i32,
     upgrade: i32,
     infusion: i32,
-) -> Result<()> {
+) -> ProcResult {
     let mut args: [u8; 35] = [0x0; 35];
     write_to_slice::<i32>(&mut args, item_args_offsets::CURRENT_QUANTITY, 0)?;
     write_to_slice::<i32>(&mut args, item_args_offsets::STACK_COUNT, 0)?;
@@ -61,16 +61,16 @@ fn itemspawn(
     write_bytes(args_loc, &args)?;
 
     if read::<u8>(location)? == 0x0 {
-        match is_scholar() {
-            true => write_item_code_scholar(location, stack_loc, args_loc)?,
-            false => write_item_code_vanilla(location, stack_loc, args_loc)?,
-        }
-        run_thread_release(location)?
+        let asm = match is_scholar() {
+            true => item_code_scholar(location, stack_loc, args_loc)?,
+            false => item_code_vanilla(location, stack_loc, args_loc)?,
+        };
+        spawn_thread_release(location, asm)?
     }
     Ok(())
 }
 
-fn write_item_code_scholar(location: u64, stack_loc: u64, args_loc: u64) -> Result<()> {
+fn item_code_scholar(location: u64, stack_loc: u64, args_loc: u64) -> ProcResult<Vec<u8>> {
     let item_struct = args_loc + ITEM_STRUCT;
     use item_struct_offsets as off;
 
@@ -102,10 +102,10 @@ fn write_item_code_scholar(location: u64, stack_loc: u64, args_loc: u64) -> Resu
     write_rel_i32(&mut asm, location, 236, stack_loc, 4)?;
     write_rel_i32(&mut asm, location, 281, args_loc + SHOULD_EXIT_FLAG, 5)?;
 
-    write_bytes(location, &asm)
+    Ok(asm)
 }
 
-fn write_item_code_vanilla(location: u64, stack_loc: u64, args_loc: u64) -> Result<()> {
+fn item_code_vanilla(location: u64, stack_loc: u64, args_loc: u64) -> ProcResult<Vec<u8>> {
     let item_struct = args_loc + ITEM_STRUCT;
     use item_struct_offsets as off;
 
@@ -137,10 +137,10 @@ fn write_item_code_vanilla(location: u64, stack_loc: u64, args_loc: u64) -> Resu
     write_rel_i32(&mut asm, location, 158, functions::build_item_dialogue(), 4)?;
     write_rel_i32(&mut asm, location, 179, functions::show_item_dialogue(), 4)?;
 
-    write_bytes(location, &asm)
+    Ok(asm)
 }
 
-pub fn mass_spawn(category: Categories) -> Result<()> {
+pub fn mass_spawn(category: Categories) -> anyhow::Result<()> {
     let _handle = MASS_SPAWN_MUTEX.lock().unwrap();
 
     let items: &'static [Item] = match category {
@@ -165,10 +165,10 @@ pub fn mass_spawn(category: Categories) -> Result<()> {
 }
 
 impl Item {
-    pub fn spawn(&self, quantity: i32, upgrade: i32, infusion: i32) -> Result<()> {
+    pub fn spawn(&self, quantity: i32, upgrade: i32, infusion: i32) -> anyhow::Result<()> {
         character_loaded_check()?;
         if !is_scholar() && self.scholar_only {
-            bail!(ScholarError)
+            Err(ScholarError)?
         }
         itemspawn(
             self.id,
@@ -177,9 +177,10 @@ impl Item {
             quantity,
             upgrade,
             infusion,
-        )
+        )?;
+        Ok(())
     }
-    pub fn available_infusions(&self) -> Vec<Infusions> {
+    pub fn available_infusions(&self) -> Vec<Infusion> {
         let mut infusions = Vec::new();
         if let Some(infusion_id) = self.infuse_id &&
         let Some(flags) = INFUSION_IDS.get(&infusion_id) {

@@ -11,16 +11,17 @@ use crate::{
 use anyhow::{Result, anyhow, ensure};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::Stylize,
     text::Line,
-    widgets::{Block, Borders, List, ListItem, TableState},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, TableState},
 };
 use ratatui_themes::Style;
+use std::fmt::Display;
 
 pub trait StrExt {
     fn create_toggle_str(self, val: bool) -> String;
-    fn create_toggle_str_append(self, val: bool) -> String;
 }
 
 impl StrExt for &str {
@@ -30,13 +31,6 @@ impl StrExt for &str {
             false => "[ ]",
         };
         format!("{ret} {self}")
-    }
-    fn create_toggle_str_append(self, val: bool) -> String {
-        let ret = match val {
-            true => "(X)",
-            false => "( )",
-        };
-        format!("{self} {ret}")
     }
 }
 
@@ -123,15 +117,26 @@ macro_rules! impl_handle_keys {
 impl_handle_keys!(TableState);
 
 
-pub fn parse_act_sequence(input: String) -> Result<Vec<i32>> {
+pub fn parse_act_sequence(input: String) -> Result<Vec<u8>> {
     input
         .split_whitespace()
         .map(|s| {
             let val = s
-                .parse::<i32>()
+                .parse::<u8>()
                 .map_err(|_| anyhow!("Expects integers seperated by spaces"))?;
             ensure!(val <= 50, "Highest act number is 50");
             Ok(val)
         })
         .collect()
+}
+
+pub fn draw_popup_selector(title: &'static str, items: &[impl Display], state: &mut ListState, frame: &mut Frame) {
+    let rect = centered_rect(50, 50, frame.area());
+    let list_items = items.iter().map(|item| {
+        ListItem::new(item.to_string())
+    }).collect();
+    let list = list(list_items, Some(title));
+    frame.render_widget(Clear, rect);
+    frame.render_stateful_widget(list, rect, state);
+
 }

@@ -1,8 +1,7 @@
-use anyhow::{Ok, Result, ensure};
+use anyhow::{Ok, ensure};
 use clap::{Parser, Subcommand, ValueEnum};
-use darksouls2;
 use eldenring::{self, chr_ins::ChrInsExt};
-use engine::{attached::{self, game}, game_version::Game};
+use gubtool_core::{attached::{self, game}, game_version::Game};
 use std::{thread, time::Duration};
 use tui::tui;
 
@@ -22,7 +21,7 @@ pub enum Commands {
     Test,
 }
 
-pub fn run() -> Result<()> {
+pub fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     if cli.command.is_none() {
         tui().ok();
@@ -35,8 +34,8 @@ pub fn run() -> Result<()> {
 
     match cli.command.unwrap() {
         Commands::Quitout => match game {
-            Game::EldenRing => eldenring::utility::quitout(),
-            Game::DarkSouls2 => darksouls2::utility::quitout(),
+            Game::EldenRing => eldenring::utility::quitout()?,
+            Game::DarkSouls2 => darksouls2::utility::quitout()?,
         },
         Commands::KillTarget => match game {
             Game::EldenRing => {
@@ -44,29 +43,28 @@ pub fn run() -> Result<()> {
                     eldenring::target::install_target_hook()?;
                     thread::sleep(Duration::from_millis(50));
                 }
-                eldenring::chr_ins::ChrInsExt::set_hp(&eldenring::target::target_ins(), 0)
+                eldenring::chr_ins::ChrInsExt::set_hp(&eldenring::target::target_ins(), 0)?
             }
             Game::DarkSouls2 => {
                 if !darksouls2::target::is_target_hook_active()? {
                     darksouls2::target::install_target_hook()?;
                     thread::sleep(Duration::from_millis(50));
                 }
-                darksouls2::chr_ctrl::ChrCtrlExt::set_hp(&darksouls2::target::target_ctrl(), 0)
+                darksouls2::chr_ctrl::ChrCtrlExt::set_hp(&darksouls2::target::target_ctrl(), 0)?
             }
         },
         Commands::NextPhase => match game {
-            Game::EldenRing => eldenring::target::target_ins().next_phase(),
-            Game::DarkSouls2 => Ok(()),
+            Game::EldenRing => eldenring::target::target_ins().next_phase()?,
+            Game::DarkSouls2 => (),
         },
         Commands::AobScan => match game {
-            Game::EldenRing => eldenring::utils::scan_and_print_base_offsets(),
-            Game::DarkSouls2 => darksouls2::utils::scan_and_print_base_offsets(),
+            Game::EldenRing => eldenring::utils::scan_and_print_base_offsets()?,
+            Game::DarkSouls2 => darksouls2::utils::scan_and_print_base_offsets()?,
         },
         Commands::Test => {
-            eldenring::utils::print_asm_sizes();
-            Ok(())
         },
     }
+    Ok(())
 }
 
 #[derive(Clone, ValueEnum)]

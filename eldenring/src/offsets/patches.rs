@@ -1,5 +1,5 @@
 use crate::offsets::module_offsets;
-use engine::attached::module_base;
+use gubtool_core::attached::module_base;
 
 pub fn no_logo() -> u64 {
     module_base() + module_offsets().patches.no_logo

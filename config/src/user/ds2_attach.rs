@@ -1,10 +1,11 @@
-use crate::{Config, user::AttachConfig};
+use crate::{Config, user::{AttachConfig, AttachConfigTrait, }};
 use anyhow::Result;
 use darksouls2::{
     event,
     game_state::{self, StateFlagOffset},
     utility,
 };
+use gubtool_core::{sys::error::ProcessError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
@@ -17,29 +18,45 @@ pub struct Ds2Attach {
     pub start_logger: bool,
 }
 
-impl Ds2Attach {
-    pub fn apply(&self) -> Result<()> {
+impl AttachConfigTrait for Ds2Attach {
+    fn apply_and_collect_errors(&self) -> Vec<ProcessError> {
+        let mut errors = Vec::new();
+
         if self.no_death {
-            game_state::StateFlags::set(StateFlagOffset::PlayerNoDeath, true)?
+            if let Err(err) = game_state::StateFlags::set(StateFlagOffset::PlayerNoDeath, true) {
+                errors.push(err);
+            }
         }
         if self.gauntlet_skip {
-            event::set_ivory_gauntlet_skip(true)?
+            if let Err(err) = event::set_ivory_gauntlet_skip(true) {
+                errors.push(err);
+            }
         }
         if self.disable_loyce {
-            event::set_ivory_no_knights(true)?
+            if let Err(err) = event::set_ivory_no_knights(true) {
+                errors.push(err);
+            }
         }
         if self.skip_credits {
-            utility::set_credits_skip(true)?
+            if let Err(err) = utility::set_credits_skip(true) {
+                errors.push(err);
+            }
         }
         if self.fast_quitout {
-            game_state::StateFlags::set(StateFlagOffset::FastQuitout, true)?
+            if let Err(err) = game_state::StateFlags::set(StateFlagOffset::FastQuitout, true) {
+                errors.push(err);
+            }
         }
         if self.start_logger {
-            event::set_event_log_hook(true)?
+            if let Err(err) = event::set_event_log_hook(true) {
+                errors.push(err);
+            }
         }
-        Ok(())
+        errors
     }
+}
 
+impl Ds2Attach {
     pub fn update<F>(modifier: F) -> Result<()>
     where
         F: FnOnce(&mut Self),

@@ -3,88 +3,82 @@ use crate::{
     chr_ins::{self, ChrIns, ChrInsExt},
     mem::*,
     offsets::{
-        chr_dbg_flags::{self},
-        code_cave::CaveOffset,
-        functions, game_data_man,
-        hooks::{self},
-        patches, world_chr_man,
+        ChainReadExt, chr_dbg_flags::{self}, code_cave::CaveOffset, functions, game_data_man, hooks::{self}, patches, world_chr_man
     },
     resources::ASM,
     utils::{character_loaded_check, dlc_check},
 };
-use anyhow::{Result, anyhow, ensure};
-use engine::{
+use gubtool_core::{
     attached::version,
-    game_version::EldenRingVersion::*,
+    game_version::EldenRingVersion::*, sys::error::{PointerType, ProcResult, ProcessError},
 };
-use shared::slice_ops::*;
-
+use utils::slice_ops::*;
 
 pub fn player_ins() -> ChrIns {
-    read::<u64>(world_chr_man::base_ptr())
-        .and_then(|addr| read::<u64>(addr + world_chr_man::player_ins()))
-        .map_err(|_| anyhow!("Character not loaded"))
+    match read::<u64>(world_chr_man::base_ptr())
+        .read_offset(world_chr_man::player_ins())
+    {
+        Ok(ptr) if ptr != 0x0 => Ok(ptr),
+        Ok(_) | Err(_) => Err(ProcessError::InvalidPointer {
+            pointer_type: PointerType::PlayerIns,
+        }),
+    }
 }
 
 pub fn torrent_ins() -> ChrIns {
-    let handle = read::<u64>(game_data_man::base_ptr())
-        .and_then(|addr| read::<u64>(addr + game_data_man::PLAYER_GAME_DATA))
-        .and_then(|addr| read::<u64>(addr + game_data_man::torrent_handle()))?;
+    let handle = player_game_data()
+        .read_offset(game_data_man::torrent_handle())?;
     chr_ins::chr_ins_from_handle(handle)
 }
 
-pub fn set_chr_dbg_flag(offset: ChrDbgOffsets, state: bool) -> Result<()> {
+pub fn set_chr_dbg_flag(offset: ChrDbgOffsets, state: bool) -> ProcResult {
     write::<u8>(chr_dbg_flags::base() + offset as u64, state as u8)
 }
 
-pub fn is_chr_dbg_flag(offset: ChrDbgOffsets) -> Result<bool> {
+pub fn is_chr_dbg_flag(offset: ChrDbgOffsets) -> ProcResult<bool> {
     read::<u8>(chr_dbg_flags::base() + offset as u64).map(|val| val == 1)
 }
 
-pub fn set_rune_arc(state: bool) -> Result<()> {
-    read::<u64>(game_data_man::base_ptr())
-        .and_then(|addr| read::<u64>(addr + game_data_man::PLAYER_GAME_DATA))
-        .and_then(|addr| write::<u8>(addr + PlayerGameDataOffset::RuneArc as u64, state as u8))
+pub fn set_rune_arc(state: bool) -> ProcResult {
+        player_game_data()
+        .add_offset(PlayerGameDataOffset::RuneArc as u64)
+        .write::<u8>(state as u8)
 }
 
-pub fn set_rfbs() -> Result<()> {
+pub fn set_rfbs() -> ProcResult {
     let player_ins = player_ins();
     let max_hp = player_ins.get_max_hp()?;
     player_ins.set_hp((max_hp * 20) / 100 - 1)
 }
 
-pub fn give_runes(amount: i64) -> Result<()> {
+pub fn give_runes(amount: i64) -> ProcResult {
     character_loaded_check()?;
 
     let location = CaveOffset::GiveRunesAsm.addr();
-    let player_game_data = read::<u64>(game_data_man::base_ptr())
-        .and_then(|addr| read::<u64>(addr + game_data_man::PLAYER_GAME_DATA))?;
 
     let fun = ASM.get_function("give_runes");
     let mut asm = fun.get_bytes();
 
-    write_to_slice::<u64>(&mut asm, fun.reloc("player_game_data"), player_game_data)?;
+    write_to_slice::<u64>(&mut asm, fun.reloc("player_game_data"), player_game_data()?)?;
     write_to_slice::<i64>(&mut asm, fun.reloc("amount"), amount)?;
     write_to_slice::<u64>(&mut asm, fun.reloc("fn_give_runes"), functions::give_runes())?;
-    append_flag_setter(location, &mut asm)?;
 
-    write_bytes(location, &asm)?;
-    run_thread(location)
+    spawn_thread_join(location, asm)
 }
 
-pub fn map_coords() -> Result<[f32; 3]> {
+pub fn map_coords() -> ProcResult<[f32; 3]> {
     read::<[f32; 3]>(
-        player_ins().chr_ins_pointer()? + world_chr_man::player_ins_offsets::current_map_coords(),
+        player_ins()? + world_chr_man::player_ins_offsets::current_map_coords(),
     )
 }
 
-pub fn map_angle() -> Result<f32> {
+pub fn map_angle() -> ProcResult<f32> {
     read::<f32>(
-        player_ins().chr_ins_pointer()? + world_chr_man::player_ins_offsets::current_map_angle(),
+        player_ins()? + world_chr_man::player_ins_offsets::current_map_angle(),
     )
 }
 
-fn install_grab_hook() -> Result<()> {
+fn install_grab_hook() -> ProcResult {
     let mut asm = ASM.get_function("grab_hook").get_bytes();
     let location = CaveOffset::NoGrabHook.addr();
     let skip_grab_jmp_location = hooks::player_no_grab() + 0x95;
@@ -98,11 +92,11 @@ fn install_grab_hook() -> Result<()> {
 }
 
 const GRAB_HOOK_BYTES_ORIGINAL: [u8; 9] = [0x41, 0x8B, 0x56, 0x44, 0x48, 0x8D, 0x4C, 0x24, 0x40];
-fn uninstall_grab_hook() -> Result<()> {
+fn uninstall_grab_hook() -> ProcResult {
     write_bytes(hooks::player_no_grab(), &GRAB_HOOK_BYTES_ORIGINAL)
 }
 
-fn install_infinite_poise_hook() -> Result<()> {
+fn install_infinite_poise_hook() -> ProcResult {
     let mut asm = ASM.get_function("infinite_poise_hook").get_bytes();
     let location = CaveOffset::InfinitePoiseHook.addr();
 
@@ -124,15 +118,16 @@ fn infinite_poise_bytes_original() -> [u8; 7] {
         _ => [0x4C, 0x8B, 0xC7, 0x40, 0x0F, 0xB6, 0xD5],
     }
 }
-fn uninstall_infinite_poise_hook() -> Result<()> {
+fn uninstall_infinite_poise_hook() -> ProcResult {
     write_bytes(hooks::player_infinite_poise(), &infinite_poise_bytes_original())
 }
 
-pub fn is_infinite_poise() -> Result<bool> {
-    read::<[u8; 7]>(hooks::player_infinite_poise()).map(|val| val != infinite_poise_bytes_original())
+pub fn is_infinite_poise() -> ProcResult<bool> {
+    read::<[u8; 7]>(hooks::player_infinite_poise())
+        .map(|val| val != infinite_poise_bytes_original())
 }
 
-pub fn set_infinite_poise(val: bool) -> Result<()> {
+pub fn set_infinite_poise(val: bool) -> ProcResult {
     match val {
         true => {
             install_infinite_poise_hook()?;
@@ -145,7 +140,7 @@ pub fn set_infinite_poise(val: bool) -> Result<()> {
     }
 }
 
-pub fn set_torrent_anywhere(state: bool) -> Result<()> {
+pub fn set_torrent_anywhere(state: bool) -> ProcResult {
     match state {
         true => {
             write_bytes(patches::torrent_disabled_underworld(), &[0x30, 0xC0, 0x90])?;
@@ -158,13 +153,13 @@ pub fn set_torrent_anywhere(state: bool) -> Result<()> {
     }
 }
 
-pub fn is_torrent_anywhere() -> Result<bool> {
-    read::<[u8; 3]>(patches::whistle_disabled()).map(|val| val == [0x30, 0xC0, 0x90])
+pub fn is_torrent_anywhere() -> ProcResult<bool> {
+    read::<[u8; 3]>(patches::whistle_disabled()).map(|val| val != [0x0F, 0x95, 0xC0])
 }
 
-fn player_game_data() -> Result<u64> {
+fn player_game_data() -> ProcResult<u64> {
     read::<u64>(game_data_man::base_ptr())
-        .and_then(|addr| read::<u64>(addr + game_data_man::PLAYER_GAME_DATA))
+        .read_offset(game_data_man::PLAYER_GAME_DATA)
 }
 
 impl PlayerGameDataOffset {
@@ -197,7 +192,7 @@ impl PlayerStats {
         stats.update().ok();
         stats
     }
-    pub fn update(&mut self) -> Result<()> {
+    pub fn update(&mut self) -> ProcResult {
         character_loaded_check()?;
         let array = read::<[u8; 0x100]>(player_game_data()?)?;
         self.vigor = read_from_slice::<i32>(&array, PlayerGameDataOffset::Vigor.val())?;
@@ -218,9 +213,9 @@ impl PlayerStats {
     }
 }
 
-pub fn set_stat(player_game_data_offset: u64, val: i32) -> Result<()> {
+pub fn set_stat(player_game_data_offset: u64, val: i32) -> anyhow::Result<()> {
     character_loaded_check()?;
-    ensure!((0..=99).contains(&val), "Valid range: [0,99]");
+    anyhow::ensure!((0..=99).contains(&val), "Valid range: [0,99]");
 
     let game_data = player_game_data()?;
     let current_val = read::<i32>(game_data + player_game_data_offset)?;
@@ -244,13 +239,15 @@ pub fn set_stat(player_game_data_offset: u64, val: i32) -> Result<()> {
         game_data + PlayerGameDataOffset::RuneLevel.val(),
         current_level + diff,
     )?;
-    write::<i32>(game_data + player_game_data_offset, val)
+    write::<i32>(game_data + player_game_data_offset, val)?;
+    Ok(())
 }
 
-pub fn set_dlc_stat(player_game_data_offset: u64, val: u8) -> Result<()> {
+pub fn set_dlc_stat(player_game_data_offset: u64, val: u8) -> anyhow::Result<()> {
     dlc_check()?;
-    ensure!((0..=20).contains(&val), "Valid range: [0,20]");
-    write::<u8>(player_game_data()? + player_game_data_offset, val)
+    anyhow::ensure!((0..=20).contains(&val), "Valid range: [0,20]");
+    write::<u8>(player_game_data()? + player_game_data_offset, val)?;
+    Ok(())
 }
 
 fn level_up_cost(next_level: i32) -> i32 {

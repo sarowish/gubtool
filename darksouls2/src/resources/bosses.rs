@@ -1,4 +1,4 @@
-use crate::resources::areas::MapId;
+use crate::resources::map_ids::MapId;
 
 pub struct Boss {
     pub name: &'static str,

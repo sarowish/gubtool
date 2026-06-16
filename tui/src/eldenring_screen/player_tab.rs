@@ -1,9 +1,5 @@
 use crate::{
-    common::{StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list},
-    eldenring_screen::GameState,
-    event::ResultExt,
-    send_input_event,
-    ui_state::UiState,
+    common::{StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list}, eldenring_screen::GameState, event::{AnyhowExt, ResultExt}, input::input_prompt::{InputPrompt, PromptType}, ui_state::UiState
 };
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -70,6 +66,7 @@ pub struct PlayerTab {
     pub stats: PlayerStats,
     pub hp: i32,
     pub runes: i64,
+    input: InputPrompt<InputRequest>,
 }
 
 impl PlayerTab {
@@ -83,6 +80,7 @@ impl PlayerTab {
             stats: PlayerStats::new(),
             hp: 100,
             runes: 10000,
+            input: InputPrompt::new(),
         }
     }
 
@@ -122,11 +120,21 @@ impl PlayerTab {
             layout[STATS_IDX],
             &mut self.tab.get_list_state(STATS_IDX),
         );
+
+        self.input.draw_popup_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
         if self.tab.current_list == STATS_IDX {
             self.tab.set_length(STATS_IDX, Stats::array().len());
+        }
+
+        if self.input.show {
+            self.input.handle_keys(key);
+            if key.code == KeyCode::Enter {
+                self.handle_input_enter();
+            }
+            return;
         }
 
         self.tab.handle_keys(key);
@@ -156,8 +164,8 @@ impl PlayerTab {
         let current_list = self.tab.current_list;
         if let Some(selected_index) = self.tab.lists_states[current_list].selected() {
             match current_list {
-                ACTIONS_IDX => ActionsItems::ARRAY[selected_index].set_input(),
-                STATS_IDX => Stats::ARRAY[selected_index].set_input(),
+                ACTIONS_IDX => ActionsItems::ARRAY[selected_index].set_input(&mut self.input),
+                STATS_IDX => Stats::ARRAY[selected_index].set_input(&mut self.input),
                 _ => (),
             }
         }
@@ -168,49 +176,56 @@ impl PlayerTab {
             match current_list {
                 ACTIONS_IDX => ActionsItems::ARRAY[selected_index].execute(self),
                 TOGGLES_IDX => TogglesItems::ARRAY[selected_index].execute(&self.stats),
-                STATS_IDX => Stats::ARRAY[selected_index].set_input(),
+                STATS_IDX => Stats::ARRAY[selected_index].set_input(&mut self.input),
                 _ => (),
+            }
+        }
+    }
+
+    fn handle_input_enter(&mut self) {
+        match self.input.last_request.unwrap() {
+            InputRequest::Health => {
+                if let Some(val) = self.input.parse_text::<i32>() {
+                    self.hp = val;
+                    UiState::update_er(|c| { c.player_set_health = val; }).ok();
+                }
+            }
+            InputRequest::Runes => {
+                if let Some(val) = self.input.parse_text::<i64>() {
+                    self.runes = val;
+                    UiState::update_er(|c| { c.give_runes = val; }).ok();
+                }
+            }
+            InputRequest::AnimationSpeed => {
+                if let Some(val) = self.input.parse_text::<f32>() {
+                    GameState::player_ins().set_animation_speed(val).send_error()
+                }
+            }
+            InputRequest::Stat => {
+                if let Some(val) = self.input.parse_text::<i32>() {
+                    let idx = self.tab.lists_states[STATS_IDX].selected().unwrap_or_default();
+                    let stat  = &Stats::array()[idx];
+                    stat.set_stat(val).send_error();
+                }
             }
         }
     }
 }
 
 impl ActionsItems {
-    fn execute(&self, player_tab: &PlayerTab) {
+    fn execute(&self, player_tab: &mut PlayerTab) {
         match self {
             Self::SetHealth => GameState::player_ins().set_hp(player_tab.hp).send_error(),
             Self::Die => GameState::player_ins().set_hp(0).send_error(),
             Self::Rest => emevd::rest().send_error(),
             Self::GiveRunes => player::give_runes(player_tab.runes).send_error(),
-            Self::AnimationSpeed => {},
+            Self::AnimationSpeed => player_tab.input.show("Set Animation Speed", PromptType::F32, InputRequest::AnimationSpeed),
         }
     }
-    fn set_input(&self) {
+    fn set_input(&self, input: &mut InputPrompt<InputRequest>) {
         match self {
-            Self::SetHealth => {
-                send_input_event!(text, app, {
-                    if let Ok(v) = text.parse() {
-                        app.elden_ring.player.hp = v;
-                        UiState::update_er(|c| { c.player_set_health = v; }).ok();
-                    }
-                });
-            },
-            Self::GiveRunes => {
-                send_input_event!(text, app, {
-                    if let Ok(v) = text.parse() {
-                        app.elden_ring.player.runes = v;
-                        UiState::update_er(|c| { c.give_runes = v; }).ok();
-                    }
-                });
-            },
-            Self::AnimationSpeed => {
-                send_input_event!(text, _app, {
-                    if let Ok(v) = text.parse() {
-                        GameState::player_ins().set_animation_speed(v)
-                        .send_error()
-                    }
-                });
-            },
+            Self::SetHealth => input.show("Set New Value", PromptType::I32, InputRequest::Health),
+            Self::GiveRunes => input.show("Set New Value", PromptType::I64, InputRequest::Runes),
             _ => (),
         }
     }
@@ -414,14 +429,8 @@ impl Stats {
         };
         ListItem::from(text)
     }
-    fn set_input(&self) {
-        send_input_event!(text, app, {
-            if let Ok(v) = text.parse() {
-                let idx = app.elden_ring.player.tab.lists_states[STATS_IDX].selected().unwrap_or_default();
-                let stat  = &Stats::array()[idx];
-                stat.set_stat(v).send_error();
-            }
-        });
+    fn set_input(&self, input: &mut InputPrompt<InputRequest>) {
+        input.show("Set Stat", PromptType::I32, InputRequest::Stat)
     }
 
     pub fn set_stat(&self, val: i32) -> Result<()> {
@@ -477,11 +486,19 @@ impl Stats {
         Self::Arcane,
     ];
     pub fn array() -> &'static [Stats] {
-        if GameState::dlc() { Self::NO_DLC_ARRAY } else { Self::ARRAY }
+        if GameState::dlc() { Self::ARRAY } else { Self::NO_DLC_ARRAY }
     }
     fn list(player_tab: &PlayerTab) -> List<'static> {
         let array = Self::array();
         let items: Vec<ListItem> = array.iter().map(|i| i.to_list_item(&player_tab.stats)).collect();
         tabs_list(items, Some("Stats"), &player_tab.tab, STATS_IDX)
     }
+}
+
+#[derive(Clone, Copy)]
+enum InputRequest {
+    Health,
+    Runes,
+    AnimationSpeed,
+    Stat,
 }

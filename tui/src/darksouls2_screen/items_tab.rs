@@ -1,17 +1,13 @@
 use crate::{
-    app::App,
     common::{
         block, blockless_list, label_list, stateful_list::StatefulList, tab_state::TabState,
         tabs_list,
-    },
-    event::{Event, ResultExt, send_event},
-    send_input_event,
-    theme::theme,
+    }, event::{AnyhowExt}, input::{fuzzy_finder::FuzzyFinder, input_prompt::{InputPrompt, PromptType}}, theme::theme
 };
 use crossterm::event::{KeyCode, KeyEvent};
 use darksouls2::{
     item::mass_spawn,
-    resources::items::{Categories, Item, infusions::Infusions, items_array},
+    resources::items::{Categories, Item, infusions::Infusion, items_array},
 };
 use nucleo_matcher::Utf32String;
 use ratatui::{
@@ -32,9 +28,12 @@ enum OptionsItems {
 pub struct ItemTab {
     tab: TabState,
     item: Item,
-    pub quantity: i32,
-    pub upgrade: i32,
-    pub infusion: Infusions,
+    pub quantity: u32,
+    pub upgrade: u32,
+    pub infusion: Infusion,
+    input: InputPrompt<InputRequest>,
+    fuzzy_finder: FuzzyFinder,
+    search_request: Option<SearchRequest>,
 }
 
 const ITEMS_IDX: usize = 0;
@@ -52,7 +51,10 @@ impl ItemTab {
             item: items_array()[0],
             quantity: 1,
             upgrade: 0,
-            infusion: Infusions::Normal,
+            infusion: Infusion::Normal,
+            input: InputPrompt::new(),
+            fuzzy_finder: FuzzyFinder::default(),
+            search_request: None,
         }
     }
 
@@ -105,13 +107,45 @@ impl ItemTab {
             mass_spawn,
             &mut self.tab.get_list_state(MASS_SPAWN_IDX),
         );
+
+        self.input.draw_popup_checked(frame);
+        self.fuzzy_finder.draw_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
         self.handle_item_switch();
+
         if self.tab.current_list == ITEMS_IDX {
             self.tab.set_length(ITEMS_IDX, items_array().len());
         }
+
+        if self.input.show {
+            self.input.handle_keys(key);
+            if key.code == KeyCode::Enter {
+                self.handle_input_enter();
+            }
+            return;
+        }
+
+        if self.fuzzy_finder.show {
+            self.fuzzy_finder.handle_keys(key);
+            if key.code == KeyCode::Enter {
+                if let Some(selected) = self.fuzzy_finder.selected_idx() {
+                    match self.search_request.unwrap() {
+                        SearchRequest::Item => {
+                            self.tab.set_list_selected(ITEMS_IDX, selected);
+                            self.handle_item_switch();
+                        }
+                        SearchRequest::Infusion => {
+                            let entries = self.item.available_infusions();
+                            self.infusion = entries[selected];
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
         self.tab.handle_keys(key);
 
         match key.code {
@@ -122,14 +156,8 @@ impl ItemTab {
                 let list = items_array().iter()
                     .map(|item| Utf32String::from(format!("{}|{}", item.name, item.category)))
                     .collect();
-                let function = |app: &mut App| {
-                    app.dark_souls_2.items.tab.set_list_selected(
-                        ITEMS_IDX,
-                        app.fuzzy_finder.selected_idx().unwrap(),
-                    );
-                    app.dark_souls_2.items.handle_item_switch()
-                };
-                send_event(Event::Search((list, function)))
+                self.fuzzy_finder.show(list);
+                self.search_request = Some(SearchRequest::Item);
             }
             KeyCode::Char('s') => {
                 if self.tab.current_list == OPTIONS_IDX &&
@@ -152,10 +180,27 @@ impl ItemTab {
 
         if self.tab.current_list == ITEMS_IDX || self.tab.current_list == OPTIONS_IDX {
             self.item.spawn(
-                self.quantity,
-                self.upgrade,
+                self.quantity as i32,
+                self.upgrade as i32,
                 self.infusion as u8 as i32,
             ).send_error();
+        }
+    }
+
+    fn handle_input_enter(&mut self) {
+        match self.input.last_request.unwrap() {
+            InputRequest::Quantity => {
+                if let Some(val) = self.input.parse_text::<u32>() {
+                    self.quantity = val;
+                    self.handle_item_switch()
+                }
+            }
+            InputRequest::Upgrade => {
+                if let Some(val) = self.input.parse_text::<u32>() {
+                    self.upgrade = val;
+                    self.handle_item_switch()
+                }
+            }
         }
     }
 
@@ -182,16 +227,16 @@ impl ItemTab {
         let new_item = items_array()[new_idx];
         self.item = new_item;
 
-        if self.upgrade > self.item.max_upgrade.unwrap_or_default() {
-            self.upgrade = self.item.max_upgrade.unwrap_or_default()
+        if self.upgrade as i32 > self.item.max_upgrade.unwrap_or_default() {
+            self.upgrade = self.item.max_upgrade.unwrap_or_default() as u32
         }
 
-        if self.quantity > self.item.stack_size {
-            self.quantity = self.item.stack_size
+        if self.quantity as i32 > self.item.stack_size {
+            self.quantity = self.item.stack_size as u32
         }
 
         if !self.item.available_infusions().contains(&self.infusion) {
-            self.infusion = Infusions::Normal
+            self.infusion = Infusion::Normal
         }
     }
     fn can_quantity(&self) -> bool {
@@ -210,22 +255,12 @@ impl OptionsItems {
         match self {
             Self::Quantity => {
                 if item_tab.can_quantity() {
-                    send_input_event!(text, app, {
-                        if let Ok(v) = text.parse() {
-                            app.dark_souls_2.items.quantity = v;
-                            app.dark_souls_2.items.handle_item_switch()
-                        }
-                    })
+                    item_tab.input.show("Set New Value", PromptType::I32, InputRequest::Quantity)
                 }
             },
             Self::Upgrade => {
                 if item_tab.can_upgrade() {
-                    send_input_event!(text, app, {
-                        if let Ok(v) = text.parse() {
-                            app.dark_souls_2.items.upgrade = v;
-                            app.dark_souls_2.items.handle_item_switch()
-                        }
-                    })
+                    item_tab.input.show("Set New Value", PromptType::I32, InputRequest::Upgrade)
                 }
             },
             Self::Infusion => {
@@ -233,11 +268,8 @@ impl OptionsItems {
                     let list = item_tab.item.available_infusions().iter()
                         .map(|infusion| Utf32String::from(format!("{}", infusion)))
                         .collect();
-                    let function = |app: &mut App| {
-                        let entries = app.dark_souls_2.items.item.available_infusions();
-                        app.dark_souls_2.items.infusion = entries[app.fuzzy_finder.selected_idx().unwrap()];
-                    };
-                    send_event(Event::Search((list, function)))
+                    item_tab.fuzzy_finder.show(list);
+                    item_tab.search_request = Some(SearchRequest::Infusion);
                 }
             },
         }
@@ -271,4 +303,16 @@ impl OptionsItems {
 
 fn options_style(show: bool) -> Style {
     if show { Style::default() } else { Style::new().add_modifier(Modifier::CROSSED_OUT) }
+}
+
+#[derive(Clone, Copy)]
+enum InputRequest {
+    Quantity,
+    Upgrade,
+}
+
+#[derive(Clone, Copy)]
+enum SearchRequest {
+    Item,
+    Infusion,
 }

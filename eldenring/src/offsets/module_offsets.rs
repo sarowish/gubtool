@@ -1,6 +1,6 @@
 use crate::resources::{scan_patterns, versions_module_offsets};
 use anyhow::Result;
-use engine::{aob_scanner, attached::version, game_version::EldenRingVersion::*};
+use gubtool_core::{aob_scanner, attached::version, game_version::EldenRingVersion::*};
 
 #[derive(Debug)]
 pub struct ModuleOffsets {

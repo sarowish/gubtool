@@ -7,11 +7,49 @@ pub mod module_offsets;
 pub mod patches;
 pub mod world_chr_man;
 
+use crate::mem::{is_bit_set, read, set_bit, write};
+use gubtool_core::sys::error::ProcResult;
 pub use module_offsets::module_offsets;
+use pelite::Pod;
 
+pub trait ChainReadExt {
+    fn read_offset(self, offset: u64) -> ProcResult<u64>;
+    fn add_offset(self, offset: u64) -> ProcResult<u64>;
+    fn read<T: Pod>(self) -> ProcResult<T>;
+    fn write<T: Pod>(self, val: T) -> ProcResult;
+    fn is_bit_set(self, mask: u8) -> ProcResult<bool>;
+    fn set_bit(self, mask: u8, state: bool) -> ProcResult;
+}
+
+impl ChainReadExt for ProcResult<u64> {
+    fn read_offset(self, offset: u64) -> ProcResult<u64> {
+        let base = self?;
+        read::<u64>(base.saturating_add(offset))
+    }
+    fn add_offset(self, offset: u64) -> ProcResult<u64> {
+        let base = self?;
+        Ok(base.saturating_add(offset))
+    }
+    fn read<T: Pod>(self) -> ProcResult<T> {
+        let addr = self?;
+        read::<T>(addr)
+    }
+    fn write<T: Pod>(self, val: T) -> ProcResult {
+        let addr = self?;
+        write::<T>(addr, val)
+    }
+    fn is_bit_set(self, mask: u8) -> ProcResult<bool> {
+        let addr = self?;
+        is_bit_set(addr, mask)
+    }
+    fn set_bit(self, mask: u8, state: bool) -> ProcResult {
+        let addr = self?;
+        set_bit(addr, mask, state)
+    }
+}
 pub mod field_area {
     pub fn base_ptr() -> u64 {
-        engine::attached::module_base() + super::module_offsets().base_ptrs.field_area
+        gubtool_core::attached::module_base() + super::module_offsets().base_ptrs.field_area
     }
 
     pub const WORLD_INFO_OWNER: u64 = 0x10;
@@ -24,7 +62,7 @@ pub mod field_area {
 
 pub mod chr_dbg_flags {
     pub fn base() -> u64 {
-        engine::attached::module_base() + super::module_offsets().data.chr_dbg_flags
+        gubtool_core::attached::module_base() + super::module_offsets().data.chr_dbg_flags
     }
 
     #[repr(u64)]
@@ -47,7 +85,7 @@ pub mod chr_dbg_flags {
 }
 
 pub mod game_man {
-    use engine::{
+    use gubtool_core::{
         attached::{module_base, version},
         game_version::EldenRingVersion::*,
     };
@@ -55,6 +93,8 @@ pub mod game_man {
     pub fn base_ptr() -> u64 {
         module_base() + super::module_offsets().base_ptrs.game_man
     }
+
+    pub const QUITOUT: u64 = 0x10;
 
     pub fn start_new_game() -> u64 {
         match version() {
@@ -71,7 +111,7 @@ pub mod game_man {
 
 pub mod damage_manager {
     pub fn base_ptr() -> u64 {
-        engine::attached::module_base() + super::module_offsets().base_ptrs.damage_manager
+        gubtool_core::attached::module_base() + super::module_offsets().base_ptrs.damage_manager
     }
 
     pub const HITBOXVIEW_A: u64 = 0xA0;
@@ -79,7 +119,7 @@ pub mod damage_manager {
 }
 
 pub mod cs_flipper_imp {
-    use engine::{
+    use gubtool_core::{
         attached::{module_base, version},
         game_version::EldenRingVersion::*,
     };
@@ -103,7 +143,7 @@ pub mod cs_flipper_imp {
 
 pub mod cs_dlc_imp {
     pub fn base_ptr() -> u64 {
-        engine::attached::module_base() + super::module_offsets().base_ptrs.cs_dlc_imp
+        gubtool_core::attached::module_base() + super::module_offsets().base_ptrs.cs_dlc_imp
     }
     pub const BYTE_FLAGS: u64 = 0x10;
     pub mod flags {
@@ -113,26 +153,26 @@ pub mod cs_dlc_imp {
 
 pub mod map_item_impl {
     pub fn base_ptr() -> u64 {
-        engine::attached::module_base() + super::module_offsets().base_ptrs.map_item_man_impl
+        gubtool_core::attached::module_base() + super::module_offsets().base_ptrs.map_item_man_impl
     }
 }
 
 pub mod dl_user_input_manager_impl {
     pub fn base_ptr() -> u64 {
-        engine::attached::module_base() + super::module_offsets().base_ptrs.dl_user_input_manager_impl
+        gubtool_core::attached::module_base() + super::module_offsets().base_ptrs.dl_user_input_manager_impl
     }
     pub const STEAM_INPUT: u64 = 0x88B;
 }
 
 pub mod cs_emk_system {
     pub fn base_ptr() -> u64 {
-        engine::attached::module_base() + super::module_offsets().base_ptrs.cs_emk_system
+        gubtool_core::attached::module_base() + super::module_offsets().base_ptrs.cs_emk_system
     }
 }
 
 pub mod menu_man {
     use crate::offsets::module_offsets;
-    use engine::{
+    use gubtool_core::{
         attached::{module_base, version},
         game_version::EldenRingVersion::*,
     };
@@ -160,7 +200,7 @@ pub mod menu_man {
 
 pub mod map_dbg_flags {
     pub fn base() -> u64 {
-        engine::attached::module_base() + super::module_offsets().data.map_dbg_flags
+        gubtool_core::attached::module_base() + super::module_offsets().data.map_dbg_flags
     }
     pub const SHOW_ALL_MAPS: u64 = 0x0;
     pub const SHOW_ALL_GRACES: u64 = 0x1;
@@ -168,15 +208,15 @@ pub mod map_dbg_flags {
 
 pub mod virtual_memory_flag {
     pub fn base_ptr() -> u64 {
-        engine::attached::module_base() + super::module_offsets().base_ptrs.virtual_mem_flag
+        gubtool_core::attached::module_base() + super::module_offsets().base_ptrs.virtual_mem_flag
     }
 }
 
 pub mod external_function_pointers {
     pub fn kernel32_create_thread() -> u64 {
-        engine::attached::module_base() + super::module_offsets().external_fn_ptrs.kernel32_create_thread
+        gubtool_core::attached::module_base() + super::module_offsets().external_fn_ptrs.kernel32_create_thread
     }
     pub fn kernel32_close_handle() -> u64 {
-        engine::attached::module_base() + super::module_offsets().external_fn_ptrs.kernel32_close_handle
+        gubtool_core::attached::module_base() + super::module_offsets().external_fn_ptrs.kernel32_close_handle
     }
 }

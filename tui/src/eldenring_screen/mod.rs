@@ -14,7 +14,7 @@ use crate::{
         utility_tab::UtilityTab,
     },
 };
-use config::{Config, user::AttachConfig};
+use config::{Config, user::{AttachConfig, AttachConfigTrait}};
 use crossterm::event::KeyEvent;
 use eldenring::{
     chr_ins::{ChrIns, ChrInsExt},
@@ -37,7 +37,7 @@ pub struct EldenRing {
 
 static mut GAME_STATE: GameState = {
     GameState {
-        dlc: false,
+        dlc: true,
         loaded: false,
         target_ins: Ok(0),
         player_ins: Ok(0),
@@ -110,9 +110,7 @@ impl EldenRing {
         }
     }
 
-    pub fn handle_keys(&mut self, key: KeyEvent) {
-        self.tabs_widget.handle_keys(key);
-
+    pub fn handle_keys(&mut self, key: KeyEvent, block_inputs: bool) {
         match self.tabs_widget.tabs[self.tabs_widget.current_tab as usize] {
             "Player" => self.player.handle_keys(key),
             "Target" => self.target.handle_keys(key),
@@ -122,6 +120,10 @@ impl EldenRing {
             "Events" => self.event.handle_keys(key),
             _ => (),
         }
+
+        if block_inputs { return; }
+
+        self.tabs_widget.handle_keys(key);
     }
 
     pub fn background_tick(&mut self) {
@@ -143,8 +145,10 @@ impl EldenRing {
     }
 
     pub fn on_unattach(&mut self) {
-        self.game_state = GameStateHandler::new();
-        self.background_tick();
+        unsafe {
+            GAME_STATE.dlc = true;
+            GAME_STATE.loaded = false;
+        }
     }
 
     pub fn on_attach(&mut self) -> anyhow::Result<()> {
@@ -159,11 +163,14 @@ impl EldenRing {
 
 pub fn dbg_lines() -> Vec<Line<'static>> {
     let debug_info = [
-        format!("Target Pointer: {:#X}", GameState::target_ins().chr_ins_pointer().unwrap_or_default()),
-        format!("Target Chr ID: {}", GameState::target_ins().chr_id().unwrap_or_default()),
-        format!("Target Entity ID: {}", GameState::target_ins().entity_id().unwrap_or_default()),
-        format!("Has SpEffect 15500: {}", GameState::target_ins().has_speffect(15500).unwrap_or_default()),
-        format!("Has SpEffect 15507: {}", GameState::target_ins().has_speffect(15507).unwrap_or_default()),
+        format!("player loaded: {}", GameState::loaded()),
+        format!("dlc available: {}", GameState::dlc()),
+        format!("target pointer: {:#X}", GameState::target_ins().unwrap_or_default()),
+        format!("target chr id: {}", GameState::target_ins().chr_id().unwrap_or_default()),
+        format!("target entity id: {}", GameState::target_ins().entity_id().unwrap_or_default()),
+        format!("target lua timers: {:?}", GameState::target_ins().get_lua_timers().unwrap_or_default()),
+        format!("has speffect 15500: {}", GameState::target_ins().has_speffect(15500).unwrap_or_default()),
+        format!("has speffect 15507: {}", GameState::target_ins().has_speffect(15507).unwrap_or_default()),
     ];
 
     debug_info.iter().map(|f| Line::raw(f.to_string())).collect()

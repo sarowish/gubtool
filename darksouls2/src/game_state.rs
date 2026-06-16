@@ -1,11 +1,11 @@
 use crate::{
     chr_ctrl::ChrCtrlExt,
     mem::*,
-    offsets::{code_cave::CaveOffset, game_manager_imp},
+    offsets::{ChainReadExt, code_cave::CaveOffset, game_manager_imp},
     player, utility,
 };
-use anyhow::Result;
-use shared::slice_ops::*;
+use gubtool_core::sys::error::ProcResult;
+use utils::slice_ops::*;
 
 pub struct GameStateHandler {
     pub loaded: bool,
@@ -27,9 +27,9 @@ impl GameStateHandler {
             has_invoked_load_delayed: true,
         }
     }
-    pub fn poll(&mut self) -> Result<()> {
-        if is_loaded().unwrap_or_default() {
-            if !self.has_invoked_load_delayed && !is_loading_screen().unwrap_or_default() {
+    pub fn poll(&mut self) -> ProcResult {
+        if is_loaded() {
+            if !self.has_invoked_load_delayed && !is_loading_screen() {
                 self.on_load_delayed()?;
                 self.has_invoked_load_delayed = true;
             }
@@ -46,7 +46,7 @@ impl GameStateHandler {
         }
         Ok(())
     }
-    fn on_loaded(&self) -> Result<()> {
+    fn on_loaded(&self) -> ProcResult {
         let flags = StateFlags::new()?;
 
         if flags.player_no_death {
@@ -55,10 +55,10 @@ impl GameStateHandler {
 
         Ok(())
     }
-    fn on_load_delayed(&self) -> Result<()> {
+    fn on_load_delayed(&self) -> ProcResult {
         Ok(())
     }
-    fn on_unloaded(&self) -> Result<()> {
+    fn on_unloaded(&self) -> ProcResult {
         let flags = StateFlags::new()?;
 
         if flags.fast_quitout {
@@ -72,18 +72,18 @@ impl GameStateHandler {
 }
 
 impl StateFlags {
-    pub fn new() -> Result<Self> {
+    pub fn new() -> ProcResult<Self> {
         let mut flags = Self::default();
         flags.update()?;
         Ok(flags)
     }
-    pub fn update(&mut self) -> Result<()> {
+    pub fn update(&mut self) -> ProcResult {
         let flags = read::<[u8; 0x100]>(CaveOffset::StateHandlerFlags.addr())?;
         self.player_no_death = read_flag_from_slice(&flags, StateFlagOffset::PlayerNoDeath)?;
         self.fast_quitout = read_flag_from_slice(&flags, StateFlagOffset::FastQuitout)?;
         Ok(())
     }
-    pub fn set(flag_offset: StateFlagOffset, state: bool) -> Result<()> {
+    pub fn set(flag_offset: StateFlagOffset, state: bool) -> ProcResult {
         write::<u8>(CaveOffset::StateHandlerFlags.addr() + flag_offset as u64, state as u8)
     }
     pub const fn const_default() -> Self {
@@ -100,18 +100,21 @@ pub enum StateFlagOffset {
     FastQuitout = 0x1,
 }
 
-fn read_flag_from_slice(flags: &[u8; 0x100], flag_offset: StateFlagOffset) -> Result<bool> {
+fn read_flag_from_slice(flags: &[u8; 0x100], flag_offset: StateFlagOffset) -> Result<bool, SliceError> {
     read_from_slice::<u8>(flags, flag_offset as u64).map(|val| val != 0x0)
 }
 
-pub fn is_loading_screen() -> Result<bool> {
-    read::<u64>(game_manager_imp::base_ptr())
-        .and_then(|addr| read::<u8>(addr + game_manager_imp::loading_flag()))
-        .map(|val| val == 1)
+pub fn is_loading_screen() -> bool {
+    read_address(game_manager_imp::base_ptr())
+        .add_offset(game_manager_imp::LOADING_FLAG)
+        .read::<u8>()
+        .map(|val| val == 0x1)
+        .unwrap_or_default()
 }
 
-pub fn is_loaded() -> Result<bool> {
+pub fn is_loaded() -> bool {
     read_address(game_manager_imp::base_ptr())
-        .and_then(|addr| read_address(addr + game_manager_imp::player_ctrl()))
-        .map(|val| val != 0)
+        .read_offset(game_manager_imp::PLAYER_CTRL)
+        .map(|val| val != 0x0)
+        .unwrap_or_default()
 }

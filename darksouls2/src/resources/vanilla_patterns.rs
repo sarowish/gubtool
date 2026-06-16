@@ -1,4 +1,4 @@
-use engine::aob_scanner::{AobScan, ScanMode};
+use gubtool_core::aob_scanner::{AobScan, ScanMode};
 
 pub const GAME_MANAGER_IMP: AobScan = AobScan {
     name: "GameManagerImp",
@@ -94,6 +94,38 @@ pub const MAKE_SOUND: AobScan = AobScan {
     scan_origin: 0x1A173C,
     offset: 1,
     scan_mode: ScanMode::Relative(4),
+};
+
+pub const BONFIRE_REST: AobScan = AobScan {
+    name: "BonfireRest()",
+    pattern: "0f 57 c0 8b ce c7 46 ? 01 00 00 00 f3 0f 11 46 ? c7 46 ? 00 00 00 00 c7 46 ? 00 00 00 00 e8 ? ? ? ? b0 01 5e 5d c2 04 00",
+    scan_origin: 0x208df0,
+    offset: -38,
+    scan_mode: ScanMode::Absolute,
+};
+
+pub const BONFIRE_UNLOCK: AobScan = AobScan {
+    name: "BonfireUnlock()",
+    pattern: "55 8b ec 51 8b 45 ? 53 8b d9 89 45 fc 85 c0 74 ? 3d ff ff 00 00",
+    scan_origin: 0x207370,
+    offset: 0,
+    scan_mode: ScanMode::Absolute,
+};
+
+pub const OPEN_MENU: AobScan = AobScan {
+    name: "OpenMenu()",
+    pattern: "55 8b ec 53 8b 5d 08 83 7b 20 00 56 8b f1",
+    scan_origin: 0x21cca0,
+    offset: 0,
+    scan_mode: ScanMode::Absolute,
+};
+
+pub const MENU_CHR_STATE: AobScan = AobScan {
+    name: "MenuChrState()",
+    pattern: "55 8b ec 8b 45 ? 83 f8 14 7d ? 53 8b 5d ? 32 d2 56",
+    scan_origin: 0x4FAD30,
+    offset: 0,
+    scan_mode: ScanMode::Absolute,
 };
 
 pub const SET_SHARED_FLAG: AobScan = AobScan {
@@ -220,7 +252,7 @@ pub const PLAYER_SILENT: AobScan = AobScan {
     name: "PlayerSilent",
     pattern: "E8 ? ? ? ? 84 C0 74 3F 8B 86",
     scan_origin: 0x1A196E,
-    offset: -11,
+    offset: -10,
     scan_mode: ScanMode::Absolute,
 };
 
@@ -229,6 +261,22 @@ pub const MENU_TRANSITION: AobScan = AobScan {
     pattern: "0f 85 ? ? ? ? 8b 4e ? 8b 11 8b 02 6a 00",
     scan_origin: 0x187E9E,
     offset: 0,
+    scan_mode: ScanMode::Absolute,
+};
+
+pub const NO_ROLL: AobScan = AobScan {
+    name: "NoRoll",
+    pattern: "e8 ? ? ? ? 32 c0 5d c2 04 00 b0 01 5d c2 04 00",
+    scan_origin: 0x3B6A0C,
+    offset: 11,
+    scan_mode: ScanMode::Absolute,
+};
+
+pub const NO_BACKSTEP: AobScan = AobScan {
+    name: "NoBackstep",
+    pattern: "32 c0 5d c2 04 00 e8 ? ? ? ? 84 c0 0f 95 c0 5d c2 04 00",
+    scan_origin: 0x3B6D21,
+    offset: 13,
     scan_mode: ScanMode::Absolute,
 };
 

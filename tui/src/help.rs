@@ -5,7 +5,7 @@ use crate::{
 use ratatui::{
     Frame,
     text::{Line, Span, Text},
-    widgets::{Clear, Paragraph, Wrap},
+    widgets::{Clear, Paragraph},
 };
 
 const ENTRIES: &[(&str, &str)] = &[
@@ -25,26 +25,26 @@ const ENTRIES: &[(&str, &str)] = &[
     ("ctrl-u", "Scroll up"),
     ("ctrl-d", "Scroll down"),
     ("f12", "Change TUI theme"),
+    ("ctrl-f12", "Memory Editor"),
     ("f1", "Help"),
 ];
 
 pub fn draw(frame: &mut Frame) {
     let layout = centered_rect(60, 75, frame.area());
     frame.render_widget(Clear, layout);
-    frame.render_widget(paragraph(), layout);
+    frame.render_widget(help_paragraph(ENTRIES, 22), layout);
 }
 
-fn paragraph() -> Paragraph<'static> {
-    let lines: Vec<Line> = ENTRIES
+pub fn help_paragraph(entries: &'static [(&str, &str)], padding: usize) -> Paragraph<'static> {
+    let lines: Vec<Line> = entries
         .iter()
         .map(|f| {
             Line::from(vec![
-                Span::raw(format!("{:<22}",f.0)).style(theme().info),
+                Span::raw(format!("{:<padding$}",f.0)).style(theme().info),
                 Span::raw(f.1).style(theme().fg),
             ])
         })
     .collect();
     Paragraph::new(Text::from(lines))
-        .wrap(Wrap { trim:true })
         .block(block(Some("Help"), None))
 }

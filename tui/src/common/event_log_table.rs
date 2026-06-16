@@ -17,7 +17,6 @@ pub const CONTROLS: &[(&str, &str)] = &[
     ("Enter", "Toggle"),
     ("c", "Clear"),
     ("x", "Export"),
-    ("v", "Duplicates"),
 ];
 
 pub fn logs_table(logger: &impl EventLogger, style: Style, enabled: bool) -> Table<'static> {

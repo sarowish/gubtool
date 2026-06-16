@@ -1,5 +1,5 @@
 use crate::offsets::module_offsets;
-use engine::{
+use gubtool_core::{
     attached::{module_base, version},
     game_version::EldenRingVersion::*,
 };

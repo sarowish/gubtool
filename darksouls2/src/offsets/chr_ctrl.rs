@@ -1,103 +1,85 @@
-use crate::mem::is_scholar;
+use crate::offsets::Offset;
 
-pub fn chr_id() -> u64 {
-    0x0
-}
+pub const CHR_ID: Offset = Offset {
+    vanilla: 0x0,
+    scholar: 0x0,
+};
 
-pub fn rotation() -> u64 {
-    match is_scholar() {
-        true => 0x60,
-        false => 0x40,
-    }
-}
+pub const ROTATION: Offset = Offset {
+    vanilla: 0x40,
+    scholar: 0x60,
+};
 
-pub fn orientation() -> u64 {
-    match is_scholar() {
-        true => 0x80,
-        false => 0x60,
-    }
-}
+pub const ORIENTATION: Offset = Offset {
+    vanilla: 0x60,
+    scholar: 0x80,
+};
 
-pub fn stats_ptr() -> u64 {
-    match is_scholar() {
-        true => 0x490,
-        false => 0x378,
-    }
-}
+pub const STATS_PTR: Offset = Offset {
+    vanilla: 0x378,
+    scholar: 0x490,
+};
 
-pub fn params_ptr() -> u64 {
-    match is_scholar() {
-        true => 0x38,
-        false => 0x20,
-    }
-}
+pub const PARAMS_PTR: Offset = Offset {
+    vanilla: 0x20,
+    scholar: 0x38,
+};
 
-pub fn coords() -> u64 {
-    match is_scholar() {
-        true => 0x90,
-        false => 0x80,
-    }
-}
+pub const COORDS: Offset = Offset {
+    vanilla: 0x80,
+    scholar: 0x90,
+};
 
-pub fn health() -> u64 {
-    match is_scholar() {
-        true => 0x168,
-        false => 0xFC,
-    }
-}
+pub const HEALTH: Offset = Offset {
+    vanilla: 0xFC,
+    scholar: 0x168,
+};
 
-pub fn min_health() -> u64 {
-    match is_scholar() {
-        true => 0x16C,
-        false => 0x100,
-    }
-}
+pub const MIN_HEALTH: Offset = Offset {
+    vanilla: 0x100,
+    scholar: 0x16C,
+};
 
-pub fn max_health() -> u64 {
-    match is_scholar() {
-        true => 0x170,
-        false => 0x104,
-    }
-}
+pub const MAX_HEALTH: Offset = Offset {
+    vanilla: 0x104,
+    scholar: 0x170,
+};
 
-pub fn poise() -> u64 {
-    match is_scholar() {
-        true => 0x218,
-        false => 0x1AC,
-    }
-}
+pub const POISE: Offset = Offset {
+    vanilla: 0x1AC,
+    scholar: 0x218,
+};
 
-pub fn min_poise() -> u64 {
-    match is_scholar() {
-        true => 0x21C,
-        false => 0x1B0,
-    }
-}
+pub const MIN_POISE: Offset = Offset {
+    vanilla: 0x1B0,
+    scholar: 0x21C,
+};
 
-pub fn max_poise() -> u64 {
-    match is_scholar() {
-        true => 0x220,
-        false => 0x1B4,
-    }
-}
+pub const MAX_POISE: Offset = Offset {
+    vanilla: 0x1B4,
+    scholar: 0x220,
+};
 
-pub fn posture() -> u64 {
-    match is_scholar() {
-        true => 0x1B8,
-        false => 0x14C,
-    }
-}
+pub const POSTURE: Offset = Offset {
+    vanilla: 0x14C,
+    scholar: 0x1B8,
+};
 
-pub fn min_posture() -> u64 {
-    match is_scholar() {
-        true => 0x1BC,
-        false => 0x150,
-    }
-}
+pub const MIN_POSTURE: Offset = Offset {
+    vanilla: 0x150,
+    scholar: 0x1BC,
+};
 
-pub fn max_posture() -> u64 {
-    match is_scholar() {
-        true => 0x1C0,
-        false => 0x154,
-    }
+pub const MAX_POSTURE: Offset = Offset {
+    vanilla: 0x154,
+    scholar: 0x1C0,
+};
+
+pub mod stats_offsets {
+    use crate::offsets::Offset;
+
+    pub const COVENANT: Offset = Offset {
+        vanilla: 0x1A9,
+        scholar: 0x1AD,
+    };
 }

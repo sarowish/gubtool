@@ -1,0 +1,18 @@
+[package]
+name = "gubtool-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bincode = { workspace = true }
+pelite = { workspace = true }
+nix = { workspace = true }
+libc = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+utils = { version = "0.1.0", path = "../utils" }
+arboard = { version = "3.6.1", features = ["wayland-data-control", "wl-clipboard-rs"] }
+
+[build-dependencies]
+utils = { version = "0.1.0", path = "../utils" }

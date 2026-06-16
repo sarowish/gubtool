@@ -1,14 +1,16 @@
 use crate::{
     mem::*,
     offsets::{
-        code_cave::CaveOffset, functions,
+        ChainReadExt,
+        code_cave::CaveOffset,
+        functions,
         game_manager_imp::{self, event_manager_offsets},
     },
     resources::{bonfires::Bonfire, bosses::Boss, scholar, vanilla},
     utils::character_loaded_check,
 };
-use anyhow::{Result, anyhow};
-use shared::slice_ops::*;
+use gubtool_core::sys::error::ProcResult;
+use utils::slice_ops::*;
 
 const DEFAULT_TRANSITION_MODE: u32 = 6;
 const DEFAULT_SPAWN_ANIM: u32 = 3;
@@ -32,7 +34,7 @@ struct WarpRequest {
 #[repr(C, packed)]
 union Payload {
     pos: [f32; 4],
-    payload_id: i32,
+    payload_id: u32,
 }
 
 enum WarpKind {
@@ -69,10 +71,7 @@ impl WarpRequest {
 }
 
 impl Boss {
-    pub fn warp(&self) -> Result<()> {
-        let _handle = TRAVEL_MUTEX.try_lock()
-            .map_err(|_| anyhow!("Is already travelling"))?;
-
+    pub fn warp(&self) -> anyhow::Result<()> {
         character_loaded_check()?;
 
         let request = WarpRequest {
@@ -82,15 +81,13 @@ impl Boss {
             map_id: self.map_id as u32,
             ..Default::default()
         };
-        warp(request)
+        warp(request)?;
+        Ok(())
     }
 }
 
 impl Bonfire {
-    pub fn warp(&self) -> Result<()> {
-        let _handle = TRAVEL_MUTEX.try_lock()
-            .map_err(|_| anyhow!("Is already travelling"))?;
-
+    pub fn warp(&self) -> anyhow::Result<()> {
         character_loaded_check()?;
 
         let request = WarpRequest {
@@ -99,48 +96,38 @@ impl Bonfire {
             payload: Payload { payload_id: self.bonfire_id },
             ..Default::default()
         };
-        warp(request)
+        warp(request)?;
+        Ok(())
     }
 }
 
-fn warp(request: WarpRequest) -> Result<()> {
+fn warp(request: WarpRequest) -> ProcResult {
+    // let _handle = TRAVEL_MUTEX.try_lock()
+        // .map_err(|_| anyhow!("Is already travelling"))?;
+
     let request_loc = CaveOffset::WarpRequestStruct.addr();
     let location = CaveOffset::WarpRequestAsm.addr();
 
     write_bytes(request_loc, &request.to_array())?;
 
     let warp_manager = read_address(game_manager_imp::base_ptr())
-        .and_then(|addr| read_address(addr + game_manager_imp::event_manager()))
-        .and_then(|addr| read_address(addr + event_manager_offsets::event_warp_manager()))?;
+        .read_offset(game_manager_imp::EVENT_MANAGER)
+        .read_offset(event_manager_offsets::EVENT_WARP_MANAGER)?;
 
-    if is_scholar() {
-        write_warp_scholar(location, request_loc, warp_manager)?
+    let asm = if is_scholar() {
+        let fun = scholar::ASM.get_function("warp");
+        let mut asm = fun.get_bytes();
+        write_to_slice::<u64>(&mut asm, fun.reloc("warp_manager"), warp_manager)?;
+        write_to_slice::<u64>(&mut asm, fun.reloc("request_loc"), request_loc)?;
+        write_to_slice::<u64>(&mut asm, fun.reloc("fn_request_warp"), functions::warp())?;
+        asm
     } else {
-        write_warp_vanilla(location, request_loc, warp_manager)?
-    }
-    run_thread(location)
-}
-
-fn write_warp_scholar(location: u64, request_loc: u64, warp_manager: u64) -> Result<()> {
-    let fun = scholar::ASM.get_function("warp_request");
-    let mut asm = fun.get_bytes();
-
-    write_to_slice::<u64>(&mut asm, fun.reloc("warp_manager"), warp_manager)?;
-    write_to_slice::<u64>(&mut asm, fun.reloc("request_loc"), request_loc)?;
-    write_to_slice::<u64>(&mut asm, fun.reloc("fn_request_warp"), functions::warp())?;
-    append_flag_setter(location, &mut asm)?;
-
-    write_bytes(location, &asm)
-}
-
-fn write_warp_vanilla(location: u64, request_loc: u64, warp_manager: u64) -> Result<()> {
-    let fun = vanilla::ASM.get_function("warp_request");
-    let mut asm = fun.get_bytes();
-
-    write_to_slice::<u32>(&mut asm, fun.reloc("warp_manager"), warp_manager)?;
-    write_to_slice::<u32>(&mut asm, fun.reloc("request_loc"), request_loc)?;
-    write_to_slice::<u32>(&mut asm, fun.reloc("fn_request_warp"), functions::warp())?;
-    append_flag_setter(location, &mut asm)?;
-
-    write_bytes(location, &asm)
+        let fun = vanilla::ASM.get_function("warp");
+        let mut asm = fun.get_bytes();
+        write_to_slice::<u32>(&mut asm, fun.reloc("warp_manager"), warp_manager)?;
+        write_to_slice::<u32>(&mut asm, fun.reloc("request_loc"), request_loc)?;
+        write_to_slice::<u32>(&mut asm, fun.reloc("fn_request_warp"), functions::warp())?;
+        asm
+    };
+    spawn_thread_join(location, asm)
 }

@@ -3,5 +3,5 @@ const FOLDERS: &[(&'static str, &'static str, bool); 1] = &[
 ];
 
 fn main() {
-    shared::object::build(FOLDERS)
+    utils::object::build(FOLDERS)
 }

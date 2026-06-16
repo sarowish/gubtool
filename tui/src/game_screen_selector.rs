@@ -5,7 +5,7 @@ use crate::{
 };
 use config::Config;
 use crossterm::event::{KeyCode, KeyEvent};
-use engine::game_version::Game;
+use gubtool_core::game_version::Game;
 use ratatui::{
     Frame,
     widgets::{Clear, List, ListItem},
@@ -43,13 +43,13 @@ impl GameScreenSelector {
     pub fn handle_keys(&mut self, key: KeyEvent, game_screen: &mut Game, current_screen: &mut CurrentScreen) {
         self.list.handle_keys(key);
         match (key.code, key.modifiers) {
-            (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Game,
+            (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Main,
             (KeyCode::Enter, _) => {
                 if let Some(idx) = self.list.selected() {
                     let game = GAMES[idx];
                     *game_screen = game;
                     let _ = UiState::update(|c| c.global.game_screen = game );
-                    *current_screen = CurrentScreen::Game
+                    *current_screen = CurrentScreen::Main
                 }
             }
             _ => (),

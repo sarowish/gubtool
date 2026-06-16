@@ -2,14 +2,14 @@ use crate::{
     chr_ins::{ChrInsExt, chr_ins_from_handle},
     emevd,
     mem::*,
-    offsets::{code_cave::CaveOffset, game_data_man, menu_man, world_chr_man},
+    offsets::{ChainReadExt, code_cave::CaveOffset, game_data_man, menu_man, world_chr_man},
     player::{self, player_ins, torrent_ins},
     target::target_ins,
     utility,
     utils::{is_dlc_available, is_version_dlc_compat},
 };
-use anyhow::Result;
-use shared::slice_ops::*;
+use gubtool_core::sys::error::ProcResult;
+use utils::slice_ops::*;
 
 #[derive(Default)]
 pub struct GameStateHandler {
@@ -33,16 +33,16 @@ pub struct StateFlags {
 impl GameStateHandler {
     pub fn new() -> Self {
         Self {
-            loaded: true,
+            loaded: false,
             has_invoked_load_delayed: true,
             has_invoked_loaded: true,
             dlc: is_version_dlc_compat(),
         }
     }
 
-    pub fn poll(&mut self) -> Result<()> {
-        if is_loaded().unwrap_or_default() {
-            if !self.has_invoked_load_delayed && self.has_invoked_loaded && is_faded_in()? {
+    pub fn poll(&mut self) -> ProcResult {
+        if is_loaded() {
+            if !self.has_invoked_load_delayed && self.has_invoked_loaded && is_faded_in() {
                 self.on_load_delayed()?;
                 self.has_invoked_load_delayed = true;
             }
@@ -51,7 +51,7 @@ impl GameStateHandler {
                 self.on_loaded()?;
                 self.has_invoked_loaded = true;
 
-                if is_new_game().unwrap_or_default() {
+                if is_new_game() {
                     self.on_new_game()?;
                 }
             }
@@ -63,7 +63,7 @@ impl GameStateHandler {
         }
         Ok(())
     }
-    fn on_loaded(&mut self) -> Result<()> {
+    fn on_loaded(&mut self) -> ProcResult {
         let flags = StateFlags::new()?;
 
         if flags.player_no_damage {
@@ -89,7 +89,7 @@ impl GameStateHandler {
         Ok(())
     }
 
-    fn on_load_delayed(&self) -> Result<()> {
+    fn on_load_delayed(&self) -> ProcResult {
         let flags = StateFlags::new()?;
 
         if flags.rfbs {
@@ -105,18 +105,18 @@ impl GameStateHandler {
         write::<u64>(CaveOffset::LookedUpHandle.addr(), target_ins().handle().unwrap_or_default()).ok();
     }
 
-    fn on_new_game(&self) -> Result<()> {
+    fn on_new_game(&self) -> ProcResult {
         Ok(())
     }
 }
 
 impl StateFlags {
-    pub fn new() -> Result<Self> {
+    pub fn new() -> ProcResult<Self> {
         let mut flags = Self::default();
         flags.update()?;
         Ok(flags)
     }
-    pub fn update(&mut self) -> Result<()> {
+    pub fn update(&mut self) -> ProcResult {
         let flags = read::<[u8; 0x100]>(CaveOffset::StateHandlerFlags.addr())?;
         self.player_no_damage = read_flag_from_slice(&flags, StateFlagOffset::PlayerNoDamage)?;
         self.rfbs = read_flag_from_slice(&flags, StateFlagOffset::Rfbs)?;
@@ -127,7 +127,7 @@ impl StateFlags {
         self.hitboxes = read_flag_from_slice(&flags, StateFlagOffset::Hitboxes)?;
         Ok(())
     }
-    pub fn set(flag_offset: StateFlagOffset, state: bool) -> Result<()> {
+    pub fn set(flag_offset: StateFlagOffset, state: bool) -> ProcResult {
         write::<u8>(CaveOffset::StateHandlerFlags.addr() + flag_offset as u64, state as u8)
     }
     pub const fn const_default() -> Self {
@@ -154,24 +154,29 @@ pub enum StateFlagOffset {
     Hitboxes = 0x6,
 }
 
-fn read_flag_from_slice(flags: &[u8; 0x100], flag_offset: StateFlagOffset) -> Result<bool> {
+fn read_flag_from_slice(flags: &[u8; 0x100], flag_offset: StateFlagOffset) -> Result<bool, SliceError> {
     read_from_slice::<u8>(flags, flag_offset as u64).map(|val| val != 0x0)
 }
 
-pub fn is_loaded() -> Result<bool> {
+pub fn is_loaded() -> bool {
     read::<u64>(world_chr_man::base_ptr())
-        .and_then(|addr| read::<u64>(addr + world_chr_man::player_ins()))
+        .read_offset(world_chr_man::player_ins())
         .map(|val| val != 0)
+        .unwrap_or_default()
 }
 
-fn is_faded_in() -> Result<bool> {
+fn is_faded_in() -> bool {
     read::<u64>(menu_man::base_ptr())
-        .and_then(|addr| read::<u8>(addr + menu_man::is_fading()))
+        .add_offset(menu_man::is_fading())
+        .read::<u8>()
         .map(|val| val == 0x0)
+        .unwrap_or_default()
 }
 
-fn is_new_game() -> Result<bool> {
+fn is_new_game() -> bool {
     read::<u64>(game_data_man::base_ptr())
-        .and_then(|addr| read::<u64>(addr + game_data_man::IGT))
+        .add_offset(game_data_man::IGT)
+        .read::<u64>()
         .map(|val| val < 5000)
+        .unwrap_or_default()
 }

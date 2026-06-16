@@ -12,3 +12,7 @@ pub const FIRE_GIANT_P2: u32 = 1052520800;
 pub const NOBLE_MANOR: u32 = 16000850;
 pub const NOBLE_DUO: u32 = 13000852;
 pub const APOSTLE_DUO: u32 = 13000851;
+pub const GDUO_MASTER: u32 = 13000850;
+pub const PLACIDUSAX: u32 = 13000830;
+pub const GOD_SERPENT: u32 = 16000801;
+pub const RYKARD: u32 = 16000800;

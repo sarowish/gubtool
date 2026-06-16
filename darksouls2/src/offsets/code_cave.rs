@@ -1,11 +1,12 @@
+use crate::offsets::Offset;
+use gubtool_core::attached::module_base;
+
 pub const SIZE: usize = 0x5000;
 
-fn base() -> u64 {
-    engine::attached::module_base() + match crate::mem::is_scholar() {
-        true => 0x1700000,
-        false => 0x1250000,
-    }
-}
+pub const BASE: Offset = Offset {
+    vanilla: 0x1250000,
+    scholar: 0x1800000,
+};
 
 #[repr(u64)]
 pub enum CaveOffset {
@@ -14,6 +15,9 @@ pub enum CaveOffset {
     SavedTargetPointer = 0x340,                         // u64
     WarpRequestStruct = 0x350,                          // 0x40
     CreditsModifyOnceFlag = 0x3A0,                      // u8
+    OpenMenuArgs = 0x3B0,                               // 0x30
+    NpcTalkArgs = 0x3E0,                                // 0x30
+    NpcPos = 0x410,                                     // 0x20
 
     StateHandlerFlags = 0xF00,                          // 0x100
     // Hooks
@@ -33,6 +37,11 @@ pub enum CaveOffset {
     ItemSpawnAsm = 0x20B0,                              // 0x125
     SetEventAsm = 0x21F0,                               // 0x2F
     GiveSoulsAsm = 0x2230,                              // 0x29
+    BonfireUnlockAsm = 0x2270,                          // 0x27
+    BonfireUnlockAllAsm = 0x22B0,                       // 0x4B
+    BonfireRestAsm = 0x23A0,                            // 0x25
+    OpenMenuAsm = 0x23E0,                               // 0x33
+    MenuChrStateAsm = 0x2430,                           // 0x2A
 
 
     EventLogWriteIdx = 0x3FFC,                          // i32
@@ -41,7 +50,7 @@ pub enum CaveOffset {
 
 impl CaveOffset {
     pub fn addr(self) -> u64 {
-        base() + self as u64
+        module_base().saturating_add(BASE.resolve()).saturating_add(self as u64)
     }
 }
 

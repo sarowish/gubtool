@@ -12,11 +12,12 @@ clap = { workspace = true }
 once_cell = { workspace = true }
 bincode = { workspace = true }
 
-engine = { version = "0.1.0", path = "../engine" }
+gubtool-core = { version = "0.1.0", path = "../gubtool-core" }
 shared = { version = "0.1.0", path = "../shared" }
+utils = { version = "0.1.0", path = "../utils" }
 
 [build-dependencies]
-shared = { version = "0.1.0", path = "../shared" }
+utils = { version = "0.1.0", path = "../utils" }
 
 [lints]
 workspace = true

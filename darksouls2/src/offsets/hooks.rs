@@ -1,5 +1,5 @@
 use crate::offsets::module_offsets::module_offsets;
-use engine::attached::module_base;
+use gubtool_core::attached::module_base;
 
 pub fn set_shared_flag() -> u64 {
     module_base() + module_offsets().hooks.set_shared_flag

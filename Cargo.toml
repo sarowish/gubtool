@@ -4,9 +4,10 @@ members = [
     "config",
     "darksouls2",
     "eldenring",
-    "engine",
+    "gubtool-core",
     "shared",
     "tui",
+    "utils",
 ]
 resolver = "3"
 
@@ -15,7 +16,7 @@ nix = { version = "0.31.1", features = ["ptrace", "uio", "signal"] }
 pelite = "0.10.0"
 once_cell = "1.21.3"
 clap = { version = "4.5.57", features = ["derive"] }
-anyhow = "1.0.101"
+anyhow = { version = "1.0.102", features = ["std"] }
 ratatui = "0.30.0"
 crossterm = "0.29.0"
 color-eyre = "0.6.5"
@@ -25,7 +26,6 @@ unicode-segmentation = "1.12.0"
 unicode-width = "0.2.0"
 toml = "1.0.6"
 serde = { version = "1.0.228", features = ["derive"]}
-serde_derive = "1.0.228"
 thiserror = "2.0.18"
 ratatui-themes = "0.2.0"
 phf = { version = "0.13.1", features = ["macros"]}

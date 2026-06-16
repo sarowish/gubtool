@@ -4,18 +4,17 @@ use crate::{
     event::ResultExt,
     theme::{self, theme},
 };
-use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use engine::attached::{self, GameProcess};
+use gubtool_core::attached::{self, GameProcess};
 use nix::{
     sys::signal::{self, Signal},
     unistd::Pid,
 };
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout},
     style::{Style, Stylize},
-    widgets::{Cell, Clear, Paragraph, Row, Table, TableState},
+    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState, Wrap},
 };
 
 const CONTROLS: &[(&str, &str)] = &[
@@ -41,29 +40,40 @@ impl ProcessSelector {
         self.update_processes();
 
         let layout = centered_rect(75, 75, frame.area());
+        let block = block(Some("Valid Processes"), None);
         frame.render_widget(Clear, layout);
-        let [_padding, path_area] = Layout::default()
+        frame.render_widget(&block, layout);
+
+        let [processes_area, path_area] = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![
                 Constraint::Fill(1),
-                Constraint::Length(1),
+                Constraint::Length(4),
             ])
-            .areas(layout);
+            .areas(block.inner(layout));
 
-        frame.render_stateful_widget(Self::table(&self.available_processes), layout, &mut self.table);
-        frame.render_widget(Self::path_paragraph(&self.available_processes, self.table.selected()), path_area);
+        frame.render_stateful_widget(
+            Self::table(&self.available_processes),
+            processes_area,
+            &mut self.table
+        );
+        frame.render_widget(
+            Self::path_paragraph(&self.available_processes, self.table.selected()),
+            path_area
+        );
         draw_controls(frame, layout, CONTROLS);
     }
 
     fn path_paragraph(processes: &[GameProcess], selected: Option<usize>) -> Paragraph<'static> {
         let text = {
             if let Some(idx) = selected && idx < processes.len() {
-                format!("{}", processes[idx].path.display())
+                format!("{}", processes[idx].exe_path.display())
             } else {
                 "".to_string()
             }
         };
-        Paragraph::new(text).alignment(Alignment::Center)
+        Paragraph::new(text).wrap(Wrap { trim: true })
+            .block(Block::new().borders(Borders::TOP))
     }
 
     fn table(processes: &[GameProcess]) -> Table<'static> {
@@ -95,12 +105,11 @@ impl ProcessSelector {
             .header(header)
             .highlight_symbol(theme::HIGHLIGHT_SYMBOL)
             .row_highlight_style(Style::from(theme().accent).bold())
-            .block(block(Some("Valid Processes"), None))
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent, current_screen: &mut CurrentScreen) -> Option<GameProcess> {
         match (key.code, key.modifiers) {
-            (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Game,
+            (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Main,
             (KeyCode::Enter, _) => {
                 if let Some(selected) = self.table.selected() {
                     let mut processes = attached::get_processes();
@@ -121,8 +130,8 @@ impl ProcessSelector {
         None
     }
 
-    fn kill_process(pid: Pid) -> Result<()> {
-        Ok(signal::kill(pid, Signal::SIGTERM)?)
+    fn kill_process(pid: Pid) -> Result<(), std::io::Error> {
+        Ok(signal::kill(pid, Signal::SIGKILL)?)
     }
 
     pub fn update_processes(&mut self)  {

@@ -1,8 +1,11 @@
 use crate::{
-    app::App, common::{block, blockless_list, label_list, stateful_list::StatefulList, tab_state::TabState}, darksouls2_screen::GameState, event::{Event, ResultExt, send_event}, theme::theme
+    common::{
+        block, blockless_list, controls::draw_controls, label_list, stateful_list::StatefulList,
+        tab_state::TabState,
+    }, darksouls2_screen::GameState, event::{AnyhowExt, ResultExt}, input::fuzzy_finder::FuzzyFinder, theme::theme
 };
-use crossterm::event::{KeyCode, KeyEvent};
-use darksouls2::resources::{bonfires, bosses};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use darksouls2::{bonfire, resources::{bonfires, bosses}};
 use nucleo_matcher::Utf32String;
 use ratatui::{
     Frame,
@@ -17,8 +20,15 @@ use std::thread;
 const BOSSES_IDX: usize = 0;
 const BONFIRES_IDX: usize = 1;
 
+const BONFIRE_CONTROLS: &[(&str, &str)] = &[
+    ("r", "rest"),
+    ("t", "Light"),
+    ("ctrl-t", "Light All"),
+];
+
 pub struct TravelTab {
     tab: TabState,
+    fuzzy_finder: FuzzyFinder,
 }
 
 impl TravelTab {
@@ -28,6 +38,7 @@ impl TravelTab {
         list_states[BONFIRES_IDX] = StatefulList::new(bonfires::BONFIRES.len());
         TravelTab {
             tab: TabState::new(list_states),
+            fuzzy_finder: FuzzyFinder::default(),
         }
     }
 
@@ -46,9 +57,11 @@ impl TravelTab {
             &mut self.tab.get_list_state(BOSSES_IDX),
         );
 
-        let bonfires_block = block(Some("Bonfires"), Some(self.tab.block_style(BONFIRES_IDX)));
+        let bonfires_block = block(Some("Bonfires"), Some(self.tab.block_style(BONFIRES_IDX)))
+            .title(self.bonfire_lit_status_line().right_aligned());
         let bonfires_inner = bonfires_block.inner(layout[BONFIRES_IDX]);
         frame.render_widget(&bonfires_block, layout[BONFIRES_IDX]);
+        draw_controls(frame, layout[BONFIRES_IDX], BONFIRE_CONTROLS);
 
         let [bonfire_name, bonfire_area] = Layout::default()
             .direction(Direction::Horizontal)
@@ -69,39 +82,52 @@ impl TravelTab {
             bonfire_area,
             &mut self.tab.get_list_state(BONFIRES_IDX),
         );
+
+        self.fuzzy_finder.draw_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
+        if self.fuzzy_finder.show {
+            self.fuzzy_finder.handle_keys(key);
+            if key.code == KeyCode::Enter {
+                if let Some(selected) = self.fuzzy_finder.selected_idx() {
+                    self.tab.set_list_selected(self.tab.current_list, selected);
+                }
+            }
+            return;
+        }
+
         self.tab.handle_keys(key);
+
         match key.code {
             KeyCode::Enter => {
                 self.handle_select()
             }
             KeyCode::Char('f') => {
-                if self.tab.current_list == BOSSES_IDX {
-                    let list = bosses::BOSSES.iter()
+                let list = if self.tab.current_list == BOSSES_IDX {
+                    bosses::BOSSES.iter()
                         .map(|boss| Utf32String::from(format!("{}", boss.name)))
-                        .collect();
-
-                    let function = |app: &mut App| {
-                        app.dark_souls_2.travel.tab.set_list_selected(
-                            BOSSES_IDX,
-                            app.fuzzy_finder.selected_idx().unwrap()
-                        )
-                    };
-                    send_event(Event::Search((list, function)))
+                        .collect::<Vec<Utf32String>>()
                 } else {
-                    let list = bonfires::BONFIRES.iter()
+                    bonfires::BONFIRES.iter()
                         .map(|bonfire| Utf32String::from(format!("{}|{}", bonfire.name, bonfire.main_area)))
-                        .collect();
-
-                    let function = |app: &mut App| {
-                        app.dark_souls_2.travel.tab.set_list_selected(
-                            BONFIRES_IDX,
-                            app.fuzzy_finder.selected_idx().unwrap()
-                        )
-                    };
-                    send_event(Event::Search((list, function)))
+                        .collect::<Vec<Utf32String>>()
+                };
+                self.fuzzy_finder.show(list);
+            }
+            KeyCode::Char('t') => {
+                if self.tab.current_list == BONFIRES_IDX {
+                    if key.modifiers == KeyModifiers::CONTROL {
+                        bonfire::light_all_bonfires().send_error();
+                    } else if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
+                        bonfires::BONFIRES[selected].unlock().send_error();
+                    }
+                }
+            }
+            KeyCode::Char('r') => {
+                if self.tab.current_list == BONFIRES_IDX &&
+                let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
+                    bonfires::BONFIRES[selected].rest().send_error();
                 }
             }
             _ => ()
@@ -126,15 +152,23 @@ impl TravelTab {
             .map(|boss| ListItem::from(boss.name)).collect();
 
         blockless_list(items, &self.tab, BOSSES_IDX)
-            .block(block(Some("Bosses"), None).title(self.revive_status_line().right_aligned()))
+            .block(block(Some("Bosses"), None).title(self.boss_alive_status_line().right_aligned()))
     }
 
     fn bonfires_list(&self) -> (List<'static>, List<'static>) {
+        let revive_bonfire_id = bonfire::get_last_bonfire_id().unwrap_or_default();
         let items: (Vec<ListItem>, Vec<ListItem>) = bonfires::BONFIRES.iter()
-            .map(|bonfire| (
-                    ListItem::from(bonfire.name),
-                    ListItem::from(Line::raw(bonfire.main_area)).fg(theme().muted)
-            ))
+            .map(|bonfire| {
+                let name_text = if revive_bonfire_id == bonfire.bonfire_id {
+                        format!("(*) {}", bonfire.name)
+                    } else {
+                        format!("{}", bonfire.name)
+                    };
+                    (
+                        ListItem::from(name_text),
+                        ListItem::from(Line::raw(bonfire.main_area)).fg(theme().muted)
+                    )
+                })
             .collect();
         (
             blockless_list(items.0, &self.tab, BONFIRES_IDX),
@@ -142,7 +176,7 @@ impl TravelTab {
         )
     }
 
-    fn revive_status_line(&self) -> Line<'static> {
+    fn boss_alive_status_line(&self) -> Line<'static> {
         let selected_idx = self.tab.lists_states[BOSSES_IDX].selected().unwrap_or_default();
         let boss = &bosses::BOSSES[selected_idx];
         let mut style = Style::from(theme().success);
@@ -156,6 +190,22 @@ impl TravelTab {
         } else if text == "Dead" {
             style = Style::from(theme().error)
         }
+        Line::from(text)
+            .style(style)
+    }
+
+    fn bonfire_lit_status_line(&self) -> Line<'static> {
+        let selected_idx = self.tab.lists_states[BONFIRES_IDX].selected().unwrap_or_default();
+        let bonfire = &bonfires::BONFIRES[selected_idx];
+        let lit = bonfire.is_lit().unwrap_or_default();
+        let text = if !GameState::loaded() { "" } else if lit { "Lit" } else { "Unlit" };
+        let style = if self.tab.current_list != BONFIRES_IDX {
+            Style::from(theme().fg)
+        } else if lit {
+            Style::from(theme().success)
+        } else {
+            Style::from(theme().error)
+        };
         Line::from(text)
             .style(style)
     }

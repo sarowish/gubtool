@@ -1,13 +1,13 @@
-use crate::resources::areas::MapId;
+use crate::resources::map_ids::MapId;
 
 pub struct Bonfire {
     pub name: &'static str,
     pub main_area: &'static str,
-    pub bonfire_id: i32,
+    pub bonfire_id: u32,
     pub map_id: MapId,
 }
 
-pub static BONFIRES: &[Bonfire; 77] = &[
+pub const BONFIRES: &[Bonfire; 77] = &[
     Bonfire {
         name: "Fire Keeper's Dwelling",
         main_area: "Things Betwixt",

@@ -6,15 +6,12 @@ use crate::{
         stateful_list::StatefulList,
         tab_state::TabState,
         tabs_list,
-    },
-    event::ResultExt,
-    send_input_event,
-    ui_state::UiState,
+    }, event::{AnyhowExt, ResultExt}, input::input_prompt::{InputPrompt, PromptType}, ui_state::UiState
 };
 use crossterm::event::{KeyCode, KeyEvent};
 use darksouls2::{
     event::{self, Ds2EventLogger, is_event_log_hook, set_event_log_hook},
-    resources::{areas::MapId, event_flags::EventFlag},
+    resources::{map_ids::MapId, event_flags::EventFlag},
 };
 use ratatui::{
     Frame,
@@ -44,12 +41,12 @@ enum CommandsItems {
 const COMMANDS_IDX: usize = 0;
 const LOG_IDX: usize = 1;
 
-
 pub struct EventTab {
     tab: TabState,
     event: Option<u32>,
     log: Ds2EventLogger,
     table_state: TableState,
+    input: InputPrompt<InputRequest>,
 }
 
 impl EventTab {
@@ -62,6 +59,7 @@ impl EventTab {
             event: None,
             log: Ds2EventLogger::default(),
             table_state: TableState::default(),
+            input: InputPrompt::new(),
         }
     }
 
@@ -87,12 +85,23 @@ impl EventTab {
             layout[LOG_IDX],
             &mut self.table_state,
         );
+
         draw_controls(frame, layout[LOG_IDX], event_log_table::CONTROLS);
+
+        self.input.draw_popup_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
         if self.tab.current_list == LOG_IDX {
             handle_log_table_keys(&mut self.table_state, &mut self.log, key);
+        }
+
+        if self.input.show {
+            self.input.handle_keys(key);
+            if key.code == KeyCode::Enter {
+                self.handle_input_enter();
+            }
+            return;
         }
 
         self.tab.handle_keys(key);
@@ -116,11 +125,21 @@ impl EventTab {
         }
     }
 
-    fn handle_input(&self) {
+    fn handle_input(&mut self) {
         if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
             match self.tab.current_list {
-                COMMANDS_IDX => CommandsItems::ARRAY[selected].set_input(),
+                COMMANDS_IDX => CommandsItems::ARRAY[selected].set_input(&mut self.input),
                 _ => (),
+            }
+        }
+    }
+
+    fn handle_input_enter(&mut self) {
+        match self.input.last_request.unwrap() {
+            InputRequest::Event => {
+               let val = self.input.parse_text::<u32>();
+                self.event = val;
+                UiState::update_ds2(|c| { c.event = val; }).ok();
             }
         }
     }
@@ -206,11 +225,11 @@ impl CommandsItems {
                     .send_error();
             }
             Self::SkipIvoryGauntlet => {
-                let new_state = !event::is_ivory_gauntlet_skip().unwrap_or_default();
+                let new_state = !event::is_ivory_gauntlet_skip();
                 event::set_ivory_gauntlet_skip(new_state).send_error();
             }
             Self::DisableLoyceKnights => {
-                let new_state = !event::is_ivory_no_knights().unwrap_or_default();
+                let new_state = !event::is_ivory_no_knights();
                 event::set_ivory_no_knights(new_state).send_error();
             }
             Self::ActivateBrume => {
@@ -221,25 +240,9 @@ impl CommandsItems {
             }
         }
     }
-    fn set_input(&self) {
+    fn set_input(&self, input: &mut InputPrompt<InputRequest>) {
         match self {
-            Self::Event => {
-                send_input_event!(text, app, {
-                    if let Ok(v) = text.parse() {
-                        app.dark_souls_2.event.event = Some(v);
-                        UiState::update_ds2(|c| {
-                            c.event = Some(v);
-                        })
-                        .ok();
-                    } else if text.is_empty() {
-                        app.dark_souls_2.event.event = None;
-                        UiState::update_ds2(|c| {
-                            c.event = None;
-                        })
-                        .ok();
-                    }
-                })
-            }
+            Self::Event => input.show("Set New Value", PromptType::U32, InputRequest::Event),
             _ => (),
         }
     }
@@ -303,11 +306,11 @@ impl CommandsItems {
                 "Undo Alsana's Seal".create_toggle_str(state)
             }
             Self::SkipIvoryGauntlet => {
-                let state = event::is_ivory_gauntlet_skip().unwrap_or_default();
+                let state = event::is_ivory_gauntlet_skip();
                 "Skip Ivory King Gauntlet".create_toggle_str(state)
             }
             Self::DisableLoyceKnights => {
-                let state = event::is_ivory_no_knights().unwrap_or_default();
+                let state = event::is_ivory_no_knights();
                 "Disable Loyce Knights".create_toggle_str(state)
             }
             Self::ActivateBrume => {
@@ -339,4 +342,9 @@ impl CommandsItems {
         let items: Vec<ListItem> = array.iter().map(|i| i.to_list_item(event_tab)).collect();
         tabs_list(items, None, &event_tab.tab, COMMANDS_IDX)
     }
+}
+
+#[derive(Clone, Copy)]
+enum InputRequest {
+    Event,
 }

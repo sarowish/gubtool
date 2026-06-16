@@ -1,4 +1,4 @@
-use engine::aob_scanner::{AobScan, ScanMode};
+use gubtool_core::aob_scanner::{AobScan, ScanMode};
 
 pub const GAME_MANAGER_IMP: AobScan = AobScan {
     name: "GameManagerImp",
@@ -93,6 +93,38 @@ pub const MAKE_SOUND: AobScan = AobScan {
     pattern: "57 48 83 ec 20 41 0f b6 f9 49 8b f0 48 8b d9 48 85 d2 74 ? 48 83 ba ? ? ? ? 00 74 ?",
     scan_origin: 0x10E19F,
     offset: -15,
+    scan_mode: ScanMode::Absolute,
+};
+
+pub const BONFIRE_REST: AobScan = AobScan {
+    name: "BonfireRest()",
+    pattern: "40 53 48 83 ec 20 83 79 38 00 48 8b d9 75 ? 85 d2 74 ? 48 83 79 30 00 75 ? e8 ? ? ? ?",
+    scan_origin: 0x17AA30,
+    offset: 0,
+    scan_mode: ScanMode::Absolute,
+};
+
+pub const BONFIRE_UNLOCK: AobScan = AobScan {
+    name: "BonfireUnlock()",
+    pattern: "41 0f b6 f8 48 8b d9 e8 ? ? ? ? 48 85 c0 74 ?",
+    scan_origin: 0x17E32A,
+    offset: -10,
+    scan_mode: ScanMode::Absolute,
+};
+
+pub const OPEN_MENU: AobScan = AobScan {
+    name: "OpenMenu()",
+    pattern: "48 89 5c 24 10 48 89 6c 24 18 56 48 83 ec 20 48 83 7a 28 00",
+    scan_origin: 0x199020,
+    offset: 0,
+    scan_mode: ScanMode::Absolute,
+};
+
+pub const MENU_CHR_STATE: AobScan = AobScan {
+    name: "MenuChrState()",
+    pattern: "4c 63 ca 41 83 f9 14",
+    scan_origin: 0x5013E0,
+    offset: 0,
     scan_mode: ScanMode::Absolute,
 };
 
@@ -229,6 +261,22 @@ pub const MENU_TRANSITION: AobScan = AobScan {
     pattern: "75 ? 48 8b 4f ? 33 d2 48 8b 01 ff 10 c7 47 ? 04 00 00 00 48 83 c4 40 5f c3",
     scan_origin: 0xEF614,
     offset: 0,
+    scan_mode: ScanMode::Absolute,
+};
+
+pub const NO_ROLL: AobScan = AobScan {
+    name: "NoRoll",
+    pattern: "48 8b 48 18 e8 ? ? ? ? 32 c0 48 83 c4 28 c3 b0 01 48 83 c4 28 c3",
+    scan_origin: 0x38E97E,
+    offset: 16,
+    scan_mode: ScanMode::Absolute,
+};
+
+pub const NO_BACKSTEP: AobScan = AobScan {
+    name: "NoBackstep",
+    pattern: "e8 ? ? ? ? 32 c0 48 83 c4 28 c3 e8 ? ? ? ? 84 c0 0f 95 c0 48 83 c4 28 c3",
+    scan_origin: 0x38EA22,
+    offset: 19,
     scan_mode: ScanMode::Absolute,
 };
 

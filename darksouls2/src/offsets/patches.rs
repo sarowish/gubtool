@@ -1,5 +1,5 @@
 use crate::offsets::module_offsets::module_offsets;
-use engine::attached::module_base;
+use gubtool_core::attached::module_base;
 
 pub fn infinite_stamina() -> u64 {
     module_base() + module_offsets().patches.infinite_stamina
@@ -39,4 +39,12 @@ pub fn player_silent() -> u64 {
 
 pub fn menu_transition() -> u64 {
     module_base() + module_offsets().patches.menu_transition
+}
+
+pub fn no_roll() -> u64 {
+    module_base() + module_offsets().patches.no_roll
+}
+
+pub fn no_backstep() -> u64 {
+    module_base() + module_offsets().patches.no_backstep
 }

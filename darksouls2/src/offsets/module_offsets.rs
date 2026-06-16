@@ -2,8 +2,7 @@ use crate::{
     mem::is_scholar,
     resources::{scholar_patterns, vanilla_patterns, versions_module_offsets},
 };
-use anyhow::Result;
-use engine::{aob_scanner, attached::version, game_version::DarkSouls2Version::*};
+use gubtool_core::{aob_scanner::{self, ScanError}, attached::version, game_version::DarkSouls2Version::*};
 
 #[derive(Debug)]
 pub struct ModuleOffsets {
@@ -33,6 +32,10 @@ pub struct Functions {
     pub get_map_entity_with_area_id_and_obj_id: u64,
     pub get_state_act_component: u64,
     pub make_sound: u64,
+    pub bonfire_rest: u64,
+    pub bonfire_unlock: u64,
+    pub open_menu: u64,
+    pub menu_chr_state: u64,
 }
 
 #[derive(Debug)]
@@ -58,6 +61,8 @@ pub struct Patches {
     pub player_hidden: u64,
     pub player_silent: u64,
     pub menu_transition: u64,
+    pub no_roll: u64,
+    pub no_backstep: u64,
 }
 
 #[derive(Debug)]
@@ -75,7 +80,6 @@ pub struct ExternalFunctionPointers {
 
 pub fn module_offsets() -> &'static ModuleOffsets {
     match version() {
-        Some(Vanilla1_0_7) => &versions_module_offsets::VANILLA_1_0_7,
         Some(Vanilla1_0_10) => &versions_module_offsets::VANILLA_1_0_10,
         Some(Vanilla1_0_11) => &versions_module_offsets::VANILLA_1_0_11,
         Some(Vanilla1_0_12) => &versions_module_offsets::VANILLA_1_0_12,
@@ -86,14 +90,14 @@ pub fn module_offsets() -> &'static ModuleOffsets {
     }
 }
 
-pub fn scan() -> Result<ModuleOffsets> {
+pub fn scan() -> Result<ModuleOffsets, ScanError> {
     match is_scholar() {
         true => scan_scholar(),
         false => scan_vanilla(),
     }
 }
 
-fn scan_scholar() -> Result<ModuleOffsets> {
+fn scan_scholar() -> Result<ModuleOffsets, ScanError> {
     Ok(ModuleOffsets {
         base_ptrs: BasePointers {
             game_manager_imp: aob_scanner::scan(scholar_patterns::GAME_MANAGER_IMP)?,
@@ -110,6 +114,10 @@ fn scan_scholar() -> Result<ModuleOffsets> {
             get_map_entity_with_area_id_and_obj_id: aob_scanner::scan(scholar_patterns::GET_MAP_ENTITY_WITH_AREA_ID_AND_OBJ_ID)?,
             get_state_act_component: aob_scanner::scan(scholar_patterns::GET_MAP_OBJ_STATE_ACT_COMPONENT)?,
             make_sound: aob_scanner::scan(scholar_patterns::MAKE_SOUND)?,
+            bonfire_rest: aob_scanner::scan(scholar_patterns::BONFIRE_REST)?,
+            bonfire_unlock: aob_scanner::scan(scholar_patterns::BONFIRE_UNLOCK)?,
+            open_menu: aob_scanner::scan(scholar_patterns::OPEN_MENU)?,
+            menu_chr_state: aob_scanner::scan(scholar_patterns::MENU_CHR_STATE)?,
         },
         hooks: Hooks {
             set_shared_flag: aob_scanner::scan(scholar_patterns::SET_SHARED_FLAG)?,
@@ -131,6 +139,8 @@ fn scan_scholar() -> Result<ModuleOffsets> {
             player_hidden: aob_scanner::scan(scholar_patterns::PLAYER_HIDDEN)?,
             player_silent: aob_scanner::scan(scholar_patterns::PLAYER_SILENT)?,
             menu_transition: aob_scanner::scan(scholar_patterns::MENU_TRANSITION)?,
+            no_roll: aob_scanner::scan(scholar_patterns::NO_ROLL)?,
+            no_backstep: aob_scanner::scan(scholar_patterns::NO_BACKSTEP)?,
         },
         data: Data {
             map_id: aob_scanner::scan(scholar_patterns::MAP_ID)?
@@ -144,7 +154,7 @@ fn scan_scholar() -> Result<ModuleOffsets> {
     })
 }
 
-fn scan_vanilla() -> Result<ModuleOffsets> {
+fn scan_vanilla() -> Result<ModuleOffsets, ScanError> {
     Ok(ModuleOffsets {
         base_ptrs: BasePointers {
             game_manager_imp: aob_scanner::scan(vanilla_patterns::GAME_MANAGER_IMP)?,
@@ -161,6 +171,10 @@ fn scan_vanilla() -> Result<ModuleOffsets> {
             get_map_entity_with_area_id_and_obj_id: aob_scanner::scan(vanilla_patterns::GET_MAP_ENTITY_WITH_AREA_ID_AND_OBJ_ID)?,
             get_state_act_component: aob_scanner::scan(vanilla_patterns::GET_STATE_ACT_COMPONENT)?,
             make_sound: aob_scanner::scan(vanilla_patterns::MAKE_SOUND)?,
+            bonfire_rest: aob_scanner::scan(vanilla_patterns::BONFIRE_REST)?,
+            bonfire_unlock: aob_scanner::scan(vanilla_patterns::BONFIRE_UNLOCK)?,
+            open_menu: aob_scanner::scan(vanilla_patterns::OPEN_MENU)?,
+            menu_chr_state: aob_scanner::scan(vanilla_patterns::MENU_CHR_STATE)?,
         },
         hooks: Hooks {
             set_shared_flag: aob_scanner::scan(vanilla_patterns::SET_SHARED_FLAG)?,
@@ -182,6 +196,8 @@ fn scan_vanilla() -> Result<ModuleOffsets> {
             player_hidden: aob_scanner::scan(vanilla_patterns::PLAYER_HIDDEN)?,
             player_silent: aob_scanner::scan(vanilla_patterns::PLAYER_SILENT).unwrap_or_default(),
             menu_transition: aob_scanner::scan(vanilla_patterns::MENU_TRANSITION)?,
+            no_roll: aob_scanner::scan(vanilla_patterns::NO_ROLL)?,
+            no_backstep: aob_scanner::scan(vanilla_patterns::NO_BACKSTEP)?,
         },
         data: Data {
             map_id: aob_scanner::scan(vanilla_patterns::MAP_ID)?

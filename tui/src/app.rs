@@ -2,20 +2,22 @@ use crate::{
     attach_options::AttachOptions,
     darksouls2_screen::{self, DarkSouls2},
     eldenring_screen::{self, EldenRing},
-    event::{Event, InfoType, ResultExt, send_event, start_event_loop_thread},
-    fuzzy_finder::FuzzyFinder,
+    event::{AnyhowExt, Event, InfoType, ResultExt, send_event, start_event_loop_thread},
     game_screen_selector::GameScreenSelector,
     help,
-    input::Input,
+    memory_viewer_screen::MemoryViewerScreen,
     process_selector::ProcessSelector,
     theme::{THEME, ThemeSelector, theme},
     ui_state::UiState,
 };
-use anyhow::anyhow;
 use color_eyre::eyre::Result;
 use config::Config;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use engine::{attached::{self, GameProcess, game}, game_version::Game, sys};
+use gubtool_core::{
+    attached::{self, GameProcess, game},
+    game_version::Game,
+    sys,
+};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Alignment, Constraint, Direction, Layout},
@@ -31,20 +33,17 @@ pub struct App {
     current_screen: CurrentScreen,
     pub game_screen: Game,
     attached: bool,
-    show_input: bool,
     show_info: bool,
     info_message: String,
     info_type: InfoType,
+    block_inputs: bool,
 
     pub theme: ThemeName,
     theme_selector: ThemeSelector,
-    input: Input,
-    input_enter_fn: fn(String, &mut App),
-    pub fuzzy_finder: FuzzyFinder,
-    fuzzy_picker: fn(&mut App),
     process_selector: ProcessSelector,
     game_screen_selector: GameScreenSelector,
     attach_options: AttachOptions,
+    memory_viewer_screen: MemoryViewerScreen,
 
     pub elden_ring: EldenRing,
     pub dark_souls_2: DarkSouls2,
@@ -55,22 +54,19 @@ impl App {
         App {
             running: true,
             game_screen: Game::EldenRing,
-            current_screen: CurrentScreen::Game,
+            current_screen: CurrentScreen::Main,
             attached: false,
-            show_input: false,
             show_info: false,
             info_message: "".to_string(),
-            info_type: InfoType::Error,
+            info_type: InfoType::SysError,
+            block_inputs: false,
 
-            theme: ThemeName::default(),
+            theme: ThemeName::Dracula,
             theme_selector: ThemeSelector::new(),
-            input: Input::default(),
-            input_enter_fn: |_,_| {},
-            fuzzy_finder: FuzzyFinder::default(),
-            fuzzy_picker: |_| {},
             process_selector: ProcessSelector::new(),
             game_screen_selector: GameScreenSelector::new(),
             attach_options: AttachOptions::new(),
+            memory_viewer_screen: MemoryViewerScreen::new(),
 
             elden_ring: EldenRing::new(),
             dark_souls_2: DarkSouls2::new(),
@@ -82,7 +78,7 @@ impl App {
         THEME.set(RwLock::new(self.theme.palette())).unwrap();
         let rx = start_event_loop_thread();
 
-        self.try_attach(None).send_error();
+        self.try_attach(None);
 
         while self.running {
             terminal.draw(|frame| Self::draw(&mut self, frame))?;
@@ -98,7 +94,7 @@ impl App {
                 }
                 Event::BackgroundTick => {
                     if !self.attached {
-                        self.try_attach(None).send_error()
+                        self.try_attach(None);
                     } else if !attached::is_pid_valid() {
                         self.detach()
                     }
@@ -117,22 +113,15 @@ impl App {
                         }
                     }
                 }
-                Event::Search((list, f)) => {
-                    self.fuzzy_finder.entries = Some(list);
-                    self.fuzzy_finder.update_matches();
-                    self.fuzzy_picker = f;
-                    self.current_screen = CurrentScreen::Search
-                }
-                Event::Input(f) => {
-                    self.input_enter_fn = f;
-                    self.show_input = true;
-                }
                 Event::ApplyAttach => {
                     match game() {
                         Some(Game::EldenRing) => self.elden_ring.on_attach(),
                         Some(Game::DarkSouls2) => self.dark_souls_2.on_attach(),
                         None => Ok(()),
                     }.send_error()
+                }
+                Event::BlockInputs(state) => {
+                    self.block_inputs = state;
                 }
             }
         }
@@ -143,7 +132,7 @@ impl App {
         let background = Block::default().bg(theme().bg);
         frame.render_widget(background, frame.area());
 
-        let constraints = if self.show_info || self.show_input {
+        let constraints = if self.show_info {
             vec![
                 Constraint::Length(1),
                 Constraint::Fill(1),
@@ -174,15 +163,12 @@ impl App {
 
         if self.show_info {
             let style = match self.info_type {
-                InfoType::Error => theme().error,
+                InfoType::SysError => theme().error,
+                InfoType::GameError => theme().warning,
                 InfoType::Success => theme().success,
             };
             let info_paragraph = Paragraph::new(self.info_message.to_string()).style(style);
             frame.render_widget(info_paragraph, layout[2]);
-        } else if self.show_input {
-            let input = Paragraph::new(self.input.to_string()).style(theme().fg);
-            self.input.set_cursor(frame, layout[2]);
-            frame.render_widget(input, layout[2]);
         }
 
         match self.game_screen {
@@ -191,9 +177,6 @@ impl App {
         }
 
         match self.current_screen {
-            CurrentScreen::Search => {
-                self.fuzzy_finder.draw(frame)
-            }
             CurrentScreen::ProcessSelection => {
                 self.process_selector.draw(frame)
             }
@@ -206,6 +189,9 @@ impl App {
             CurrentScreen::AttachOptions => {
                 self.attach_options.draw(frame, &self.game_screen)
             }
+            CurrentScreen::MemoryViewer => {
+                self.memory_viewer_screen.draw(frame, layout[1]);
+            },
             CurrentScreen::Help => {
                 help::draw(frame)
             }
@@ -225,28 +211,10 @@ impl App {
         if self.show_info {
             self.show_info = false;
         }
-        if self.show_input {
-            match key.code {
-                KeyCode::Enter => {
-                    let text = self.input.text.clone();
-                    (self.input_enter_fn)(text, self);
-                    self.input.set_text("");
-                    self.show_input = false
-                }
-                KeyCode::Esc => {
-                    self.input.set_text("");
-                    self.show_input = false
-                }
-                _ => {
-                    self.input.handle_keys(key);
-                }
-            }
-            return;
-        }
         match self.current_screen {
             CurrentScreen::ProcessSelection => {
                 if let Some(process) = self.process_selector.handle_keys(key, &mut self.current_screen) {
-                    self.try_attach(Some(process)).send_error()
+                    self.try_attach(Some(process))
                 }
             },
             CurrentScreen::GameScreenSelection => {
@@ -258,29 +226,19 @@ impl App {
             CurrentScreen::AttachOptions => {
                 self.attach_options.handle_keys(key, &self.game_screen, &mut self.current_screen)
             },
-            CurrentScreen::Help | CurrentScreen::Debug => {
-                self.current_screen = CurrentScreen::Game
+            CurrentScreen::MemoryViewer => {
+                self.memory_viewer_screen.handle_keys(key, &mut self.current_screen)
             },
-            CurrentScreen::Search => {
-                match key.code {
-                    KeyCode::Enter => {
-                        (self.fuzzy_picker)(self);
-                        self.fuzzy_finder.reset();
-                        self.current_screen = CurrentScreen::Game;
-                    }
-                    KeyCode::Esc => {
-                        self.fuzzy_finder.reset();
-                        self.current_screen = CurrentScreen::Game;
-                    }
-                    _ => {
-                        self.fuzzy_finder.handle_keys(key)
-                    }
-                }
-            }
-            CurrentScreen::Game => {
+            CurrentScreen::Help | CurrentScreen::Debug => {
+                self.current_screen = CurrentScreen::Main
+            },
+            CurrentScreen::Main => {
                 match self.game_screen {
-                    Game::EldenRing => self.elden_ring.handle_keys(key),
-                    Game::DarkSouls2 => self.dark_souls_2.handle_keys(key),
+                    Game::EldenRing => self.elden_ring.handle_keys(key, self.block_inputs),
+                    Game::DarkSouls2 => self.dark_souls_2.handle_keys(key, self.block_inputs),
+                }
+                if self.block_inputs {
+                    return;
                 }
                 match (key.code, key.modifiers) {
                     (KeyCode::Char('a'), _) => self.current_screen = CurrentScreen::AttachOptions,
@@ -291,7 +249,8 @@ impl App {
                         CurrentScreen::ProcessSelection
                     },
                     (KeyCode::Char('o'), _) => self.current_screen = CurrentScreen::GameScreenSelection,
-                    (KeyCode::F(12), KeyModifiers::CONTROL) => self.current_screen = CurrentScreen::Debug,
+                    (KeyCode::F(5), KeyModifiers::CONTROL) => self.current_screen = CurrentScreen::Debug,
+                    (KeyCode::F(12), KeyModifiers::CONTROL) => self.current_screen = CurrentScreen::MemoryViewer,
                     (KeyCode::F(12), _) => self.current_screen = CurrentScreen::ThemeSelection,
                     _ => ()
                 }
@@ -299,18 +258,15 @@ impl App {
         }
     }
 
-    fn try_attach(&mut self, process: Option<GameProcess>) -> anyhow::Result<()> {
-        let mut result = Ok(());
+    fn try_attach(&mut self, process: Option<GameProcess>) {
         if let Some(process) = process {
-            if let Some(err) = attached::attach_to_process(process) {
-                result = Err(anyhow!(err))
-            }
+            attached::attach_to_process(process).send_error();
         } else {
             match attached::auto_attach() {
-                Some(err) => if !err.is_none() {
-                    result = Err(anyhow!(err.unwrap()))
+                Some(result) => {
+                    result.send_error();
                 },
-                None => return Ok(()),
+                None => return,
             }
         }
 
@@ -329,7 +285,6 @@ impl App {
         } else {
             send_event(Event::ApplyAttach);
         }
-        result
     }
 
     fn detach(&mut self) {
@@ -338,6 +293,7 @@ impl App {
             Some(Game::DarkSouls2) => self.dark_souls_2.on_unattach(),
             None => (),
         }
+
         attached::detach();
         self.attached = false;
     }
@@ -360,8 +316,12 @@ impl App {
 
     fn dbg_paragraph(&self) -> Paragraph<'static> {
         let debug_info = [
-            format!("Module Handle: {:#X}", attached::module_base()),
-            format!("Process Uptime: {:.1}", sys::get_process_uptime(attached::pid()).unwrap_or_default()),
+            format!("comm: {}", attached::comm()),
+            format!("exe_path: {}", attached::path().display()),
+            format!("module_base: {:#X}", attached::module_base()),
+            format!("is 32 bit: {}", attached::is_32()),
+            format!("process uptime: {:.1}", sys::get_process_uptime(attached::pid()).unwrap_or_default()),
+            format!("\n"),
         ];
 
         let mut lines: Vec<Line> = debug_info.iter().map(|f| Line::raw(f.to_string())).collect();
@@ -376,12 +336,12 @@ impl App {
 
 #[derive(PartialEq)]
 pub enum CurrentScreen {
-    Game,
-    Search,
+    Main,
     Help,
     ProcessSelection,
     ThemeSelection,
     GameScreenSelection,
     AttachOptions,
+    MemoryViewer,
     Debug,
 }

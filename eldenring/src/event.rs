@@ -1,38 +1,28 @@
 use crate::{
-    chr_ins::ChrInsExt,
-    event,
-    mem::*,
-    offsets::{
-        code_cave::CaveOffset, functions, virtual_memory_flag,
-    },
-    player::player_ins,
-    resources::{
+    chr_ins::ChrInsExt, event, mem::*, offsets::{ChainReadExt, code_cave::CaveOffset, functions, virtual_memory_flag}, player, resources::{
         ASM,
         bosses::{Boss, bosses_array},
         talk_commands::TalkCommand,
-    },
-    utils::{character_loaded_check, dlc_check},
+    }, utils::{character_loaded_check, dlc_check}
 };
-use anyhow::{Ok, Result, anyhow, bail, ensure};
-use shared::{
-    event_log::{EventLog, EventLogger},
-    slice_ops::*,
-};
+use anyhow::{anyhow, ensure};
+use gubtool_core::sys::error::ProcResult;
+use shared::event_log::{EventLog, EventLogger};
+use utils::slice_ops::*;
 
-pub fn get_event(event_id: u32) -> Result<bool> {
+pub fn get_event(event_id: u32) -> anyhow::Result<bool> {
     let (data_ptr, block_offset) = event_flag_lookup(event_id)?;
     let mask = 1 << (7 - (block_offset & 7));
-    is_bit_set(data_ptr + (block_offset >> 3) as u64, mask)
+    Ok(is_bit_set(data_ptr + (block_offset >> 3) as u64, mask)?)
 }
 
-pub fn _set_event_direct(event_id: u32, state: bool) -> Result<()> {
+pub fn _set_event_direct(event_id: u32, state: bool) -> anyhow::Result<()> {
     let (data_ptr, block_offset) = event_flag_lookup(event_id)?;
     let mask = 1 << (7 - (block_offset & 7));
-    set_bit(data_ptr + (block_offset >> 3) as u64, mask, state)
+    Ok(set_bit(data_ptr + (block_offset >> 3) as u64, mask, state)?)
 }
 
-pub fn set_event(event_id: u32, state: bool) -> Result<()> {
-    let location = CaveOffset::SetEventAsm.addr();
+pub fn set_event(event_id: u32, state: bool) -> ProcResult {
     let virt_mem_flag = read::<u64>(virtual_memory_flag::base_ptr())?;
 
     let fun = ASM.get_function("set_event");
@@ -42,10 +32,8 @@ pub fn set_event(event_id: u32, state: bool) -> Result<()> {
     write_to_slice::<i64>(&mut asm, fun.reloc("event_id"), event_id)?;
     write_to_slice::<i64>(&mut asm, fun.reloc("state"), state)?;
     write_to_slice::<i64>(&mut asm, fun.reloc("fn_set_event"), functions::set_event())?;
-    append_flag_setter(location, &mut asm)?;
 
-    write_bytes(location, &asm)?;
-    run_thread(location)
+    spawn_thread_join(CaveOffset::SetEventAsm.addr(), asm)
 }
 
 struct VirtMemInfo {
@@ -56,9 +44,9 @@ struct VirtMemInfo {
 }
 
 impl VirtMemInfo {
-    pub fn read() -> Result<Self> {
+    pub fn read() -> ProcResult<Self> {
         let bytes = read::<u64>(virtual_memory_flag::base_ptr())
-            .and_then(|addr| read::<[u8; 0x40]>(addr))?;
+            .read::<[u8; 0x40]>()?;
         Ok(Self {
             block_size: read_from_slice::<u32>(&bytes, 0x1C)?,
             stride: read_from_slice::<u32>(&bytes, 0x20)?,
@@ -79,7 +67,7 @@ struct Node {
 }
 
 impl Node {
-    fn read_at(address: u64) -> Result<Self> {
+    fn read_at(address: u64) -> ProcResult<Self> {
         let bytes = read::<[u8; 0x34]>(address)?;
         Ok(Self {
             left_child: read_from_slice::<u64>(&bytes, 0x0)?,
@@ -92,7 +80,7 @@ impl Node {
     }
 }
 
-fn event_flag_lookup(event_id: u32) -> Result<(u64, u32)> {
+fn event_flag_lookup(event_id: u32) -> anyhow::Result<(u64, u32)> {
     let virt_mem_info = VirtMemInfo::read()?;
     let block_idx = event_id / virt_mem_info.block_size;
     let block_offset = event_id % virt_mem_info.block_size;
@@ -118,7 +106,7 @@ fn event_flag_lookup(event_id: u32) -> Result<(u64, u32)> {
         let data_ptr = match node.block_type {
             1 => node.data_idx as u64 * virt_mem_info.stride as u64 + virt_mem_info.mem_base,
             2 => node.data_idx as u64,
-            _ => bail!("block type invalid")
+            _ => anyhow::bail!("block type invalid")
         };
         ensure!(data_ptr != 0x0, "block pointer is null");
         return Ok((data_ptr, block_offset));
@@ -126,7 +114,7 @@ fn event_flag_lookup(event_id: u32) -> Result<(u64, u32)> {
     Err(anyhow!("flag not found"))
 }
 
-pub fn execute_talk_command(command_id: i32, params: &'static [i32], handle: u64) -> Result<()> {
+pub fn execute_talk_command(command_id: i32, params: &'static [i32], handle: u64) -> ProcResult {
     let location = CaveOffset::EzStateTalkAsm.addr();
     let params_location = CaveOffset::EzStateParams.addr();
     let params: Vec<u8> = params.iter().flat_map(|&x| x.to_le_bytes()).collect();
@@ -139,15 +127,13 @@ pub fn execute_talk_command(command_id: i32, params: &'static [i32], handle: u64
     write_to_slice::<i32>(&mut asm, 78, params.len())?;
     write_rel_i32(&mut asm, location, 93, params_location, 4)?;
     write_rel_i32(&mut asm, location, 155, functions::execute_talk_command(), 4)?;
-    append_flag_setter(location, &mut asm)?;
 
     write_bytes(params_location, &params)?;
-    write_bytes(location, &asm)?;
-    run_thread(location)
+    spawn_thread_join(location, asm)
 }
 
 impl TalkCommand {
-    pub fn execute(&self) -> Result<()> {
+    pub fn execute(&self) -> ProcResult {
         let handle = match self.handle {
             Some(function) => function()?,
             None => 0,
@@ -177,13 +163,13 @@ impl EventLogger for ErEventLogger {
     fn file_prefix(&self) -> &'static str {
         "eldenring"
     }
-    fn write_idx(&self) -> Result<i32> {
+    fn write_idx(&self) -> ProcResult<i32> {
         read::<i32>(CaveOffset::EventLogWriteIdx.addr())
     }
-    fn read_buffer(&self) -> Result<[u8; 0x1000]> {
+    fn read_buffer(&self) -> ProcResult<[u8; 0x1000]> {
         read::<[u8; 0x1000]>(CaveOffset::EventLogBuffer.addr())
     }
-    fn clear_cave(&self) -> Result<()> {
+    fn clear_cave(&self) -> ProcResult {
         write::<i32>(CaveOffset::EventLogWriteIdx.addr(), 0x0)?;
         write_bytes(CaveOffset::EventLogBuffer.addr(), &[0x0; 0x1000])
     }
@@ -191,19 +177,19 @@ impl EventLogger for ErEventLogger {
 
 const EVENT_LOG_HOOK_ORIGINAL: [u8; 5] = [0x48, 0x89, 0x5C, 0x24, 0x08];
 
-pub fn set_event_log_hook(state: bool) -> Result<()> {
+pub fn set_event_log_hook(state: bool) -> ProcResult {
     match state {
         true => install_event_log_hook(),
         false => write_bytes(functions::set_event(), &EVENT_LOG_HOOK_ORIGINAL),
     }
 }
 
-pub fn is_event_log_hook() -> Result<bool> {
+pub fn is_event_log_hook() -> ProcResult<bool> {
     read::<[u8; 5]>(functions::set_event())
         .map(|bytes| bytes != EVENT_LOG_HOOK_ORIGINAL)
 }
 
-fn install_event_log_hook() -> Result<()> {
+fn install_event_log_hook() -> ProcResult {
     let location = CaveOffset::EventLogHook.addr();
     let write_index = CaveOffset::EventLogWriteIdx.addr();
     let buffer = CaveOffset::EventLogBuffer.addr();
@@ -219,35 +205,38 @@ fn install_event_log_hook() -> Result<()> {
     install_hook(&asm, location, functions::set_event(), 5)
 }
 
-pub fn fight_fortissax() -> Result<()> {
+pub fn fight_fortissax() -> anyhow::Result<()> {
     ensure!(
-        player_ins().block_id()? == 201523200,
+        player::player_ins().block_id()? == 201523200,
         "Must be in general area"
     );
-    set_event(12032859, true)
+    set_event(12032859, true)?;
+    Ok(())
 }
 
-pub fn fight_elden_beast() -> Result<()> {
+pub fn fight_elden_beast() -> anyhow::Result<()> {
     ensure!(
-        player_ins().block_id()? == 318767104,
+        player::player_ins().block_id()? == 318767104,
         "Must be in general area"
     );
     set_event(19002802, true)?;
-    set_event(19002805, true)
+    set_event(19002805, true)?;
+    Ok(())
 }
 
-pub fn set_dlc_clear(state: bool) -> Result<()> {
+pub fn set_dlc_clear(state: bool) -> anyhow::Result<()> {
     character_loaded_check()?;
     dlc_check()?;
-    set_event(70, state)
+    set_event(70, state)?;
+    Ok(())
 }
 
-pub fn get_dlc_clear() -> Result<bool> {
+pub fn get_dlc_clear() -> anyhow::Result<bool> {
     dlc_check()?;
-    get_event(70)
+    Ok(get_event(70)?)
 }
 
-pub fn unlock_metyr() -> Result<()> {
+pub fn unlock_metyr() -> anyhow::Result<()> {
     character_loaded_check()?;
     dlc_check()?;
     let events = [
@@ -255,7 +244,8 @@ pub fn unlock_metyr() -> Result<()> {
         2051459249, 2051452717, 2050407000, 400662, 4856, 4855, 4854, 4849, 2051452718, 2051459213,
         2051450715, 9440, 2051450180,
     ];
-    events.iter().try_for_each(|&i| set_event(i, true))
+    events.iter().try_for_each(|&i| set_event(i, true))?;
+    Ok(())
 }
 
 pub const DEAD: &str = "Dead";
@@ -263,7 +253,7 @@ pub const ALIVE: &str = "Alive";
 pub const ALIVE_SE: &str = "Alive (Second Encounter)";
 
 impl Boss {
-    pub fn revive(&self, first_encounter: bool, warp: bool) -> Result<()> {
+    pub fn revive(&self, first_encounter: bool, warp: bool) -> anyhow::Result<()> {
         character_loaded_check()?;
         if self.dlc {
             dlc_check()?;
@@ -297,7 +287,7 @@ impl Boss {
     }
 }
 
-pub fn mass_revive(dlc: bool, first_encounter: bool) -> Result<()> {
+pub fn mass_revive(dlc: bool, first_encounter: bool) -> anyhow::Result<()> {
     bosses_array(dlc)
         .iter()
         .try_for_each(|boss| boss.revive(first_encounter, false))

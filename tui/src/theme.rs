@@ -41,7 +41,7 @@ impl ThemeSelector {
     pub fn handle_keys(&mut self, key: KeyEvent, current_theme: &mut ThemeName, current_screen: &mut CurrentScreen) {
         self.list.handle_keys(key);
         match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => *current_screen = CurrentScreen::Game,
+            KeyCode::Char('q') | KeyCode::Esc => *current_screen = CurrentScreen::Main,
             KeyCode::Enter => {
                 if let Some(idx) = self.list.selected() {
                     let theme = ThemeName::all()[idx];

@@ -1,94 +1,124 @@
 use crate::{
-    mem::{read, read_address, write},
-    offsets,
+    offsets::{self, ChainReadExt, chr_ctrl::stats_offsets},
+    resources::covenants::Covenant,
 };
-use anyhow::{Result, anyhow};
+use gubtool_core::sys::error::ProcResult;
 use phf::phf_map;
 
-pub type ChrCtrl = Result<u64>;
+pub type ChrCtrl = ProcResult<u64>;
 
 pub trait ChrCtrlExt {
-    fn get_hp(&self) -> Result<i32>;
-    fn set_hp(&self, val: i32) -> Result<()>;
-    fn get_min_hp(&self) -> Result<i32>;
-    fn set_min_hp(&self, val: i32) -> Result<()>;
-    fn max_hp(&self) -> Result<i32>;
-    fn is_no_death(&self) -> Result<bool>;
-    fn set_no_death(&self, state: bool) -> Result<()>;
-    fn coords(&self) -> Result<[f32; 3]>;
-    fn poise(&self) -> Result<f32>;
-    fn max_poise(&self) -> Result<f32>;
-    fn posture(&self) -> Result<f32>;
-    fn max_posture(&self) -> Result<f32>;
+    fn is_valid_chr(self) -> ProcResult<bool>;
+    fn get_hp(&self) -> ProcResult<i32>;
+    fn set_hp(&self, val: i32) -> ProcResult;
+    fn get_min_hp(&self) -> ProcResult<i32>;
+    fn set_min_hp(&self, val: i32) -> ProcResult;
+    fn max_hp(&self) -> ProcResult<i32>;
+    fn is_no_death(&self) -> bool;
+    fn set_no_death(&self, state: bool) -> ProcResult;
+    fn coords(&self) -> ProcResult<[f32; 3]>;
+    fn poise(&self) -> ProcResult<f32>;
+    fn max_poise(&self) -> ProcResult<f32>;
+    fn posture(&self) -> ProcResult<f32>;
+    fn max_posture(&self) -> ProcResult<f32>;
 
-    fn rot_quaternion(&self) -> Result<[f32; 4]>;
+    fn rot_quaternion(&self) -> ProcResult<[f32; 4]>;
+    fn get_covenant(&self) -> ProcResult<Covenant>;
+    fn set_covenant(&self, covenant: Covenant) -> ProcResult;
 
-    fn chr_id(&self) -> Result<i32>;
+    fn chr_id(&self) -> ProcResult<i32>;
 
-    fn chr_ctrl_pointer(&self) -> Result<u64>;
-    fn param_pointer(&self) -> Result<u64>;
-    fn stats_pointer(&self) -> Result<u64>;
+    fn param_pointer(&self) -> ProcResult<u64>;
+    fn stats_pointer(&self) -> ProcResult<u64>;
 
     fn name_from_chr_id(&self) -> &'static str;
 }
 
 impl ChrCtrlExt for ChrCtrl {
-    fn get_hp(&self) -> Result<i32> {
-        read::<i32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::health())
+    fn is_valid_chr(self) -> ProcResult<bool> {
+        if self? == 0x0 {
+            return Ok(false)
+        }
+        let health = self.get_hp()?;
+        let max_health = self.max_hp()?;
+        Ok(health >= 0
+            && max_health > 0
+            && health < 10000000
+            && max_health < 10000000
+            && (health as f32) < (max_health as f32) * 1.5)
     }
 
-    fn set_hp(&self, val: i32) -> Result<()> {
-        write::<i32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::health(), val)
+    fn get_hp(&self) -> ProcResult<i32> {
+        self.add_offset(offsets::chr_ctrl::HEALTH)
+            .read::<i32>()
     }
 
-    fn get_min_hp(&self) -> Result<i32> {
-        read::<i32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::min_health())
+    fn set_hp(&self, val: i32) -> ProcResult {
+        self.add_offset(offsets::chr_ctrl::HEALTH)
+            .write::<i32>(val)
     }
 
-    fn set_min_hp(&self, val: i32) -> Result<()> {
-        write::<i32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::min_health(), val)
+    fn get_min_hp(&self) -> ProcResult<i32> {
+        self.add_offset(offsets::chr_ctrl::MIN_HEALTH)
+            .read::<i32>()
     }
 
-    fn max_hp(&self) -> Result<i32> {
-        read::<i32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::max_health())
+    fn set_min_hp(&self, val: i32) -> ProcResult {
+        self.add_offset(offsets::chr_ctrl::MIN_HEALTH)
+            .write::<i32>(val)
     }
 
-    fn is_no_death(&self) -> Result<bool> {
-        self.get_min_hp().map(|val| val == 1)
+    fn max_hp(&self) -> ProcResult<i32> {
+        self.add_offset(offsets::chr_ctrl::MAX_HEALTH)
+            .read::<i32>()
     }
 
-    fn set_no_death(&self, state: bool) -> Result<()> {
+    fn is_no_death(&self) -> bool {
+        self.get_min_hp()
+            .map(|val| val == 1)
+            .unwrap_or_default()
+    }
+
+    fn set_no_death(&self, state: bool) -> ProcResult {
         let val = if state { 1 } else { -99999 };
         self.set_min_hp(val)
     }
 
-    fn coords(&self) -> Result<[f32; 3]> {
-        read::<[f32; 3]>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::coords())
+    fn coords(&self) -> ProcResult<[f32; 3]> {
+        self.add_offset(offsets::chr_ctrl::COORDS)
+            .read::<[f32; 3]>()
     }
 
-    fn chr_id(&self) -> Result<i32> {
-        read::<i32>(self.param_pointer()? + offsets::chr_ctrl::chr_id())
+    fn chr_id(&self) -> ProcResult<i32> {
+        self.param_pointer()
+            .add_offset(offsets::chr_ctrl::CHR_ID)
+            .read::<i32>()
     }
 
-    fn poise(&self) -> Result<f32> {
-        read::<f32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::poise())
+    fn poise(&self) -> ProcResult<f32> {
+        self.add_offset(offsets::chr_ctrl::POISE)
+            .read::<f32>()
     }
 
-    fn max_poise(&self) -> Result<f32> {
-        read::<f32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::max_poise())
+    fn max_poise(&self) -> ProcResult<f32> {
+        self.add_offset(offsets::chr_ctrl::MAX_POISE)
+            .read::<f32>()
     }
 
-    fn posture(&self) -> Result<f32> {
-        read::<f32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::posture())
+    fn posture(&self) -> ProcResult<f32> {
+        self.add_offset(offsets::chr_ctrl::POSTURE)
+            .read::<f32>()
     }
 
-    fn max_posture(&self) -> Result<f32> {
-        read::<f32>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::max_posture())
+    fn max_posture(&self) -> ProcResult<f32> {
+        self.add_offset(offsets::chr_ctrl::MAX_POSTURE)
+            .read::<f32>()
     }
 
-    fn rot_quaternion(&self) -> Result<[f32; 4]> {
+    fn rot_quaternion(&self) -> ProcResult<[f32; 4]> {
         let [m00, m01, m02, _, m10, m11, m12, _, m20, m21, m22, _] =
-            read::<[f32; 12]>(self.chr_ctrl_pointer()? + offsets::chr_ctrl::rotation())?;
+            self.add_offset(offsets::chr_ctrl::ROTATION)
+            .read::<[f32; 12]>()?;
 
         let matrix = glam::Mat3::from_cols(
             glam::Vec3::new(m00, m01, m02),
@@ -100,16 +130,25 @@ impl ChrCtrlExt for ChrCtrl {
         Ok([q.x, q.y, q.z, q.w])
     }
 
-    fn chr_ctrl_pointer(&self) -> Result<u64> {
-        Ok(*self.as_ref().map_err(|e| anyhow!("{e}"))?)
+    fn get_covenant(&self) -> ProcResult<Covenant> {
+        self.stats_pointer()
+            .add_offset(stats_offsets::COVENANT)
+            .read::<u8>()
+            .map(|val| Covenant::try_from(val).unwrap_or(Covenant::None))
     }
 
-    fn param_pointer(&self) -> Result<u64> {
-        read_address(self.chr_ctrl_pointer()? + offsets::chr_ctrl::params_ptr())
+    fn set_covenant(&self, covenant: Covenant) -> ProcResult {
+        self.stats_pointer()
+            .add_offset(stats_offsets::COVENANT)
+            .write::<u8>(covenant as u8)
     }
 
-    fn stats_pointer(&self) -> Result<u64> {
-        read_address(self.chr_ctrl_pointer()? + offsets::chr_ctrl::stats_ptr())
+    fn param_pointer(&self) -> ProcResult<u64> {
+        self.read_offset(offsets::chr_ctrl::PARAMS_PTR)
+    }
+
+    fn stats_pointer(&self) -> ProcResult<u64> {
+        self.read_offset(offsets::chr_ctrl::STATS_PTR)
     }
 
     fn name_from_chr_id(&self) -> &'static str {

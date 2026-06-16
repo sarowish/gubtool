@@ -4,21 +4,24 @@ use crate::{
     offsets::{code_cave::CaveOffset, field_area, hooks},
     resources::ASM,
 };
-use anyhow::{Result, anyhow, bail, ensure};
-use engine::{
+use anyhow::bail;
+use gubtool_core::{
     attached::version,
-    game_version::EldenRingVersion::*,
+    game_version::EldenRingVersion::*, sys::error::{PointerType, ProcResult, ProcessError},
 };
-use shared::slice_ops::*;
+use shared::act_array::ActArray;
+use utils::slice_ops::*;
 
 pub fn target_ins() -> ChrIns {
-    let addr = read::<u64>(CaveOffset::SavedTargetPointer.addr())
-        .map_err(|_| anyhow!("Could not read target pointer"))?;
-    ensure!(addr != 0x0, "Target not found");
-    Ok(addr)
+    match read::<u64>(CaveOffset::SavedTargetPointer.addr()) {
+        Ok(ptr) if ptr != 0x0 => Ok(ptr),
+        Ok(_) | Err(_) => Err(ProcessError::InvalidPointer {
+            pointer_type: PointerType::TargetIns,
+        }),
+    }
 }
 
-pub fn install_target_hook() -> Result<()> {
+pub fn install_target_hook() -> ProcResult {
     let location = CaveOffset::SaveTargetHook.addr();
     let saved_pointer = CaveOffset::SavedTargetPointer.addr();
 
@@ -30,11 +33,11 @@ pub fn install_target_hook() -> Result<()> {
 }
 
 const TARGET_HOOK_BYTES_ORIGINAL: [u8; 7] = [0x48, 0x8B, 0x8F, 0x88, 0x00, 0x00, 0x00];
-pub fn uninstall_target_hook() -> Result<()> {
+pub fn uninstall_target_hook() -> ProcResult {
     write_bytes(hooks::locked_target_pointer(), &TARGET_HOOK_BYTES_ORIGINAL)
 }
 
-pub fn is_target_hook_active() -> Result<bool> {
+pub fn is_target_hook_active() -> ProcResult<bool> {
     read::<[u8; 7]>(hooks::locked_target_pointer())
         .map(|val| val != TARGET_HOOK_BYTES_ORIGINAL)
 }
@@ -56,17 +59,11 @@ fn get_force_act_idx_original_bytes() -> [u8; 7] {
     }
 }
 
-pub fn force_act_sequence(act_sequence: Vec<i32>, npc_think_param_id: i32) -> Result<()> {
-    ensure!(act_sequence.len() <= 10, "Max number of acts is 10");
-
+pub fn force_act_sequence(mut act_sequence: ActArray, npc_think_param_id: i32) -> anyhow::Result<()> {
     let location = CaveOffset::ForceActSequenceHook.addr();
     let current_idx_location = CaveOffset::CurrentActIdx.addr();
     let should_run_flag_location = CaveOffset::ActSeqeunceShouldRun.addr();
     let act_array_location = CaveOffset::ActArray.addr();
-
-    let mut act_array = act_sequence;
-    act_array.resize(10, 0);
-    let act_array: Vec<u8> = act_array.iter().flat_map(|&x| x.to_le_bytes()).collect();
 
     let mut asm = ASM.get_function("force_act_sequence_hook").get_bytes();
     write_rel_i32(&mut asm, location, 2, should_run_flag_location, 5)?;
@@ -79,13 +76,15 @@ pub fn force_act_sequence(act_sequence: Vec<i32>, npc_think_param_id: i32) -> Re
     write_to_slice::<[u8; 7]>(&mut asm, 66, get_force_act_idx_original_bytes())?;
     write_rel_i32(&mut asm, location, 74, hooks::get_force_act_idx() + 7, 4)?;
 
+    act_sequence.zero_fill();
+    write_bytes(act_array_location, &act_sequence.as_qword_le_bytes())?;
     write::<i32>(current_idx_location, 0x0)?;
-    write_bytes(act_array_location, &act_array)?;
     write::<u8>(should_run_flag_location, 0x1)?;
-    install_hook(&asm, location, hooks::get_force_act_idx(), 7)
+    install_hook(&asm, location, hooks::get_force_act_idx(), 7)?;
+    Ok(())
 }
 
-pub fn install_stagger_hook() -> Result<()> {
+pub fn install_stagger_hook() -> ProcResult {
     let location = CaveOffset::TargetNoStaggerHook.addr();
     let target_ptr_location = CaveOffset::SavedTargetPointer.addr();
 
@@ -97,23 +96,23 @@ pub fn install_stagger_hook() -> Result<()> {
 }
 
 const TARGET_STAGGER_HOOK_BYTES_ORIGINAL: [u8; 8] = [0x48, 0x8B, 0x41, 0x08, 0x83, 0x48, 0x2C, 0x08];
-pub fn uninstall_stagger_hook() -> Result<()> {
+pub fn uninstall_stagger_hook() -> ProcResult {
     write_bytes(hooks::target_no_stagger(), &TARGET_STAGGER_HOOK_BYTES_ORIGINAL)
 }
 
-pub fn is_stagger_hook_active() -> Result<bool> {
+pub fn is_stagger_hook_active() -> ProcResult<bool> {
     read::<[u8; 8]>(hooks::target_no_stagger())
         .map(|val| val != TARGET_STAGGER_HOOK_BYTES_ORIGINAL)
 }
 
-pub fn toggle_stagger_hook() -> Result<()> {
+pub fn toggle_stagger_hook() -> ProcResult {
     match is_stagger_hook_active()? {
         true => uninstall_stagger_hook(),
         false => install_stagger_hook(),
     }
 }
 
-pub fn world_block_info_from_block_id(block_id: u32) -> Result<u64> {
+pub fn world_block_info_from_block_id(block_id: u32) -> anyhow::Result<u64> {
     let target_area = (block_id >> 24) & 0xFF;
     let world_info_owner = read::<u64>(field_area::base_ptr())
         .and_then(|addr| read::<u64>(addr + field_area::WORLD_INFO_OWNER))?;

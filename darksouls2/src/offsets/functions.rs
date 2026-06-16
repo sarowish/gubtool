@@ -1,5 +1,5 @@
 use crate::offsets::module_offsets::module_offsets;
-use engine::attached::module_base;
+use gubtool_core::attached::module_base;
 
 pub fn give_souls() -> u64 {
     module_base() + module_offsets().functions.give_souls
@@ -30,10 +30,7 @@ pub fn set_event() -> u64 {
 }
 
 pub fn get_map_entity_with_area_id_and_obj_id() -> u64 {
-    module_base()
-        + module_offsets()
-            .functions
-            .get_map_entity_with_area_id_and_obj_id
+    module_base() + module_offsets().functions.get_map_entity_with_area_id_and_obj_id
 }
 
 pub fn get_state_act_component() -> u64 {
@@ -42,4 +39,20 @@ pub fn get_state_act_component() -> u64 {
 
 pub fn make_sound() -> u64 {
     module_base() + module_offsets().functions.make_sound
+}
+
+pub fn bonfire_rest() -> u64 {
+    module_base() + module_offsets().functions.bonfire_rest
+}
+
+pub fn bonfire_unlock() -> u64 {
+    module_base() + module_offsets().functions.bonfire_unlock
+}
+
+pub fn open_menu() -> u64 {
+    module_base() + module_offsets().functions.open_menu
+}
+
+pub fn menu_chr_state() -> u64 {
+    module_base() + module_offsets().functions.menu_chr_state
 }

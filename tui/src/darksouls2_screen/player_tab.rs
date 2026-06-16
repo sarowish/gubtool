@@ -1,5 +1,7 @@
 use crate::{
-    common::{StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list}, darksouls2_screen::GameState, event::ResultExt
+    common::{StrExt, draw_popup_selector, stateful_list::StatefulList, tab_state::TabState, tabs_list},
+    darksouls2_screen::GameState,
+    event::ResultExt,
 };
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -7,6 +9,7 @@ use darksouls2::{
     chr_ctrl::ChrCtrlExt,
     game_state::{StateFlagOffset, StateFlags},
     player::{self, player_ctrl},
+    resources::covenants::{COVENANTS, Covenant},
 };
 use ratatui::{
     Frame,
@@ -32,6 +35,7 @@ enum TogglesItems {
 }
 
 pub enum Stats {
+    Covenant
 }
 
 const TOGGLES_IDX: usize = 0;
@@ -40,6 +44,8 @@ pub const STATS_IDX: usize = 2;
 
 pub struct PlayerTab {
     tab: TabState,
+    show_covenant_selector: bool,
+    covenant_list: StatefulList,
 }
 
 impl PlayerTab {
@@ -50,6 +56,8 @@ impl PlayerTab {
         list_states[STATS_IDX] = StatefulList::new(0);
         PlayerTab {
             tab: TabState::new(list_states),
+            show_covenant_selector: false,
+            covenant_list: StatefulList::new(COVENANTS.len())
         }
     }
 
@@ -81,15 +89,40 @@ impl PlayerTab {
             TogglesItems::list(self),
             layout[TOGGLES_IDX],
             &mut self.tab.get_list_state(TOGGLES_IDX),
-            );
+        );
         frame.render_stateful_widget(
             Stats::list(self),
             layout[STATS_IDX],
             &mut self.tab.get_list_state(STATS_IDX),
         );
+
+        if self.show_covenant_selector {
+            draw_popup_selector(
+                "Select Covenant",
+                &COVENANTS,
+                &mut self.covenant_list.state,
+                frame,
+            );
+        }
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
+        if self.show_covenant_selector {
+            self.covenant_list.handle_keys(key);
+            match key.code {
+                KeyCode::Char('q') |
+                KeyCode::Esc => self.show_covenant_selector = false,
+                KeyCode::Enter => {
+                    if let Some(selected) = self.covenant_list.selected() {
+                        let covenant = &COVENANTS[selected];
+                        player::player_ctrl().set_covenant(*covenant).send_error();
+                    }
+                }
+                _ => (),
+            }
+
+            return;
+        }
         self.tab.handle_keys(key);
         match key.code {
             KeyCode::Char('s') => self.handle_input(),
@@ -102,7 +135,7 @@ impl PlayerTab {
         if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
             match self.tab.current_list {
                 ACTIONS_IDX => ActionsItems::ARRAY[selected].set_input(),
-                STATS_IDX => Stats::ARRAY[selected].set_input(),
+                STATS_IDX => Stats::ARRAY[selected].set_input(self),
                 _ => (),
             }
         }
@@ -112,7 +145,7 @@ impl PlayerTab {
             match self.tab.current_list {
                 ACTIONS_IDX => ActionsItems::ARRAY[selected].execute(),
                 TOGGLES_IDX => TogglesItems::ARRAY[selected].execute(),
-                STATS_IDX => Stats::ARRAY[selected].set_input(),
+                STATS_IDX => Stats::ARRAY[selected].set_input(self),
                 _ => (),
             }
         }
@@ -265,12 +298,17 @@ impl TogglesItems {
 impl Stats {
     fn to_list_item(&self) -> ListItem<'_> {
         let text = match self {
-            _ => ""
+            Self::Covenant => format!(
+                "Covenant: {}",
+                player::player_ctrl().get_covenant().unwrap_or(Covenant::None)
+            ),
         };
         ListItem::from(text)
     }
-    fn set_input(&self) {
-
+    fn set_input(&self, player_tab: &mut PlayerTab) {
+        match self {
+            Self::Covenant => player_tab.show_covenant_selector = true,
+        }
     }
 
     pub fn set_stat(&self) -> Result<()> {
@@ -284,6 +322,7 @@ impl Stats {
         }
     }
     const ARRAY: &[Stats] = &[
+        Self::Covenant
     ];
     fn list(player_tab: &PlayerTab) -> List<'static> {
         let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item()).collect();

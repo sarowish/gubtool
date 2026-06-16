@@ -1,11 +1,8 @@
-use crate::app::App;
-use anyhow::Result;
+use config::user::attach_config_error::AttachConfigError;
 use crossterm::event::{self, Event as CEvent, KeyEvent};
-use nucleo_matcher::Utf32String;
+use gubtool_core::{attached::AttachError, error_log::log_error, sys::error::ProcessError};
 use std::{
-    sync::{OnceLock, mpsc},
-    thread,
-    time::{Duration, Instant},
+    sync::{OnceLock, mpsc}, thread, time::{Duration, Instant}
 };
 
 pub enum Event {
@@ -13,13 +10,13 @@ pub enum Event {
     RenderTick,
     BackgroundTick,
     Info((String, InfoType)),
-    Search((Vec<Utf32String>, fn(&mut App))),
-    Input(fn(String, &mut App)),
+    BlockInputs(bool),
     ApplyAttach,
 }
 
 pub enum InfoType {
-    Error,
+    SysError,
+    GameError,
     Success,
 }
 
@@ -64,17 +61,6 @@ pub fn send_event(event: Event) {
     SENDER.get().unwrap().clone().send(event).unwrap()
 }
 
-#[macro_export]
-macro_rules! send_input_event {
-    ($text:ident, $app:ident, $body:block) => {
-        crate::event::send_event(
-            crate::event::Event::Input(
-                |$text: String, $app: &mut crate::app::App| $body
-            )
-        )
-    }
-}
-
 pub fn send_success(text: String) {
     send_event(Event::Info((text, InfoType::Success)));
 }
@@ -83,10 +69,43 @@ pub trait ResultExt<T> {
     fn send_error(self);
 }
 
-impl<T> ResultExt<T> for Result<T> {
+impl<T, E> ResultExt<T> for Result<T, E>
+where
+    E: std::error::Error + Send + Sync + 'static
+{
     fn send_error(self) {
-        if let Err(err) = self {
-            send_event(Event::Info((err.to_string(), InfoType::Error)))
-        }
+        let Err(err) = self else { return };
+        let (string, info_type) = handle_error(&err);
+        send_event(Event::Info((string, info_type)))
     }
+}
+
+pub trait AnyhowExt<T> {
+    fn send_error(self);
+}
+
+impl<T> AnyhowExt<T> for Result<T, anyhow::Error> {
+    fn send_error(self) {
+        let Err(err) = self else { return };
+        let (string, info_type) = handle_error(err.as_ref());
+        send_event(Event::Info((string, info_type)))
+    }
+}
+
+fn handle_error(err: &(dyn std::error::Error + 'static)) -> (String, InfoType) {
+    let mut info_type = InfoType::GameError;
+
+    if let Some(proc_error) = err.downcast_ref::<ProcessError>() {
+        match proc_error {
+            ProcessError::InvalidGame { .. } | ProcessError::InvalidPointer { .. } => (),
+            _ => {
+                info_type = InfoType::SysError;
+                log_error(&proc_error);
+            }
+        }
+    } else if err.is::<AttachError>() || err.is::<AttachConfigError>() {
+        info_type = InfoType::SysError;
+    }
+
+    (err.to_string(), info_type)
 }

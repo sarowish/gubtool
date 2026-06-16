@@ -1,15 +1,14 @@
 use crate::{
     app::CurrentScreen,
     common::{StrExt, centered_rect, list, stateful_list::StatefulList},
-    event::ResultExt,
-    send_input_event,
+    event::AnyhowExt,
 };
 use config::{
     Config,
     user::{AttachConfig, ds2_attach::Ds2Attach, er_attach::ErAttach},
 };
 use crossterm::event::{KeyCode, KeyEvent};
-use engine::game_version::Game;
+use gubtool_core::game_version::Game;
 use ratatui::{
     Frame,
     widgets::{Clear, List, ListItem},
@@ -64,7 +63,7 @@ impl AttachOptions {
             }
         }
         match (key.code, key.modifiers) {
-            (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Game,
+            (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Main,
             (KeyCode::Enter, _) => {
                 match game_screen {
                     Game::DarkSouls2 => {
@@ -170,21 +169,7 @@ impl Ds2Options {
 impl ErOptions {
     fn execute(&self) {
         match self {
-            Self::FpsCap => {
-                send_input_event!(text, _app, {
-                    if let Ok(v) = text.parse() {
-                        ErAttach::update(|c| {
-                            c.fps = Some(v);
-                        })
-                        .send_error();
-                    } else if text.is_empty() {
-                        ErAttach::update(|c| {
-                            c.fps = None;
-                        })
-                        .send_error();
-                    }
-                })
-            }
+            Self::FpsCap => (),
             Self::NoDeath => {
                 ErAttach::update(|c| c.no_death = !c.no_death).send_error()
             }

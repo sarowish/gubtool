@@ -6,11 +6,7 @@ use crate::{
         stateful_list::StatefulList,
         tab_state::TabState,
         tabs_list,
-    },
-    eldenring_screen::GameState,
-    event::ResultExt,
-    send_input_event,
-    ui_state::UiState,
+    }, eldenring_screen::GameState, event::{AnyhowExt, ResultExt}, input::input_prompt::{InputPrompt, PromptType}, ui_state::UiState
 };
 use crossterm::event::{KeyCode, KeyEvent};
 use eldenring::event::{self, ErEventLogger, get_dlc_clear, is_event_log_hook, set_event_log_hook};
@@ -39,6 +35,7 @@ pub struct EventTab {
     pub warp: bool,
     log: ErEventLogger,
     table_state: TableState,
+    input: InputPrompt<InputRequest>,
 }
 
 impl EventTab {
@@ -52,6 +49,7 @@ impl EventTab {
             warp: true,
             log: ErEventLogger::default(),
             table_state: TableState::default(),
+            input: InputPrompt::new(),
         }
     }
 
@@ -83,13 +81,25 @@ impl EventTab {
         );
 
         draw_controls(frame, layout[LOG_IDX], event_log_table::CONTROLS);
+
+        self.input.draw_popup_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
         if self.tab.current_list == LOG_IDX {
             handle_log_table_keys(&mut self.table_state, &mut self.log, key);
         }
+
+        if self.input.show {
+            self.input.handle_keys(key);
+            if key.code == KeyCode::Enter {
+                self.handle_input_enter();
+            }
+            return;
+        }
+
         self.tab.handle_keys(key);
+
         match key.code {
             KeyCode::Char('s') => self.handle_input(),
             KeyCode::Enter => self.handle_select(),
@@ -97,10 +107,10 @@ impl EventTab {
         }
     }
 
-    fn handle_input(&self) {
+    fn handle_input(&mut self) {
         if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
             match self.tab.current_list {
-                COMMANDS_IDX => CommandsItems::ARRAY[selected].set_input(),
+                COMMANDS_IDX => CommandsItems::ARRAY[selected].set_input(&mut self.input),
                 _ => (),
             }
         }
@@ -115,6 +125,16 @@ impl EventTab {
                 set_event_log_hook(new_state).send_error();
             }
             _ => (),
+        }
+    }
+
+    fn handle_input_enter(&mut self) {
+        match self.input.last_request.unwrap() {
+            InputRequest::Event => {
+               let val = self.input.parse_text::<u32>();
+                self.event = val;
+                UiState::update_er(|c| { c.event = val; }).ok();
+            }
         }
     }
 }
@@ -143,19 +163,9 @@ impl CommandsItems {
             }
         }
     }
-    fn set_input(&self) {
+    fn set_input(&self, input: &mut InputPrompt<InputRequest>) {
         match self {
-            Self::Event => {
-                send_input_event!(text, app, {
-                    if let Ok(v) = text.parse() {
-                        app.elden_ring.event.event = Some(v);
-                        UiState::update_er(|c| { c.event = Some(v); }).ok();
-                    } else if text.is_empty() {
-                        app.elden_ring.event.event = None;
-                        UiState::update_er(|c| { c.event = None; }).ok();
-                    }
-                })
-            },
+            Self::Event => input.show("Set New Value", PromptType::U32, InputRequest::Event),
             _ => (),
         }
     }
@@ -203,4 +213,9 @@ impl CommandsItems {
         let items: Vec<ListItem> = array.iter().map(|i| i.to_list_item(event_tab)).collect();
         tabs_list(items, None, &event_tab.tab, COMMANDS_IDX)
     }
+}
+
+#[derive(Clone, Copy)]
+enum InputRequest {
+    Event,
 }

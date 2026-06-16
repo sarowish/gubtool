@@ -1,14 +1,16 @@
-pub mod areas;
+pub mod map_ids;
 pub mod bonfires;
 pub mod bosses;
+pub mod covenants;
 pub mod event_flags;
 pub mod items;
+pub mod menus;
 pub mod scholar_patterns;
 pub mod vanilla_patterns;
 pub mod versions_module_offsets;
 
 pub(super) mod scholar {
-    use shared::object::AsmFolder;
+    use utils::object::AsmFolder;
     use std::sync::LazyLock;
 
     static ASM_LIB_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/scholar.bin"));
@@ -17,7 +19,7 @@ pub(super) mod scholar {
 }
 
 pub(super) mod vanilla {
-    use shared::object::AsmFolder;
+    use utils::object::AsmFolder;
     use std::sync::LazyLock;
 
     static ASM_LIB_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/vanilla.bin"));

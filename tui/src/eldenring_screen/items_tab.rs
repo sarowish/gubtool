@@ -1,19 +1,13 @@
 use crate::{
-    app::App,
     common::{
         block, blockless_list, label_list, stateful_list::StatefulList, tab_state::TabState,
         tabs_list,
-    },
-    eldenring_screen::GameState,
-    event::{Event, ResultExt, send_event},
-    send_input_event,
-    theme::theme,
+    }, eldenring_screen::GameState, event::{AnyhowExt}, input::{fuzzy_finder::FuzzyFinder, input_prompt::{InputPrompt, PromptType}}, theme::theme
 };
 use crossterm::event::{KeyCode, KeyEvent};
 use eldenring::{
     item,
     resources::{
-        self,
         aow::{AFFINITIES, Affinity, Aow, aow_array},
         items::{Categories, Item, items_array},
     },
@@ -35,14 +29,16 @@ enum OptionsItems {
     Affinity,
 }
 
-#[derive(Clone)]
 pub struct ItemTab {
     tab: TabState,
     item: Item,
-    pub quantity: i64,
-    pub upgrade: i64,
+    pub quantity: u64,
+    pub upgrade: u64,
     aow: Aow,
     affinity: Affinity,
+    input: InputPrompt<InputRequest>,
+    fuzzy_finder: FuzzyFinder,
+    search_request: Option<SearchRequest>,
 }
 
 const ITEMS_IDX: usize = 0;
@@ -62,6 +58,9 @@ impl ItemTab {
             upgrade: 0,
             aow: aow_array()[0],
             affinity: AFFINITIES[0],
+            input: InputPrompt::new(),
+            fuzzy_finder: FuzzyFinder::default(),
+            search_request: None,
         }
     }
 
@@ -114,12 +113,51 @@ impl ItemTab {
             mass_spawn,
             &mut self.tab.get_list_state(MASS_SPAWN_IDX),
         );
+
+        self.input.draw_popup_checked(frame);
+        self.fuzzy_finder.draw_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
         self.handle_item_switch();
+
         if self.tab.current_list == ITEMS_IDX {
             self.tab.set_length(ITEMS_IDX, items_array(GameState::dlc()).len());
+        }
+
+        if self.input.show {
+            self.input.handle_keys(key);
+            if key.code == KeyCode::Enter {
+                self.handle_input_enter();
+            }
+            return;
+        }
+
+        if self.fuzzy_finder.show {
+            self.fuzzy_finder.handle_keys(key);
+            if key.code == KeyCode::Enter {
+                if let Some(selected) = self.fuzzy_finder.selected_idx() {
+                    match self.search_request.unwrap() {
+                        SearchRequest::Item => {
+                            self.tab.set_list_selected(ITEMS_IDX, selected);
+                            self.handle_item_switch();
+                        }
+                        SearchRequest::Affinity => {
+                            let entries: Vec<Affinity> = AFFINITIES.iter()
+                                .filter(|affinity| self.aow.supports_affinity(affinity.flag))
+                                .cloned().collect();
+                            self.affinity = entries[self.fuzzy_finder.selected_idx().unwrap()];
+                        }
+                        SearchRequest::Aow => {
+                            let entries: Vec<Aow> = aow_array().iter()
+                                .filter(|aow| aow.supports_item(self.item))
+                                .cloned().collect();
+                            self.aow = entries[selected];
+                        }
+                    }
+                }
+            }
+            return;
         }
 
         self.tab.handle_keys(key);
@@ -132,14 +170,8 @@ impl ItemTab {
                 let list = items_array(GameState::dlc()).iter()
                     .map(|item| Utf32String::from(format!("{}|{}", item.name, item.category)))
                     .collect();
-                let function = |app: &mut App| {
-                    app.elden_ring.items.tab.set_list_selected(
-                        ITEMS_IDX,
-                        app.fuzzy_finder.selected_idx().unwrap(),
-                    );
-                    app.elden_ring.items.handle_item_switch()
-                };
-                send_event(Event::Search((list, function)))
+                self.fuzzy_finder.show(list);
+                self.search_request = Some(SearchRequest::Item);
             }
             KeyCode::Char('s') => {
                 if self.tab.current_list == OPTIONS_IDX &&
@@ -162,11 +194,28 @@ impl ItemTab {
 
         if self.tab.current_list == ITEMS_IDX || self.tab.current_list == OPTIONS_IDX {
             self.item.spawn(
-                self.quantity,
-                self.upgrade,
+                self.quantity as i64,
+                self.upgrade as i64,
                 self.aow,
                 self.affinity,
             ).send_error();
+        }
+    }
+
+    fn handle_input_enter(&mut self) {
+        match self.input.last_request.unwrap() {
+            InputRequest::Quantity => {
+                if let Some(val) = self.input.parse_text::<u64>() {
+                    self.quantity = val;
+                    self.handle_item_switch()
+                }
+            }
+            InputRequest::Upgrade => {
+                if let Some(val) = self.input.parse_text::<u64>() {
+                    self.upgrade = val;
+                    self.handle_item_switch()
+                }
+            }
         }
     }
 
@@ -193,12 +242,12 @@ impl ItemTab {
         let new_item = items_array(GameState::dlc())[new_idx];
         self.item = new_item;
 
-        if let Some(new_quantity) = new_item.clamp_quantity(self.quantity) {
-            self.quantity = new_quantity;
+        if let Some(new_quantity) = new_item.clamp_quantity(self.quantity as i64) {
+            self.quantity = new_quantity as u64;
         }
 
-        if let Some(new_upgrade) = new_item.clamp_upgrade(self.upgrade) {
-            self.upgrade = new_upgrade;
+        if let Some(new_upgrade) = new_item.clamp_upgrade(self.upgrade as i64) {
+            self.upgrade = new_upgrade as u64;
         }
 
         if !self.aow.supports_item(new_item) {
@@ -227,22 +276,12 @@ impl OptionsItems {
         match self {
             Self::Quantity => {
                 if item_tab.can_quantity() {
-                    send_input_event!(text, app, {
-                        if let Ok(v) = text.parse() {
-                            app.elden_ring.items.quantity = v;
-                            app.elden_ring.items.handle_item_switch()
-                        }
-                    })
+                    item_tab.input.show("Set New Value", PromptType::U64, InputRequest::Quantity)
                 }
             },
             Self::Upgrade => {
                 if item_tab.can_upgrade() {
-                    send_input_event!(text, app, {
-                        if let Ok(v) = text.parse() {
-                            app.elden_ring.items.upgrade = v;
-                            app.elden_ring.items.handle_item_switch()
-                        }
-                    })
+                    item_tab.input.show("Set New Value", PromptType::U64, InputRequest::Upgrade)
                 }
             },
             Self::AshOfWar => {
@@ -251,13 +290,8 @@ impl OptionsItems {
                         .filter(|aow| aow.supports_item(item_tab.item))
                         .map(|aow| Utf32String::from(aow.name))
                         .collect();
-                    let function = |app: &mut App| {
-                        let entries: Vec<Aow> = aow_array().iter()
-                            .filter(|aow| aow.supports_item(app.elden_ring.items.item))
-                            .cloned().collect();
-                        app.elden_ring.items.aow = entries[app.fuzzy_finder.selected_idx().unwrap()];
-                    };
-                    send_event(Event::Search((list, function)))
+                    item_tab.fuzzy_finder.show(list);
+                    item_tab.search_request = Some(SearchRequest::Aow);
                 }
             },
             Self::Affinity => {
@@ -266,13 +300,8 @@ impl OptionsItems {
                         .filter(|affinity| item_tab.aow.supports_affinity(affinity.flag))
                         .map(|affinity| Utf32String::from(affinity.name))
                         .collect();
-                    let function = |app: &mut App| {
-                        let entries: Vec<resources::aow::Affinity> = AFFINITIES.iter()
-                            .filter(|affinity| app.elden_ring.items.aow.supports_affinity(affinity.flag))
-                            .cloned().collect();
-                        app.elden_ring.items.affinity = entries[app.fuzzy_finder.selected_idx().unwrap()];
-                    };
-                    send_event(Event::Search((list, function)))
+                    item_tab.fuzzy_finder.show(list);
+                    item_tab.search_request = Some(SearchRequest::Affinity);
                 }
             },
         }
@@ -315,4 +344,17 @@ fn options_style(show: bool) -> Style {
         Style::new()
             .add_modifier(Modifier::CROSSED_OUT)
     }
+}
+
+#[derive(Clone, Copy)]
+enum InputRequest {
+    Quantity,
+    Upgrade,
+}
+
+#[derive(Clone, Copy)]
+enum SearchRequest {
+    Item,
+    Aow,
+    Affinity,
 }

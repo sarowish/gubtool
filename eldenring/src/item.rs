@@ -16,11 +16,11 @@ use crate::{
     },
     utils::{DlcError, VersionError, character_loaded_check, dlc_check, version_check},
 };
-use anyhow::Result;
-use shared::slice_ops::*;
+use gubtool_core::sys::error::ProcResult;
+use utils::slice_ops::*;
 
 fn itemspawn(item_id: i64, quantity: i64, aow_id: i64,
-    is_quantity_adjustable: bool, max_quantity: i64) -> Result<()> {
+    is_quantity_adjustable: bool, max_quantity: i64) -> ProcResult {
     let location = CaveOffset::ItemSpawnAsm.addr();
     let should_adjust_quantity = CaveOffset::ShouldCheckQuantity.addr();
     let max_quantity_location = CaveOffset::MaxQuantity.addr();
@@ -40,18 +40,17 @@ fn itemspawn(item_id: i64, quantity: i64, aow_id: i64,
     write_rel_i32(&mut asm, location, 31, max_quantity_location, 4)?;
     write_rel_i32(&mut asm, location, 52, offsets::map_item_impl::base_ptr(), 4)?;
     write_rel_i32(&mut asm, location, 71, functions::item_spawn(), 4)?;
-    append_flag_setter(location, &mut asm)?;
 
     let _handle = ITEM_SPAWN_MUTEX.lock().unwrap();
 
     write::<u8>(should_adjust_quantity, is_quantity_adjustable as u8)?;
     write::<i32>(max_quantity_location, max_quantity as i32)?;
     write_bytes(item_struct_location, &item_struct)?;
-    write_bytes(location, &asm)?;
-    run_thread(location)
+
+    spawn_thread_join(location, asm)
 }
 
-pub fn mass_spawn(category: Categories) -> Result<()> {
+pub fn mass_spawn(category: Categories) -> anyhow::Result<()> {
     let items: &'static [Item] = match category {
             Categories::Armor => &ARMOR,
             Categories::Arrows => &ARROWS,
@@ -81,7 +80,13 @@ pub fn mass_spawn(category: Categories) -> Result<()> {
 }
 
 impl Item {
-    pub fn spawn(&self, quantity: i64, upgrade: i64, aow: Aow, affinity: Affinity) -> Result<()> {
+    pub fn spawn(
+        &self,
+        quantity: i64,
+        upgrade: i64,
+        aow: Aow,
+        affinity: Affinity,
+    ) -> anyhow::Result<()> {
         character_loaded_check()?;
         if self.dlc {
             if !self.requires_activated_dlc() {
@@ -102,7 +107,8 @@ impl Item {
         if let Some(event) = self.event_id {
             event::set_event(event, true)?;
         }
-        itemspawn(id, quantity, aow_id, is_quantity_adjustable, max_quantity as i64)
+        itemspawn(id, quantity, aow_id, is_quantity_adjustable, max_quantity as i64)?;
+        Ok(())
     }
     pub fn clamp_quantity(&self, quantity: i64) -> Option<i64> {
         (quantity > self.stack_size as i64).then_some(self.stack_size as i64)

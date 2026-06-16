@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-serde = { workspace = true }
-bincode = { workspace = true }
-object = { workspace = true }
 chrono = { workspace = true }
-anyhow = { workspace = true }
-pelite = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+gubtool-core = { version = "0.1.0", path = "../gubtool-core" }
+utils = { version = "0.1.0", path = "../utils" }
 
 [lints]
 workspace = true

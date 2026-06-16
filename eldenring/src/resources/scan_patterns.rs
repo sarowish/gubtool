@@ -1,4 +1,4 @@
-use engine::aob_scanner::{AobScan, ScanMode};
+use gubtool_core::aob_scanner::{AobScan, ScanMode};
 
 pub const WORLD_CHR_MAN: AobScan = AobScan {
     name: "WorldChrMan",

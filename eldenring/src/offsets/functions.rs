@@ -1,4 +1,4 @@
-use engine::attached::module_base;
+use gubtool_core::attached::module_base;
 
 use crate::offsets::module_offsets;
 

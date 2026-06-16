@@ -1,11 +1,13 @@
+pub mod attach_config_error;
 pub mod ds2_attach;
 pub mod er_attach;
 
 use crate::{
     Config,
-    user::{ds2_attach::Ds2Attach, er_attach::ErAttach},
+    user::{attach_config_error::AttachConfigError, ds2_attach::Ds2Attach, er_attach::ErAttach},
 };
 use anyhow::{Result, anyhow};
+use gubtool_core::{error_log::log_error, sys::error::ProcessError};
 use serde::{Deserialize, Serialize};
 use std::{env, fs, path::PathBuf};
 
@@ -63,4 +65,28 @@ impl Config for AttachConfig {
         modifier(&mut toml);
         Self::write(&toml)
     }
+}
+
+pub trait AttachConfigTrait {
+    fn apply_and_collect_errors(&self) -> Vec<ProcessError>;
+
+    fn apply(&self) -> Result<(), AttachConfigError> {
+        let errors = self.apply_and_collect_errors();
+        let len = errors.len();
+        for err in errors {
+            log_error(&err)
+        }
+        if len > 0 {
+            return Err(AttachConfigError { error_count: len });
+        }
+        Ok(())
+    }
+}
+
+pub struct ConfigEntryInfo {
+    pub name: &'static str,
+    pub value: FieldValue,
+}
+
+pub enum FieldValue {
 }

@@ -1,5 +1,5 @@
 use crate::offsets::module_offsets;
-use engine::attached::module_base;
+use gubtool_core::attached::module_base;
 
 pub fn locked_target_pointer() -> u64 {
     module_base() + module_offsets().hooks.locked_target_pointer

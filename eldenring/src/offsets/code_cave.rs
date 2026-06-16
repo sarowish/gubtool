@@ -1,7 +1,7 @@
 pub const SIZE: usize = 0x8000;
 
 fn base() -> u64 {
-    engine::attached::module_base() + 0x4000000
+    gubtool_core::attached::module_base() + 0x4000000
 }
 
 #[repr(u64)]

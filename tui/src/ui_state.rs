@@ -1,9 +1,10 @@
 use crate::app::App;
 use anyhow::{Result, anyhow};
 use config::Config;
-use engine::game_version::Game;
+use gubtool_core::game_version::Game;
 use ratatui_themes::ThemeName;
 use serde::{Deserialize, Serialize};
+use shared::act_array::ActArray;
 use std::{env, fs, path::PathBuf};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -91,7 +92,7 @@ pub struct GlobalState {
 impl Default for GlobalState {
     fn default() -> Self {
         Self {
-            theme: ThemeName::RosePine,
+            theme: ThemeName::Dracula,
             game_screen: Game::EldenRing,
         }
     }
@@ -110,8 +111,8 @@ pub struct ErState {
     pub give_runes: i64,
     pub target_set_health: i32,
     pub target_set_health_pct: i32,
-    pub target_act: i32,
-    pub target_act_array: Vec<i32>,
+    pub target_act: u8,
+    pub target_act_array: ActArray,
     pub event: Option<u32>,
     pub revive_first_encounter: bool,
     pub warp_on_revive: bool,
@@ -125,7 +126,7 @@ impl Default for ErState {
             target_set_health: 1,
             target_set_health_pct: 50,
             target_act: 1,
-            target_act_array: vec![],
+            target_act_array: ActArray::default(),
             event: None,
             revive_first_encounter: false,
             warp_on_revive: true,

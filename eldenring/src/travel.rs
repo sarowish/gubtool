@@ -5,25 +5,20 @@ use crate::{
     resources::{ASM, bosses::Boss, graces::Grace},
     utils::{character_loaded_check, dlc_check},
 };
-use anyhow::Result;
-use shared::slice_ops::*;
+use gubtool_core::sys::error::ProcResult;
+use utils::slice_ops::*;
 use std::{thread, time::Duration};
 
-pub fn warp_to_grace(grace_id: i64) -> Result<()> {
-    let location = CaveOffset::GraceWarpAsm.addr();
-
+pub fn warp_to_grace(grace_id: i64) -> ProcResult {
     let mut asm = ASM.get_function("warp_to_grace").get_bytes();
     write_to_slice::<u64>(&mut asm, 2, world_chr_man::base_ptr())?;
     write_to_slice::<i64>(&mut asm, 20, grace_id)?;
     write_to_slice::<u64>(&mut asm, 30, functions::grace_warp())?;
-    append_flag_setter(location, &mut asm)?;
 
-    write_bytes(location, &asm)?;
-    run_thread(location)
+    spawn_thread_join(CaveOffset::GraceWarpAsm.addr(), asm)
 }
 
-pub fn warp_to_block_id(block_id: i32, coords: [f32; 3], angle: f32, is_night: bool) -> Result<()> {
-    let location = CaveOffset::BlockWarpAsm.addr();
+pub fn warp_to_block_id(block_id: i32, coords: [f32; 3], angle: f32, is_night: bool) -> ProcResult {
     let area: i32 = (block_id >> 24) & 0xFF;
     let block: i32 = (block_id >> 16) & 0xFF;
     let map: i32 = (block_id >> 8) & 0xFF;
@@ -35,14 +30,12 @@ pub fn warp_to_block_id(block_id: i32, coords: [f32; 3], angle: f32, is_night: b
     write_to_slice::<i32>(&mut asm, 12, map)?;
     write_to_slice::<i32>(&mut asm, 18, alt_no)?;
     write_to_slice::<u64>(&mut asm, 24, functions::block_warp())?;
-    append_flag_setter(location, &mut asm)?;
 
-    write_bytes(location, &asm)?;
-    run_thread(location)?;
+    spawn_thread_join(CaveOffset::BlockWarpAsm.addr(), asm)?;
     hook_warp_coord_writes(coords, angle, is_night)
 }
 
-fn hook_warp_coord_writes(coords: [f32; 3], angle: f32, is_night: bool) -> Result<()> {
+fn hook_warp_coord_writes(coords: [f32; 3], angle: f32, is_night: bool) -> ProcResult {
     let target_coords_location = CaveOffset::WarpCoords.addr();
     let target_angle_location = CaveOffset::WarpAngle.addr();
     let angle_offset_in_struct: i32 = 0xAB0;
@@ -77,7 +70,7 @@ fn hook_warp_coord_writes(coords: [f32; 3], angle: f32, is_night: bool) -> Resul
 
 const COORD_HOOK_ORIGINAL: [u8; 7] = [0x0F, 0x11, 0x80, 0xA0, 0x0A, 0x00, 0x00];
 const ANGLE_HOOK_ORIGINAL: [u8; 7] = [0x0F, 0x11, 0x80, 0xB0, 0x0A, 0x00, 0x00];
-fn wait_to_unhook_warp(is_night: bool) -> Result<()> {
+fn wait_to_unhook_warp(is_night: bool) -> ProcResult {
     let is_faded_ptr = read::<u64>(menu_man::base_ptr())? + menu_man::is_fading();
 
     while !is_bit_set(is_faded_ptr, menu_man::fade_bit_flags::IS_FADE_SCREEN)? {
@@ -95,25 +88,27 @@ fn wait_to_unhook_warp(is_night: bool) -> Result<()> {
 }
 
 impl Boss {
-    pub fn warp(&self) -> Result<()> {
+    pub fn warp(&self) -> anyhow::Result<()> {
         character_loaded_check()?;
         if self.dlc {
             dlc_check()?;
         }
         if self.name == "Grafted Scion" && !event::get_event(10010801)? {
-            warp_to_block_id(self.block_id, [-33.27, 21.37, -87.86], 2.92, self.is_night)
+            warp_to_block_id(self.block_id, [-33.27, 21.37, -87.86], 2.92, self.is_night)?;
         } else {
-            warp_to_block_id(self.block_id, self.coords, self.angle, self.is_night)
+            warp_to_block_id(self.block_id, self.coords, self.angle, self.is_night)?;
         }
+        Ok(())
     }
 }
 
 impl Grace {
-    pub fn warp(&self) -> Result<()> {
+    pub fn warp(&self) -> anyhow::Result<()> {
         character_loaded_check()?;
         if self.dlc {
             dlc_check()?;
         }
-        warp_to_grace(self.grace_entity_id)
+        warp_to_grace(self.grace_entity_id)?;
+        Ok(())
     }
 }

@@ -3,7 +3,7 @@ use phf::phf_map;
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Infusions {
+pub enum Infusion {
     Normal = 0,
     Fire = 1,
     Magic = 2,
@@ -16,20 +16,20 @@ pub enum Infusions {
     Mundane = 9,
 }
 
-pub static INFUSIONS: [Infusions; 10] = [
-    Infusions::Normal,
-    Infusions::Fire,
-    Infusions::Magic,
-    Infusions::Lightning,
-    Infusions::Dark,
-    Infusions::Poison,
-    Infusions::Bleed,
-    Infusions::Raw,
-    Infusions::Enchanted,
-    Infusions::Mundane,
+pub static INFUSIONS: [Infusion; 10] = [
+    Infusion::Normal,
+    Infusion::Fire,
+    Infusion::Magic,
+    Infusion::Lightning,
+    Infusion::Dark,
+    Infusion::Poison,
+    Infusion::Bleed,
+    Infusion::Raw,
+    Infusion::Enchanted,
+    Infusion::Mundane,
 ];
 
-impl fmt::Display for Infusions {
+impl fmt::Display for Infusion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
             Self::Normal => "Normal",

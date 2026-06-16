@@ -14,12 +14,14 @@ use crate::{
     event::ResultExt,
 };
 use anyhow::Result;
-use config::{Config, user::AttachConfig};
+use config::{Config, user::{AttachConfig, AttachConfigTrait}};
 use crossterm::event::KeyEvent;
 use darksouls2::{
+    bonfire,
     chr_ctrl::{ChrCtrl, ChrCtrlExt},
     game_state::{GameStateHandler, StateFlags},
-    player, target, utility,
+    player,
+    target, utility,
 };
 use ratatui::{Frame, layout::Rect, text::Line};
 
@@ -95,9 +97,7 @@ impl DarkSouls2 {
         }
     }
 
-    pub fn handle_keys(&mut self, key: KeyEvent) {
-        self.tabs_widget.handle_keys(key);
-
+    pub fn handle_keys(&mut self, key: KeyEvent, block_inputs: bool) {
         match self.tabs_widget.tabs[self.tabs_widget.current_tab as usize] {
             "Player" => self.player.handle_keys(key),
             "Target" => self.target.handle_keys(key),
@@ -107,6 +107,10 @@ impl DarkSouls2 {
             "Events" => self.event.handle_keys(key),
             _ => (),
         }
+
+        if block_inputs { return; }
+
+        self.tabs_widget.handle_keys(key);
     }
 
     pub fn background_tick(&mut self) {
@@ -135,9 +139,10 @@ impl DarkSouls2 {
 
 pub fn dbg_lines() -> Vec<Line<'static>> {
     let debug_info = [
-        format!("Area ID: {:#X}", utility::get_area_id().unwrap_or_default()),
-        format!("Player Coords: {:?}", player::player_position().unwrap_or_default()),
-        format!("Player Quaternion: {:?}", player::player_ctrl().rot_quaternion().unwrap_or_default()),
+        format!("area id: {:#X}", utility::get_area_id().unwrap_or_default()),
+        format!("player coords: {:?}", player::player_position().unwrap_or_default()),
+        format!("player quaternion: {:?}", player::player_ctrl().rot_quaternion().unwrap_or_default()),
+        format!("last rested bonfire id: {}", bonfire::get_last_bonfire_id().unwrap_or_default()),
     ];
 
     debug_info.iter().map(|f| Line::raw(f.to_string())).collect()

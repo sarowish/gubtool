@@ -1,16 +1,12 @@
 use crate::{
-    common::{StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list},
-    eldenring_screen::GameState,
-    event::ResultExt,
-    send_input_event,
-    theme::theme,
+    common::{StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list}, eldenring_screen::GameState, event::ResultExt, input::input_prompt::{InputPrompt, PromptType}, theme::theme
 };
 use config::{Config, user::AttachConfig};
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use eldenring::{
     game_state::{StateFlagOffset, StateFlags},
     resources::talk_commands::{MENUS, shops_array},
-    utility,
+    utility::{self, ControlFlag},
 };
 use ratatui::{
     Frame,
@@ -52,6 +48,7 @@ pub struct UtilityTab {
     pub tab: TabState,
     preferences: AttachConfig,
     menu_shop_idx: usize,
+    input: InputPrompt<InputRequest>,
 }
 
 impl UtilityTab {
@@ -65,6 +62,7 @@ impl UtilityTab {
             tab: TabState::new(list_states),
             preferences: AttachConfig::read().unwrap_or_default(),
             menu_shop_idx: 0,
+            input: InputPrompt::new(),
         }
     }
 
@@ -114,6 +112,8 @@ impl UtilityTab {
             );
         }
         frame.render_widget(self.menu_shop_tab(), layout[MENUS_IDX]);
+
+        self.input.draw_popup_checked(frame);
     }
 
     fn menu_shop_tab(&self) -> Tabs<'static> {
@@ -132,52 +132,73 @@ impl UtilityTab {
         if self.tab.current_list == SHOPS_IDX {
             self.tab.set_length(SHOPS_IDX, shops_array(GameState::dlc()).len())
         }
-        self.tab.handle_keys(key);
-        match self.tab.current_list {
-            MENUS_IDX if self.menu_shop_idx == 1 => self.tab.current_list = SHOPS_IDX,
-            SHOPS_IDX if self.menu_shop_idx == 0 => self.tab.current_list = MENUS_IDX,
-            _ => (),
+
+        if self.input.show {
+            self.input.handle_keys(key);
+            if key.code == KeyCode::Enter {
+                self.handle_input_enter();
+            }
+            return;
         }
+
+        self.tab.handle_keys(key);
+
         match self.tab.current_list {
-            SHOPS_IDX => match (key.code, key.modifiers) {
-                (KeyCode::Char('h'), _) => {
-                    self.tab.current_list = MENUS_IDX;
-                    self.menu_shop_idx = 0
-                }
-                _ => (),
-            },
             MENUS_IDX => {
+                if self.menu_shop_idx == 1 {
+                    self.tab.current_list = SHOPS_IDX
+                }
                 if key.code == KeyCode::Char('l') {
                     self.tab.current_list = SHOPS_IDX;
                     self.menu_shop_idx = 1
                 }
             }
+            SHOPS_IDX => match (key.code, key.modifiers) {
+                (KeyCode::Char('h'), _) => {
+                    self.tab.current_list = MENUS_IDX;
+                    self.menu_shop_idx = 0
+                }
+                (KeyCode::Char('k'), KeyModifiers::CONTROL) => {
+                    self.tab.current_list = 1;
+                }
+                _ => (),
+            },
             _ => (),
         }
-        match key.code {
-            KeyCode::Char('s') => self.handle_input(),
-            KeyCode::Enter => self.handle_enter(),
-            _ => (),
+
+        if key.code == KeyCode::Enter {
+            self.handle_enter();
         }
     }
 
-    fn handle_input(&self) {
+    fn handle_enter(&mut self) {
         if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
             match self.tab.current_list {
-                ACTIONS_IDX => ActionsItems::ARRAY[selected].set_input(),
+                OPTIONS_IDX => TogglesItems::ARRAY[selected].execute(),
+                ACTIONS_IDX => ActionsItems::ARRAY[selected].execute(&mut self.input),
+                MENUS_IDX => MENUS[selected].execute().send_error(),
+                SHOPS_IDX => shops_array(GameState::dlc())[selected].execute().send_error(),
                 _ => (),
             }
         }
     }
 
-    fn handle_enter(&self) {
-        if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
-            match self.tab.current_list {
-                OPTIONS_IDX => TogglesItems::ARRAY[selected].execute(),
-                ACTIONS_IDX => ActionsItems::ARRAY[selected].execute(),
-                MENUS_IDX => MENUS[selected].execute().send_error(),
-                SHOPS_IDX => shops_array(GameState::dlc())[selected].execute().send_error(),
-                _ => (),
+    fn handle_input_enter(&self) {
+        match self.input.last_request.unwrap() {
+            InputRequest::FpsCap => {
+                if let Some(val) = self.input.parse_text::<f32>() {
+                    utility::set_fps_cap(val).send_error()
+                }
+            }
+            InputRequest::ClearCount => {
+                if let Some(val) = self.input.parse_text::<i32>() {
+                    utility::set_ng_cycle(val).send_error()
+                }
+            }
+            InputRequest::GameSpeed => {
+                if let Some(val) = self.input.parse_text::<f32>() {
+                    utility::set_game_speed(val).send_error()
+                }
             }
         }
     }
@@ -239,16 +260,16 @@ impl TogglesItems {
                 utility::set_travel_anywhere(new_state).send_error()
             }
             Self::DisableRoll => {
-                let new_state = !utility::is_roll_disabled().unwrap_or_default();
-                utility::set_disable_roll(new_state).send_error()
+                let new_state = !utility::is_control_disabled(ControlFlag::Roll).unwrap_or_default();
+                utility::set_control(ControlFlag::Roll, new_state).send_error()
             }
             Self::DisableJump => {
-                let new_state = !utility::is_jump_disabled().unwrap_or_default();
-                utility::set_disable_jump(new_state).send_error()
+                let new_state = !utility::is_control_disabled(ControlFlag::Jump).unwrap_or_default();
+                utility::set_control(ControlFlag::Jump, new_state).send_error()
             }
             Self::DisableBackstep => {
-                let new_state = !utility::is_backstep_disabled().unwrap_or_default();
-                utility::set_disable_backstep(new_state).send_error()
+                let new_state = !utility::is_control_disabled(ControlFlag::Backstep).unwrap_or_default();
+                utility::set_control(ControlFlag::Backstep, new_state).send_error()
             }
         }
     }
@@ -290,16 +311,20 @@ impl TogglesItems {
                 let state = utility::is_map_anywhere().unwrap_or_default();
                 "Allow Map In Combat".create_toggle_str(state)
             }
-            Self::TravelAnywhere => { let state = utility::is_travel_anywhere().unwrap_or_default();
+            Self::TravelAnywhere => {
+                let state = utility::is_travel_anywhere().unwrap_or_default();
                 "Allow Travel In Dungeons".create_toggle_str(state)
             }
-            Self::DisableRoll => { let state = utility::is_roll_disabled().unwrap_or_default();
+            Self::DisableRoll => {
+                let state = utility::is_control_disabled(ControlFlag::Roll).unwrap_or_default();
                 "Disable Roll".create_toggle_str(state)
             }
-            Self::DisableJump => { let state = utility::is_jump_disabled().unwrap_or_default();
+            Self::DisableJump => {
+                let state = utility::is_control_disabled(ControlFlag::Jump).unwrap_or_default();
                 "Disable Jump".create_toggle_str(state)
             }
-            Self::DisableBackstep => { let state = utility::is_backstep_disabled().unwrap_or_default();
+            Self::DisableBackstep => {
+                let state = utility::is_control_disabled(ControlFlag::Backstep).unwrap_or_default();
                 "Disable Backstep".create_toggle_str(state)
             }
         };
@@ -327,43 +352,13 @@ impl TogglesItems {
 }
 
 impl ActionsItems {
-    fn execute(&self) {
+    fn execute(&self, input: &mut InputPrompt<InputRequest>) {
         match self {
-            Self::FpsCap => {
-                send_input_event!(text, _app, {
-                    if let Ok(v) = text.parse() {
-                        utility::set_fps_cap(v).send_error()
-                    }
-                })
-            }
-            Self::GameSpeed => {
-                send_input_event!(text, _app, {
-                    if let Ok(v) = text.parse() {
-                        utility::set_game_speed(v).send_error()
-                    }
-                })
-            }
-            Self::Quitout => {
-                utility::quitout().send_error()
-            }
-            Self::ClearCount => {
-                send_input_event!(text, _app, {
-                    if let Ok(v) = text.parse() {
-                        utility::set_ng_cycle(v).send_error()
-                    }
-                })
-            }
-            Self::TriggerNewGameCycle => {
-                utility::trigger_new_game().send_error()
-            }
-        }
-    }
-    fn set_input(&self) {
-        match self {
-            Self::FpsCap | Self::GameSpeed | Self::ClearCount => {
-                self.execute()
-            },
-            _ => (),
+            Self::FpsCap => input.show("Set FPS Cap", PromptType::F32, InputRequest::FpsCap),
+            Self::GameSpeed => input.show("Set Game Speed", PromptType::F32, InputRequest::GameSpeed),
+            Self::Quitout => utility::quitout().send_error(),
+            Self::ClearCount => input.show("Set Clearcount", PromptType::I32, InputRequest::GameSpeed),
+            Self::TriggerNewGameCycle => utility::trigger_new_game().send_error(),
         }
     }
     fn to_list_item(&self) -> ListItem<'_> {
@@ -400,4 +395,11 @@ impl ActionsItems {
         let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item()).collect();
         tabs_list(items, None, &utility_tab.tab, ACTIONS_IDX)
     }
+}
+
+#[derive(Clone, Copy)]
+enum InputRequest {
+    FpsCap,
+    GameSpeed,
+    ClearCount,
 }

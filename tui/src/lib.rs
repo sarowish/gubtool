@@ -4,11 +4,11 @@ mod common;
 mod darksouls2_screen;
 mod eldenring_screen;
 mod event;
-mod fuzzy_finder;
 mod game_screen_selector;
 mod help;
 mod input;
 mod process_selector;
+mod memory_viewer_screen;
 mod theme;
 mod ui_state;
 

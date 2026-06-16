@@ -1,29 +1,30 @@
 use crate::{
     mem::*,
     offsets::{
-        code_cave::CaveOffset, functions,
+        ChainReadExt,
+        code_cave::CaveOffset,
+        functions,
         game_manager_imp::{self, event_manager_offsets},
         hooks,
     },
-    resources::{bosses::Boss, scholar, vanilla},
+    resources::{bosses::Boss, event_flags::EventFlag, map_ids::MapId, scholar, vanilla},
+    utility,
     utils::character_loaded_check,
 };
-use anyhow::{Ok, Result, bail};
-use shared::{
-    event_log::{EventLog, EventLogger},
-    slice_ops::*,
-};
+use anyhow::{anyhow, ensure};
+use gubtool_core::sys::error::ProcResult;
+use shared::event_log::{EventLog, EventLogger};
+use utils::slice_ops::*;
 
-pub fn get_event_flag(flag_id: u32) -> Result<bool> {
-    character_loaded_check()?;
+pub fn get_event_flag(flag_id: u32) -> anyhow::Result<bool> {
     let (byte_addr, bit_mask) = event_flag_lookup(flag_id)?;
-    is_bit_set(byte_addr, bit_mask)
+    Ok(is_bit_set(byte_addr, bit_mask)?)
 }
 
-fn _set_event_flag_direct(flag_id: u32, state: bool) -> Result<()> {
+fn _set_event_flag_direct(flag_id: u32, state: bool) -> anyhow::Result<()> {
     character_loaded_check()?;
     let (byte_addr, bit_mask) = event_flag_lookup(flag_id)?;
-    set_bit(byte_addr, bit_mask, state)
+    Ok(set_bit(byte_addr, bit_mask, state)?)
 }
 
 #[derive(Debug)]
@@ -35,7 +36,7 @@ struct Node {
 }
 
 impl Node {
-    fn read_at(address: u64) -> Result<Self> {
+    fn read_at(address: u64) -> ProcResult<Self> {
         if is_scholar() {
             let bytes = read::<[u8; 0x18]>(address)?;
             Ok(Self {
@@ -56,10 +57,10 @@ impl Node {
     }
 }
 
-fn event_flag_lookup(flag_id: u32) -> Result<(u64, u8)> {
+fn event_flag_lookup(flag_id: u32) -> anyhow::Result<(u64, u8)> {
     let event_flag_man = read_address(game_manager_imp::base_ptr())
-        .and_then(|addr| read_address(addr + game_manager_imp::event_manager()))
-        .and_then(|addr| read_address(addr + event_manager_offsets::event_flag_manager()))?;
+        .read_offset(game_manager_imp::EVENT_MANAGER)
+        .read_offset(event_manager_offsets::EVENT_FLAG_MANAGER)?;
 
     let group = flag_id / 10000;
     let hash = group.wrapping_mul(0x89);
@@ -84,52 +85,37 @@ fn event_flag_lookup(flag_id: u32) -> Result<(u64, u8)> {
         }
         node_ptr = node.next_node;
     }
-    bail!("Event flag not found")
+    Err(anyhow!("Event flag not found"))
 }
 
-pub fn set_event_flag(flag_id: u32, state: bool) -> Result<()> {
+pub fn set_event_flag(flag_id: u32, state: bool) -> anyhow::Result<()> {
     character_loaded_check()?;
-    let location = CaveOffset::SetEventAsm.addr();
     let event_flag_man = read_address(game_manager_imp::base_ptr())
-        .and_then(|addr| read_address(addr + game_manager_imp::event_manager()))
-        .and_then(|addr| read_address(addr + event_manager_offsets::event_flag_manager()))?;
+        .read_offset(game_manager_imp::EVENT_MANAGER)
+        .read_offset(event_manager_offsets::EVENT_FLAG_MANAGER)?;
 
-    match is_scholar() {
-        true => set_event_scholar(location, flag_id, state, event_flag_man),
-        false => set_event_vanilla(location, flag_id, state, event_flag_man),
-    }
-}
-
-fn set_event_scholar(location: u64, flag_id: u32, state: bool, event_flag_man: u64) -> Result<()> {
-    let fun = scholar::ASM.get_function("set_event");
-    let mut asm = fun.get_bytes();
-
-    write_to_slice::<u64>(&mut asm, fun.reloc("event_flag_man"), event_flag_man)?;
-    write_to_slice::<u32>(&mut asm, fun.reloc("state"), state)?;
-    write_to_slice::<u64>(&mut asm, fun.reloc("event_id"), flag_id)?;
-    write_to_slice::<u64>(&mut asm, fun.reloc("fn_set_event"), functions::set_event())?;
-    append_flag_setter(location, &mut asm)?;
-
-    write_bytes(location, &asm)?;
-    run_thread(location)
-}
-
-fn set_event_vanilla(location: u64, flag_id: u32, state: bool, event_flag_man: u64) -> Result<()> {
-    let fun = vanilla::ASM.get_function("set_event");
-    let mut asm = fun.get_bytes();
-
-    write_to_slice::<u32>(&mut asm, fun.reloc("event_flag_man"), event_flag_man)?;
-    write_to_slice::<u32>(&mut asm, fun.reloc("state"), state)?;
-    write_to_slice::<u32>(&mut asm, fun.reloc("event_id"), flag_id)?;
-    write_to_slice::<u32>(&mut asm, fun.reloc("fn_set_event"), functions::set_event())?;
-    append_flag_setter(location, &mut asm)?;
-
-    write_bytes(location, &asm)?;
-    run_thread(location)
+    let asm = if is_scholar() {
+        let fun = scholar::ASM.get_function("set_event");
+        let mut asm = fun.get_bytes();
+        write_to_slice::<u64>(&mut asm, fun.reloc("event_flag_man"), event_flag_man)?;
+        write_to_slice::<u32>(&mut asm, fun.reloc("state"), state)?;
+        write_to_slice::<u64>(&mut asm, fun.reloc("event_id"), flag_id)?;
+        write_to_slice::<u64>(&mut asm, fun.reloc("fn_set_event"), functions::set_event())?;
+        asm
+    } else {
+        let fun = vanilla::ASM.get_function("set_event");
+        let mut asm = fun.get_bytes();
+        write_to_slice::<u32>(&mut asm, fun.reloc("event_flag_man"), event_flag_man)?;
+        write_to_slice::<u32>(&mut asm, fun.reloc("state"), state)?;
+        write_to_slice::<u32>(&mut asm, fun.reloc("event_id"), flag_id)?;
+        write_to_slice::<u32>(&mut asm, fun.reloc("fn_set_event"), functions::set_event())?;
+        asm
+    };
+    Ok(spawn_thread_join(CaveOffset::SetEventAsm.addr(), asm)?)
 }
 
 impl Boss {
-    pub fn revive(&self) -> Result<()> {
+    pub fn revive(&self) -> anyhow::Result<()> {
         set_event_flag(self.death_flag, false)
     }
     pub fn revive_status(&self) -> &str {
@@ -156,24 +142,24 @@ impl EventLogger for Ds2EventLogger {
     fn file_prefix(&self) -> &'static str {
         "darksouls2"
     }
-    fn write_idx(&self) -> Result<i32> {
+    fn write_idx(&self) -> ProcResult<i32> {
         read::<i32>(CaveOffset::EventLogWriteIdx.addr())
     }
-    fn read_buffer(&self) -> Result<[u8; 0x1000]> {
+    fn read_buffer(&self) -> ProcResult<[u8; 0x1000]> {
         read::<[u8; 0x1000]>(CaveOffset::EventLogBuffer.addr())
     }
-    fn clear_cave(&self) -> Result<()> {
+    fn clear_cave(&self) -> ProcResult {
         write::<i32>(CaveOffset::EventLogWriteIdx.addr(), 0x0)?;
         write_bytes(CaveOffset::EventLogBuffer.addr(), &[0x0; 0x1000])
     }
 }
 
 const EVENT_LOG_HOOK_ORIGINAL: [u8; 5] = [0xB8, 0x59, 0x17, 0xB7, 0xD1];
-pub fn is_event_log_hook() -> Result<bool> {
+pub fn is_event_log_hook() -> ProcResult<bool> {
     read::<[u8; 5]>(hooks::event_log()).map(|bytes| bytes != EVENT_LOG_HOOK_ORIGINAL)
 }
 
-pub fn set_event_log_hook(state: bool) -> Result<()> {
+pub fn set_event_log_hook(state: bool) -> ProcResult {
     match state {
         true => {
             let location = CaveOffset::EventLogHook.addr();
@@ -189,7 +175,7 @@ pub fn set_event_log_hook(state: bool) -> Result<()> {
     }
 }
 
-fn install_event_log_hook_scholar(location: u64, write_index: u64, buffer: u64) -> Result<()> {
+fn install_event_log_hook_scholar(location: u64, write_index: u64, buffer: u64) -> ProcResult {
     let fun = scholar::ASM.get_function("event_log");
     let mut asm = fun.get_bytes();
 
@@ -201,7 +187,7 @@ fn install_event_log_hook_scholar(location: u64, write_index: u64, buffer: u64) 
     install_hook(&asm, location, hooks::event_log(), 5)
 }
 
-fn install_event_log_hook_vanilla(location: u64, write_index: u64, buffer: u64) -> Result<()> {
+fn install_event_log_hook_vanilla(location: u64, write_index: u64, buffer: u64) -> ProcResult {
     let fun = vanilla::ASM.get_function("event_log");
     let mut asm = fun.get_bytes();
 
@@ -213,7 +199,7 @@ fn install_event_log_hook_vanilla(location: u64, write_index: u64, buffer: u64) 
     install_hook(&asm, location, hooks::event_log(), 5)
 }
 
-pub fn set_ivory_gauntlet_skip(state: bool) -> Result<()> {
+pub fn set_ivory_gauntlet_skip(state: bool) -> ProcResult {
     let location = CaveOffset::IvorySkipHook.addr();
     match (state, is_scholar()) {
         (true, true) => install_ivory_gauntlet_skip_scholar(location),
@@ -223,14 +209,15 @@ pub fn set_ivory_gauntlet_skip(state: bool) -> Result<()> {
     }
 }
 
-pub fn is_ivory_gauntlet_skip() -> Result<bool> {
+pub fn is_ivory_gauntlet_skip() -> bool {
     match is_scholar() {
         true => read::<[u8; 5]>(functions::set_event()).map(|val| val != [0x48, 0x89, 0x74, 0x24, 0x10]),
         false => read::<[u8; 6]>(functions::set_event()) .map(|val| val != [0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08]),
     }
+    .unwrap_or_default()
 }
 
-fn install_ivory_gauntlet_skip_scholar(location: u64) -> Result<()> {
+fn install_ivory_gauntlet_skip_scholar(location: u64) -> ProcResult {
     let fun = scholar::ASM.get_function("ivory_skip");
     let mut asm = fun.get_bytes();
 
@@ -242,7 +229,7 @@ fn install_ivory_gauntlet_skip_scholar(location: u64) -> Result<()> {
     install_hook(&asm, location, functions::set_event(), 5)
 }
 
-fn install_ivory_gauntlet_skip_vanilla(location: u64) -> Result<()> {
+fn install_ivory_gauntlet_skip_vanilla(location: u64) -> ProcResult {
     let fun = vanilla::ASM.get_function("ivory_skip");
     let mut asm = fun.get_bytes();
 
@@ -254,7 +241,7 @@ fn install_ivory_gauntlet_skip_vanilla(location: u64) -> Result<()> {
     install_hook(&asm, location, functions::set_event(), 6)
 }
 
-pub fn set_ivory_no_knights(state: bool) -> Result<()> {
+pub fn set_ivory_no_knights(state: bool) -> ProcResult {
     let location = CaveOffset::IvoryKnightsHook.addr();
     match (state, is_scholar()) {
         (true, true) => install_ivory_no_knights_scholar(location),
@@ -264,7 +251,7 @@ pub fn set_ivory_no_knights(state: bool) -> Result<()> {
     }
 }
 
-pub fn is_ivory_no_knights() -> Result<bool> {
+pub fn is_ivory_no_knights() -> bool {
     match is_scholar() {
         true => {
             read::<[u8; 8]>(hooks::set_shared_flag())
@@ -275,18 +262,53 @@ pub fn is_ivory_no_knights() -> Result<bool> {
                 .map(|val| val != [0x88, 0x94, 0x08, 0xA1, 0x02, 0x00, 0x00])
         }
     }
+    .unwrap_or_default()
 }
 
-fn install_ivory_no_knights_scholar(location: u64) -> Result<()> {
+fn install_ivory_no_knights_scholar(location: u64) -> ProcResult {
     let mut asm = scholar::ASM.get_function("ivory_knights").get_bytes();
     write_rel_i32(&mut asm, location, 32, hooks::set_shared_flag() + 8, 4)?;
 
     install_hook(&asm, location, hooks::set_shared_flag(), 8)
 }
 
-fn install_ivory_no_knights_vanilla(location: u64) -> Result<()> {
+fn install_ivory_no_knights_vanilla(location: u64) -> ProcResult {
     let mut asm = vanilla::ASM.get_function("ivory_knights").get_bytes();
     write_rel_i32(&mut asm, location, 28, hooks::set_shared_flag() + 7, 5)?;
 
     install_hook(&asm, location, hooks::set_shared_flag(), 7)
+}
+
+impl EventFlag {
+    pub fn get(&self) -> anyhow::Result<bool> {
+        get_event_flag(*self as u32)
+    }
+
+    pub fn set(&self, state: bool) -> anyhow::Result<()> {
+        set_event_flag(*self as u32, state)
+    }
+
+    pub fn get_flags(flags: &[Self]) -> anyhow::Result<bool> {
+        for flag in flags {
+            if !get_event_flag(*flag as u32)? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    pub fn set_flags(flags: &[(Self, bool)]) -> anyhow::Result<()> {
+        flags
+            .iter()
+            .try_for_each(|(flag, state)| set_event_flag(*flag as u32, *state))
+    }
+
+    pub fn set_area_conditional_event(&self, state: bool, area_id: MapId) -> anyhow::Result<()> {
+        character_loaded_check()?;
+        ensure!(
+            utility::get_area_id()? == area_id as u32,
+            "Must be in general area"
+        );
+        set_event_flag(*self as u32, state)
+    }
 }

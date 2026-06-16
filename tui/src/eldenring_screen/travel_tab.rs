@@ -1,9 +1,5 @@
 use crate::{
-    app::App,
-    common::{block, blockless_list, controls::draw_controls, label_list, stateful_list::StatefulList, tab_state::TabState},
-    eldenring_screen::GameState,
-    event::{Event, ResultExt, send_event},
-    theme::theme,
+    common::{block, blockless_list, controls::draw_controls, label_list, stateful_list::StatefulList, tab_state::TabState}, eldenring_screen::GameState, event::{AnyhowExt}, input::fuzzy_finder::{FuzzyFinder}, theme::theme
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use eldenring::{
@@ -31,6 +27,7 @@ const GRACES_IDX: usize = 1;
 
 pub struct TravelTab {
     tab: TabState,
+    fuzzy_finder: FuzzyFinder,
 }
 
 impl TravelTab {
@@ -40,6 +37,7 @@ impl TravelTab {
         list_states[GRACES_IDX] = StatefulList::new(0);
         TravelTab {
             tab: TabState::new(list_states),
+            fuzzy_finder: FuzzyFinder::default(),
         }
     }
 
@@ -101,11 +99,23 @@ impl TravelTab {
             grace_area,
             &mut self.tab.get_list_state(GRACES_IDX),
         );
+
+        self.fuzzy_finder.draw_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
         self.tab.set_length(BOSSES_IDX, bosses_array(GameState::dlc()).len());
         self.tab.set_length(GRACES_IDX, graces_array(GameState::dlc()).len());
+
+        if self.fuzzy_finder.show {
+            self.fuzzy_finder.handle_keys(key);
+            if key.code == KeyCode::Enter {
+                if let Some(selected) = self.fuzzy_finder.selected_idx() {
+                    self.tab.set_list_selected(self.tab.current_list, selected);
+                }
+            }
+            return;
+        }
 
         self.tab.handle_keys(key);
         match key.code {
@@ -113,31 +123,16 @@ impl TravelTab {
                 self.handle_select()
             }
             KeyCode::Char('f') => {
-                if self.tab.current_list == BOSSES_IDX {
-                    let list = bosses_array(GameState::dlc()).iter()
+                let list = if self.tab.current_list == BOSSES_IDX {
+                    bosses_array(GameState::dlc()).iter()
                         .map(|boss| Utf32String::from(format!("{}|{}", boss.name, boss.main_area)))
-                        .collect();
-
-                    let function = |app: &mut App| {
-                        app.elden_ring.travel.tab.set_list_selected(
-                            BOSSES_IDX,
-                            app.fuzzy_finder.selected_idx().unwrap(),
-                        )
-                    };
-                    send_event(Event::Search((list, function)))
+                        .collect::<Vec<Utf32String>>()
                 } else {
-                    let list = graces_array(GameState::dlc()).iter()
+                    graces_array(GameState::dlc()).iter()
                         .map(|grace| Utf32String::from(format!("{}|{}", grace.name, grace.main_area)))
-                        .collect();
-
-                    let function = |app: &mut App| {
-                        app.elden_ring.travel.tab.set_list_selected(
-                            GRACES_IDX,
-                            app.fuzzy_finder.selected_idx().unwrap(),
-                        )
-                    };
-                    send_event(Event::Search((list, function)))
-                }
+                        .collect::<Vec<Utf32String>>()
+                };
+                self.fuzzy_finder.show(list);
             }
             KeyCode::Char('r') => {
                 if self.tab.current_list == BOSSES_IDX

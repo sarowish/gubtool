@@ -2,55 +2,6 @@ use crate::offsets::module_offsets::{
     BasePointers, Data, ExternalFunctionPointers, Functions, Hooks, ModuleOffsets, Patches,
 };
 
-pub const VANILLA_1_0_7: ModuleOffsets = ModuleOffsets {
-    base_ptrs: BasePointers {
-        game_manager_imp: 0xFDB074,
-        katana_main_app: 0x10252F4,
-    },
-    functions: Functions {
-        give_souls: 0x359510,
-        warp: 0x1D9890,
-        item_spawn: 0x1F40F0,
-        build_item_dialogue: 0xF9560,
-        show_item_dialogue: 0x48D100,
-        current_item_quantity_check: 0x1FAD00,
-        set_event: 0x419310,
-        get_map_entity_with_area_id_and_obj_id: 0x38B1F0,
-        get_state_act_component: 0x20DEB0,
-        make_sound: 0x174340,
-    },
-    hooks: Hooks {
-        set_shared_flag: 0x3D4EDB,
-        locked_target_pointer: 0x43DA41,
-        credits_skip: 0x0,
-        faster_menu: 0x16C8EE,
-        event_log: 0x41931B,
-        player_no_damage: 0x1C36F1,
-        infinite_poise: 0x19B573,
-    },
-    patches: Patches {
-        infinite_stamina: 0x30865F,
-        infinite_consumables: 0x1FCD32,
-        infinite_durability: 0x31E18A,
-        infinite_casts: 0x1F7F69,
-        no_soul_gain: 0x23B8D4,
-        no_hollowing: 0x359237,
-        no_soul_loss: 0x27ADB1,
-        player_hidden: 0x3E5E4C,
-        player_silent: 0x174441,
-        menu_transition: 0x15C33E,
-    },
-    data: Data {
-        map_id: 0xF5F240,
-    },
-    external_fn_ptrs: ExternalFunctionPointers {
-        kernel32_create_thread: 0xD6E148,
-        kernel32_close_handle: 0xD6E214,
-        kernel32_sleep: 0xD6E208,
-        kernel32_load_library_w: 0xD6E10C,
-    },
-};
-
 pub const VANILLA_1_0_10: ModuleOffsets = ModuleOffsets {
     base_ptrs: BasePointers {
         game_manager_imp: 0x11593F4,
@@ -67,6 +18,10 @@ pub const VANILLA_1_0_10: ModuleOffsets = ModuleOffsets {
         get_map_entity_with_area_id_and_obj_id: 0x3F0760,
         get_state_act_component: 0x253470,
         make_sound: 0x1B1630,
+        bonfire_rest: 0x2166D0,
+        bonfire_unlock: 0x214C50,
+        open_menu: 0x229F60,
+        menu_chr_state: 0x503B40,
     },
     hooks: Hooks {
         set_shared_flag: 0x4412CB,
@@ -86,8 +41,10 @@ pub const VANILLA_1_0_10: ModuleOffsets = ModuleOffsets {
         no_hollowing: 0x3BCE17,
         no_soul_loss: 0x2D12D1,
         player_hidden: 0x45251E,
-        player_silent: 0x1B1731,
+        player_silent: 0x1B1732,
         menu_transition: 0x197C9E,
+        no_roll: 0x3C0077,
+        no_backstep: 0x3C038E,
     },
     data: Data {
         map_id: 0x10DD2D0,
@@ -116,6 +73,10 @@ pub const VANILLA_1_0_11: ModuleOffsets = ModuleOffsets {
         get_map_entity_with_area_id_and_obj_id: 0x3E0670,
         get_state_act_component: 0x2433F0,
         make_sound: 0x1A1630,
+        bonfire_rest: 0x206650,
+        bonfire_unlock: 0x204BD0,
+        open_menu: 0x219EF0,
+        menu_chr_state: 0x4F3AB0,
     },
     hooks: Hooks {
         set_shared_flag: 0x43120B,
@@ -135,8 +96,10 @@ pub const VANILLA_1_0_11: ModuleOffsets = ModuleOffsets {
         no_hollowing: 0x3ACE17,
         no_soul_loss: 0x2C12C1,
         player_hidden: 0x44245E,
-        player_silent: 0x1A1731,
+        player_silent: 0x1A1732,
         menu_transition: 0x187C9E,
+        no_roll: 0x3B0077,
+        no_backstep: 0x3B038E,
     },
     data: Data {
         map_id: 0x10CD2D0,
@@ -165,6 +128,10 @@ pub const VANILLA_1_0_12: ModuleOffsets = ModuleOffsets {
         get_map_entity_with_area_id_and_obj_id: 0x3E7610,
         get_state_act_component: 0x246220,
         make_sound: 0x1A1860,
+        bonfire_rest: 0x208DF0,
+        bonfire_unlock: 0x207370,
+        open_menu: 0x21CCA0,
+        menu_chr_state: 0x4FAD30,
     },
     hooks: Hooks {
         set_shared_flag: 0x43849B,
@@ -184,8 +151,10 @@ pub const VANILLA_1_0_12: ModuleOffsets = ModuleOffsets {
         no_hollowing: 0x3B37B7,
         no_soul_loss: 0x2C4D91,
         player_hidden: 0x44969E,
-        player_silent: 0x1A1970,
+        player_silent: 0x1A1971,
         menu_transition: 0x187E9E,
+        no_roll: 0x3B6A17,
+        no_backstep: 0x3B6D2E,
     },
     data: Data {
         map_id: 0x10D42D8,
@@ -214,6 +183,10 @@ pub const SCHOLAR_1_0_1: ModuleOffsets = ModuleOffsets {
         get_map_entity_with_area_id_and_obj_id: 0x3BADD0,
         get_state_act_component: 0x1C6FB0,
         make_sound: 0x10E030,
+        bonfire_rest: 0x17AA30,
+        bonfire_unlock: 0x17B110,
+        open_menu: 0x1958C0,
+        menu_chr_state: 0x4FA0D0,
     },
     hooks: Hooks {
         set_shared_flag: 0x41F372,
@@ -235,6 +208,8 @@ pub const SCHOLAR_1_0_1: ModuleOffsets = ModuleOffsets {
         player_hidden: 0x434CCA,
         player_silent: 0x10E192,
         menu_transition: 0xEF524,
+        no_roll: 0x387F6E,
+        no_backstep: 0x388015,
     },
     data: Data {
         map_id: 0x15641B4,
@@ -263,6 +238,10 @@ pub const SCHOLAR_1_0_2: ModuleOffsets = ModuleOffsets {
         get_map_entity_with_area_id_and_obj_id: 0x3BAD70,
         get_state_act_component: 0x1C7010,
         make_sound: 0x10E0D0,
+        bonfire_rest: 0x17AA90,
+        bonfire_unlock: 0x17B170,
+        open_menu: 0x195920,
+        menu_chr_state: 0x4FA1D0,
     },
     hooks: Hooks {
         set_shared_flag: 0x41F452,
@@ -284,6 +263,8 @@ pub const SCHOLAR_1_0_2: ModuleOffsets = ModuleOffsets {
         player_hidden: 0x434DAA,
         player_silent: 0x10E232,
         menu_transition: 0xEF554,
+        no_roll: 0x38802E,
+        no_backstep: 0x3880D5,
     },
     data: Data {
         map_id: 0x15641B4,
@@ -312,6 +293,10 @@ pub const SCHOLAR_1_0_3: ModuleOffsets = ModuleOffsets {
         get_map_entity_with_area_id_and_obj_id: 0x3C1B90,
         get_state_act_component: 0x1CA790,
         make_sound: 0x10E190,
+        bonfire_rest: 0x17DC40,
+        bonfire_unlock: 0x17E320,
+        open_menu: 0x199020,
+        menu_chr_state: 0x5013E0,
     },
     hooks: Hooks {
         set_shared_flag: 0x4265D2,
@@ -333,6 +318,8 @@ pub const SCHOLAR_1_0_3: ModuleOffsets = ModuleOffsets {
         player_hidden: 0x43BF2A,
         player_silent: 0x10E306,
         menu_transition: 0xEF614,
+        no_roll: 0x38E98E,
+        no_backstep: 0x38EA35,
     },
     data: Data {
         map_id: 0x156D1C4,

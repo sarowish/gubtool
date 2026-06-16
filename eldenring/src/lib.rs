@@ -5,6 +5,7 @@ pub mod game_state;
 pub mod item;
 mod mem;
 mod offsets;
+mod phase_transition;
 pub mod player;
 pub mod resources;
 pub mod target;

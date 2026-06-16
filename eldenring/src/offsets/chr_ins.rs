@@ -1,4 +1,4 @@
-use engine::{attached::version, game_version::EldenRingVersion::*};
+use gubtool_core::{attached::version, game_version::EldenRingVersion::*};
 
 pub const HANDLE: u64 = 0x8;
 pub const BLOCK_ID: u64 = 0x38;
@@ -70,7 +70,7 @@ pub mod speffect_entry {
 }
 
 pub mod ai_think_offsets {
-    use engine::{attached::version, game_version::EldenRingVersion::*};
+    use gubtool_core::{attached::version, game_version::EldenRingVersion::*};
     pub const NPC_THINK_PARAM_ID: u64 = 0x28;
     pub const LUA_TIMERS_ARRAY: u64 = 0x8C;
     pub const LUA_NUMBERS_ARRAY: u64 = 0x6CC;

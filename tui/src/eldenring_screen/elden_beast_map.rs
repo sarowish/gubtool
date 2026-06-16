@@ -1,5 +1,4 @@
 use crate::{eldenring_screen::GameState, theme::theme};
-use anyhow::anyhow;
 use eldenring::{
     chr_ins::{ChrIns, ChrInsExt, chr_ins_from_entity_id},
     player,
@@ -25,7 +24,7 @@ impl Default for EldenBeastMap {
     fn default() -> Self {
         Self {
             map_valid: false,
-            chr_ins: Err(anyhow!("")),
+            chr_ins: Ok(0x0),
         }
     }
 }

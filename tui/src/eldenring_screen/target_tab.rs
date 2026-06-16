@@ -2,13 +2,8 @@ use std::thread;
 
 use crate::{
     common::{
-        StrExt, parse_act_sequence, stateful_list::StatefulList, tab_state::TabState, tabs_list,
-    },
-    eldenring_screen::GameState,
-    event::ResultExt,
-    send_input_event,
-    theme::theme,
-    ui_state::UiState,
+        StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list,
+    }, eldenring_screen::GameState, event::{AnyhowExt, ResultExt}, input::input_prompt::{InputPrompt, PromptType}, theme::theme, ui_state::UiState
 };
 use crossterm::event::{KeyCode, KeyEvent};
 use eldenring::{chr_ins::ChrInsExt, player, target};
@@ -19,6 +14,7 @@ use ratatui::{
     style::{Style, Stylize},
     widgets::{LineGauge, List, ListItem, Paragraph},
 };
+use shared::act_array::ActArray;
 
 enum ActionsItems {
     Kill,
@@ -44,8 +40,9 @@ pub struct TargetTab {
     tab: TabState,
     pub hp_val: i32,
     pub hp_percentage: i32,
-    pub act: i32,
-    pub act_array: Vec<i32>,
+    pub act: u8,
+    pub act_array: ActArray,
+    input: InputPrompt<InputRequest>,
 }
 
 impl TargetTab {
@@ -58,7 +55,8 @@ impl TargetTab {
             hp_val: 1,
             hp_percentage: 50,
             act: 1,
-            act_array: vec![],
+            act_array: ActArray::default(),
+            input: InputPrompt::new(),
         }
     }
 
@@ -97,10 +95,21 @@ impl TargetTab {
             lists_layout[TOGGLES_IDX],
             &mut self.tab.get_list_state(TOGGLES_IDX),
         );
+
+        self.input.draw_popup_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
+        if self.input.show {
+            self.input.handle_keys(key);
+            if key.code == KeyCode::Enter {
+                self.handle_input_enter();
+            }
+            return;
+        }
+
         self.tab.handle_keys(key);
+
         match key.code {
             KeyCode::Char('s') => self.handle_input(),
             KeyCode::Enter => self.handle_select(),
@@ -108,11 +117,11 @@ impl TargetTab {
         }
     }
 
-    fn handle_input(&self) {
+    fn handle_input(&mut self) {
         let current_list = self.tab.current_list;
         if let Some(selected_index) = self.tab.lists_states[current_list].selected() {
             match current_list {
-                ACTIONS_IDX => ActionsItems::ARRAY[selected_index].set_input(),
+                ACTIONS_IDX => ActionsItems::ARRAY[selected_index].set_input(&mut self.input),
                 _ => (),
             }
         }
@@ -125,6 +134,35 @@ impl TargetTab {
                 ACTIONS_IDX => ActionsItems::ARRAY[selected_index].execute(self),
                 TOGGLES_IDX => TogglesItems::ARRAY[selected_index].execute(),
                 _ => (),
+            }
+        }
+    }
+
+    fn handle_input_enter(&mut self) {
+        match self.input.last_request.unwrap() {
+            InputRequest::Health => {
+                if let Some(val) = self.input.parse_text::<i32>() {
+                    self.hp_val = val;
+                    UiState::update_er(|c| { c.target_set_health = val; }).ok();
+                }
+            }
+            InputRequest::PercentageHealth => {
+                if let Some(val) = self.input.parse_text::<i32>() {
+                    self.hp_percentage = val;
+                    UiState::update_er(|c| { c.target_set_health_pct = val; }).ok();
+                }
+            }
+            InputRequest::ForceAct => {
+                if let Some(val) = self.input.parse_text::<u8>() {
+                    self.act = val;
+                    UiState::update_er(|c| { c.target_act = val; }).ok();
+                }
+            }
+            InputRequest::ActSequence => {
+                if let Some(val) = self.input.parse_text::<ActArray>() {
+                    self.act_array = val.clone();
+                    UiState::update_er(|c| { c.target_act_array = val; }).ok();
+                }
             }
         }
     }
@@ -188,7 +226,7 @@ impl ActionsItems {
             }
             Self::SetHealth => GameState::target_ins().set_hp(target_tab.hp_val).send_error(),
             Self::SetHealthPercentage => GameState::target_ins().set_hp_pct(target_tab.hp_percentage).send_error(),
-            Self::ForceAct => GameState::target_ins().force_act(target_tab.act).send_error(),
+            Self::ForceAct => GameState::target_ins().repeat_act(target_tab.act).send_error(),
             Self::ResetPosition => GameState::target_ins().reset_position().send_error(),
             Self::ForceActSequence => {
                 target::force_act_sequence(
@@ -198,43 +236,12 @@ impl ActionsItems {
             }
         }
     }
-    fn set_input(&self) {
+    fn set_input(&self, input: &mut InputPrompt<InputRequest>) {
         match self {
-            Self::SetHealth => {
-                send_input_event!(text, app, {
-                    if let Ok(v) = text.parse() {
-                        app.elden_ring.target.hp_val = v;
-                        UiState::update_er(|c| { c.target_set_health = v; }).ok();
-                    }
-                })
-            },
-            Self::SetHealthPercentage => {
-                send_input_event!(text, app, {
-                    if let Ok(v) = text.parse() {
-                        app.elden_ring.target.hp_percentage = v;
-                        UiState::update_er(|c| { c.target_set_health_pct = v; }).ok();
-                    }
-                })
-            },
-            Self::ForceAct => {
-                send_input_event!(text, app, {
-                    if let Ok(v) = text.parse() {
-                        app.elden_ring.target.act = v;
-                        UiState::update_er(|c| { c.target_act = v; }).ok();
-                    }
-                })
-            },
-            Self::ForceActSequence => {
-                send_input_event!(text, app, {
-                    let result = parse_act_sequence(text);
-                    if let Ok(v) = result {
-                        app.elden_ring.target.act_array = v.clone();
-                        UiState::update_er(|c| { c.target_act_array = v; }).ok();
-                    } else {
-                        result.send_error()
-                    }
-                })
-            },
+            Self::SetHealth => input.show("Set New Value", PromptType::I32, InputRequest::Health),
+            Self::SetHealthPercentage => input.show("Set New Value", PromptType::I32, InputRequest::PercentageHealth),
+            Self::ForceAct => input.show("Set New Value", PromptType::U8, InputRequest::ForceAct),
+            Self::ForceActSequence => input.show("Set New Value", PromptType::ActArray, InputRequest::ActSequence),
             _ => (),
         }
     }
@@ -245,7 +252,7 @@ impl ActionsItems {
             Self::SetHealth => format!("Set Health ({})", target.hp_val),
             Self::SetHealthPercentage => format!("Set % Health ({}%)", target.hp_percentage),
             Self::ForceAct => format!("Force Act ({})", target.act),
-            Self::ForceActSequence => format!("Force Act Sequence {:?}", target.act_array),
+            Self::ForceActSequence => format!("Force Act Sequence {}", target.act_array),
             Self::ResetPosition => "Reset Position".to_string(),
         };
         ListItem::new(text)
@@ -274,7 +281,7 @@ impl TogglesItems {
             }
             Self::RepeatAction => {
                 let new_state = !GameState::target_ins().is_repeat_act().unwrap_or_default();
-                GameState::target_ins().set_repeat_act(new_state).send_error()
+                GameState::target_ins().set_repeat_last_act(new_state).send_error()
             }
             Self::DisableAi => {
                 let new_state = !GameState::target_ins().is_disable_ai().unwrap_or_default();
@@ -317,4 +324,12 @@ impl TogglesItems {
         let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item()).collect();
         tabs_list(items, None, &target_tab.tab, TOGGLES_IDX)
     }
+}
+
+#[derive(Clone, Copy)]
+enum InputRequest {
+    Health,
+    PercentageHealth,
+    ForceAct,
+    ActSequence,
 }
