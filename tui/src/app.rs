@@ -5,6 +5,7 @@ use crate::{
     event::{AnyhowExt, Event, InfoType, ResultExt, send_event, start_event_loop_thread},
     game_screen_selector::GameScreenSelector,
     help,
+    input::{fuzzy_finder::FuzzyFinder, input_prompt::InputPrompt},
     memory_viewer_screen::MemoryViewerScreen,
     process_selector::ProcessSelector,
     theme::{THEME, ThemeSelector, theme},
@@ -37,13 +38,15 @@ pub struct App {
     info_message: String,
     info_type: InfoType,
     block_inputs: bool,
+    input: InputPrompt,
+    fuzzy_finder: FuzzyFinder,
 
     pub theme: ThemeName,
     theme_selector: ThemeSelector,
     process_selector: ProcessSelector,
     game_screen_selector: GameScreenSelector,
-    attach_options: AttachOptions,
-    memory_viewer_screen: MemoryViewerScreen,
+    pub attach_options: AttachOptions,
+    pub memory_viewer_screen: MemoryViewerScreen,
 
     pub elden_ring: EldenRing,
     pub dark_souls_2: DarkSouls2,
@@ -60,6 +63,8 @@ impl App {
             info_message: "".to_string(),
             info_type: InfoType::SysError,
             block_inputs: false,
+            input: InputPrompt::default(),
+            fuzzy_finder: FuzzyFinder::default(),
 
             theme: ThemeName::Dracula,
             theme_selector: ThemeSelector::new(),
@@ -115,13 +120,28 @@ impl App {
                 }
                 Event::ApplyAttach => {
                     match game() {
-                        Some(Game::EldenRing) => self.elden_ring.on_attach(),
-                        Some(Game::DarkSouls2) => self.dark_souls_2.on_attach(),
+                        Some(Game::EldenRing) => {
+                            self.attach_options.manager.attach(Game::EldenRing).send_error();
+                            self.elden_ring.on_attach()
+                        }
+                        Some(Game::DarkSouls2) => {
+                            self.attach_options.manager.attach(Game::DarkSouls2).send_error();
+                            self.dark_souls_2.on_attach()
+                        }
                         None => Ok(()),
                     }.send_error()
                 }
                 Event::BlockInputs(state) => {
                     self.block_inputs = state;
+                }
+                Event::Input((prompt, sender, type_id)) => {
+                    self.input.show(prompt, sender, type_id)
+                }
+                Event::Search((entries, sender)) => {
+                    self.fuzzy_finder.show(entries, sender)
+                }
+                Event::State(closure) => {
+                    closure(&mut self)
                 }
             }
         }
@@ -201,6 +221,8 @@ impl App {
             }
             _ => (),
         }
+        self.input.draw_popup_checked(frame);
+        self.fuzzy_finder.draw_checked(frame);
     }
 
     fn handle_keys(&mut self, key: KeyEvent) {
@@ -211,6 +233,15 @@ impl App {
         if self.show_info {
             self.show_info = false;
         }
+        if self.input.show {
+            self.input.handle_keys(key);
+            return;
+        }
+        if self.fuzzy_finder.show {
+            self.fuzzy_finder.handle_keys(key);
+            return;
+        }
+
         match self.current_screen {
             CurrentScreen::ProcessSelection => {
                 if let Some(process) = self.process_selector.handle_keys(key, &mut self.current_screen) {
@@ -276,7 +307,7 @@ impl App {
             let _ = UiState::update(|c| c.global.game_screen = game );
         }
 
-        let time_to_wait = 6.0 - sys::get_process_uptime(attached::pid()).unwrap_or_default();
+        let time_to_wait = 5.0 - sys::get_process_uptime(attached::pid()).unwrap_or_default();
         if time_to_wait > 0.0 {
             thread::spawn(move || {
                 thread::sleep(Duration::from_secs_f64(time_to_wait));
@@ -315,7 +346,7 @@ impl App {
     }
 
     fn dbg_paragraph(&self) -> Paragraph<'static> {
-        let debug_info = [
+        let mut debug_info = vec![
             format!("comm: {}", attached::comm()),
             format!("exe_path: {}", attached::path().display()),
             format!("module_base: {:#X}", attached::module_base()),
@@ -324,12 +355,11 @@ impl App {
             format!("\n"),
         ];
 
-        let mut lines: Vec<Line> = debug_info.iter().map(|f| Line::raw(f.to_string())).collect();
-
         match self.game_screen {
-            Game::DarkSouls2 => lines.append(&mut darksouls2_screen::dbg_lines()),
-            Game::EldenRing => lines.append(&mut eldenring_screen::dbg_lines()),
+            Game::DarkSouls2 => debug_info.append(&mut darksouls2_screen::dbg_lines()),
+            Game::EldenRing => debug_info.append(&mut eldenring_screen::dbg_lines()),
         }
+        let lines: Vec<Line> = debug_info.iter().map(|f| Line::raw(f.to_string())).collect();
         Paragraph::new(Text::from(lines))
     }
 }

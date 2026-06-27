@@ -1,5 +1,9 @@
 use crate::{
-    common::{StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list}, eldenring_screen::GameState, event::{AnyhowExt, ResultExt}, input::input_prompt::{InputPrompt, PromptType}, ui_state::UiState
+    common::{StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list},
+    eldenring_screen::GameState,
+    event::{AnyhowExt, ResultExt},
+    input::request_input,
+    spawn_task,
 };
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -8,7 +12,7 @@ use eldenring::{
     emevd,
     game_state::{StateFlagOffset, StateFlags},
     player::{
-        self, ChrDbgOffsets, PlayerGameDataOffset, PlayerStats, is_chr_dbg_flag, torrent_ins,
+        self, ChrDbgOffset, PlayerGameData, PlayerGameDataOffset, is_chr_dbg_flag, torrent_ins
     },
 };
 use ratatui::{
@@ -53,8 +57,6 @@ pub enum Stats {
     Arcane,
     Scadutree,
     SpiritAsh,
-    RuneLevel,
-    RuneMem,
 }
 
 const TOGGLES_IDX: usize = 0;
@@ -62,11 +64,8 @@ const ACTIONS_IDX: usize = 1;
 pub const STATS_IDX: usize = 2;
 
 pub struct PlayerTab {
-    pub tab: TabState,
-    pub stats: PlayerStats,
-    pub hp: i32,
-    pub runes: i64,
-    input: InputPrompt<InputRequest>,
+    tab: TabState,
+    stats: PlayerGameData,
 }
 
 impl PlayerTab {
@@ -77,15 +76,12 @@ impl PlayerTab {
         list_states[STATS_IDX] = StatefulList::new(0);
         PlayerTab {
             tab: TabState::new(list_states),
-            stats: PlayerStats::new(),
-            hp: 100,
-            runes: 10000,
-            input: InputPrompt::new(),
+            stats: PlayerGameData::read(),
         }
     }
 
     pub fn draw(&mut self, frame: &mut Frame, layout: Rect) {
-        self.stats.update().ok();
+        self.stats = PlayerGameData::read();
 
         let [area_one, right] = Layout::default()
             .direction(Direction::Horizontal)
@@ -120,8 +116,6 @@ impl PlayerTab {
             layout[STATS_IDX],
             &mut self.tab.get_list_state(STATS_IDX),
         );
-
-        self.input.draw_popup_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
@@ -129,20 +123,13 @@ impl PlayerTab {
             self.tab.set_length(STATS_IDX, Stats::array().len());
         }
 
-        if self.input.show {
-            self.input.handle_keys(key);
-            if key.code == KeyCode::Enter {
-                self.handle_input_enter();
-            }
-            return;
-        }
-
         self.tab.handle_keys(key);
+
         match key.code {
-            KeyCode::Char('s') => self.handle_input(),
             KeyCode::Enter => self.handle_enter(),
             _ => (),
         }
+
         if self.tab.current_list == STATS_IDX &&
         let Some(selected_idx) = self.tab.lists_states[STATS_IDX].selected() {
             match key.code {
@@ -160,79 +147,59 @@ impl PlayerTab {
             }
         }
     }
-    fn handle_input(&mut self) {
-        let current_list = self.tab.current_list;
-        if let Some(selected_index) = self.tab.lists_states[current_list].selected() {
-            match current_list {
-                ACTIONS_IDX => ActionsItems::ARRAY[selected_index].set_input(&mut self.input),
-                STATS_IDX => Stats::ARRAY[selected_index].set_input(&mut self.input),
-                _ => (),
-            }
-        }
-    }
+
     fn handle_enter(&mut self) {
         let current_list = self.tab.current_list;
         if let Some(selected_index) = self.tab.lists_states[current_list].selected() {
             match current_list {
-                ACTIONS_IDX => ActionsItems::ARRAY[selected_index].execute(self),
+                ACTIONS_IDX => ActionsItems::ARRAY[selected_index].execute(),
                 TOGGLES_IDX => TogglesItems::ARRAY[selected_index].execute(&self.stats),
-                STATS_IDX => Stats::ARRAY[selected_index].set_input(&mut self.input),
+                STATS_IDX => {
+                    spawn_task! {
+                        if let Some(val) = request_input::<i32>(None).await {
+                            let stat  = &Stats::array()[selected_index];
+                            stat.set_stat(val).send_error();
+                        }
+                    }
+                }
                 _ => (),
-            }
-        }
-    }
-
-    fn handle_input_enter(&mut self) {
-        match self.input.last_request.unwrap() {
-            InputRequest::Health => {
-                if let Some(val) = self.input.parse_text::<i32>() {
-                    self.hp = val;
-                    UiState::update_er(|c| { c.player_set_health = val; }).ok();
-                }
-            }
-            InputRequest::Runes => {
-                if let Some(val) = self.input.parse_text::<i64>() {
-                    self.runes = val;
-                    UiState::update_er(|c| { c.give_runes = val; }).ok();
-                }
-            }
-            InputRequest::AnimationSpeed => {
-                if let Some(val) = self.input.parse_text::<f32>() {
-                    GameState::player_ins().set_animation_speed(val).send_error()
-                }
-            }
-            InputRequest::Stat => {
-                if let Some(val) = self.input.parse_text::<i32>() {
-                    let idx = self.tab.lists_states[STATS_IDX].selected().unwrap_or_default();
-                    let stat  = &Stats::array()[idx];
-                    stat.set_stat(val).send_error();
-                }
             }
         }
     }
 }
 
 impl ActionsItems {
-    fn execute(&self, player_tab: &mut PlayerTab) {
+    fn execute(&self) {
         match self {
-            Self::SetHealth => GameState::player_ins().set_hp(player_tab.hp).send_error(),
+            Self::SetHealth => {
+                spawn_task! {
+                    if let Some(val) = request_input::<i32>(None).await {
+                        player::player_ins().set_hp(val).send_error();
+                    }
+                }
+            }
+            Self::GiveRunes => {
+                spawn_task! {
+                    if let Some(val) = request_input::<u32>(None).await {
+                        player::set_runes(val).send_error();
+                    }
+                }
+            }
+            Self::AnimationSpeed => {
+                spawn_task! {
+                    if let Some(val) = request_input::<f32>(None).await {
+                        GameState::player_ins().set_animation_speed(val).send_error()
+                    }
+                }
+            }
             Self::Die => GameState::player_ins().set_hp(0).send_error(),
             Self::Rest => emevd::rest().send_error(),
-            Self::GiveRunes => player::give_runes(player_tab.runes).send_error(),
-            Self::AnimationSpeed => player_tab.input.show("Set Animation Speed", PromptType::F32, InputRequest::AnimationSpeed),
-        }
-    }
-    fn set_input(&self, input: &mut InputPrompt<InputRequest>) {
-        match self {
-            Self::SetHealth => input.show("Set New Value", PromptType::I32, InputRequest::Health),
-            Self::GiveRunes => input.show("Set New Value", PromptType::I64, InputRequest::Runes),
-            _ => (),
         }
     }
     fn to_list_item(&self, player_tab: &PlayerTab) -> ListItem<'static> {
         let text = match self {
             Self::SetHealth => {
-                format!("Set Health ({})", player_tab.hp)
+                format!("Health: {}", player_tab.stats.current_hp)
             }
             Self::Die => {
                 "Die".to_string()
@@ -241,7 +208,7 @@ impl ActionsItems {
                 "Rest".to_string()
             }
             Self::GiveRunes => {
-                format!("Give Runes ({})", player_tab.runes)
+                format!("Runes: {}", player_tab.stats.rune_count)
             }
             Self::AnimationSpeed => {
                 format!("Animation Speed: {}",
@@ -264,11 +231,11 @@ impl ActionsItems {
 }
 
 impl TogglesItems {
-    fn execute(&self, stats: &PlayerStats) {
+    fn execute(&self, stats: &PlayerGameData) {
         match self {
             Self::NoDeath => {
-                let new_state = !is_chr_dbg_flag(ChrDbgOffsets::PlayerNoDeath).unwrap_or_default();
-                player::set_chr_dbg_flag(ChrDbgOffsets::PlayerNoDeath, new_state).send_error();
+                let new_state = !is_chr_dbg_flag(ChrDbgOffset::PlayerNoDeath).unwrap_or_default();
+                player::set_chr_dbg_flag(ChrDbgOffset::PlayerNoDeath, new_state).send_error();
             }
             Self::NoDamage => {
                 let new_state = !GameState::state_flags().player_no_damage;
@@ -284,37 +251,37 @@ impl TogglesItems {
                 player::set_infinite_poise(new_state).send_error();
             }
             Self::OneShot => {
-                let new_state = !is_chr_dbg_flag(ChrDbgOffsets::OneShot).unwrap_or_default();
-                player::set_chr_dbg_flag(ChrDbgOffsets::OneShot, new_state).send_error();
+                let new_state = !is_chr_dbg_flag(ChrDbgOffset::OneShot).unwrap_or_default();
+                player::set_chr_dbg_flag(ChrDbgOffset::OneShot, new_state).send_error();
             }
             Self::RuneArc => {
-                let new_state = !(stats.rune_arc || GameState::state_flags().rune_arc);
+                let new_state = !(stats.rune_arc_active || GameState::state_flags().rune_arc);
                 StateFlags::set(StateFlagOffset::RuneArc, new_state).send_error();
                 player::set_rune_arc(new_state).ok();
             }
             Self::InfiniteStamina => {
-                let new_state = !is_chr_dbg_flag(ChrDbgOffsets::InfiniteStam).unwrap_or_default();
-                player::set_chr_dbg_flag(ChrDbgOffsets::InfiniteStam , new_state).send_error();
+                let new_state = !is_chr_dbg_flag(ChrDbgOffset::InfiniteStam).unwrap_or_default();
+                player::set_chr_dbg_flag(ChrDbgOffset::InfiniteStam , new_state).send_error();
             }
             Self::InfiniteFp => {
-                let new_state = !is_chr_dbg_flag(ChrDbgOffsets::InfiniteFp).unwrap_or_default();
-                player::set_chr_dbg_flag(ChrDbgOffsets::InfiniteFp, new_state).send_error();
+                let new_state = !is_chr_dbg_flag(ChrDbgOffset::InfiniteFp).unwrap_or_default();
+                player::set_chr_dbg_flag(ChrDbgOffset::InfiniteFp, new_state).send_error();
             }
             Self::InfiniteConsumables => {
-                let new_state = !is_chr_dbg_flag(ChrDbgOffsets::InfiniteGoods).unwrap_or_default();
-                player::set_chr_dbg_flag(ChrDbgOffsets::InfiniteGoods, new_state).send_error();
+                let new_state = !is_chr_dbg_flag(ChrDbgOffset::InfiniteGoods).unwrap_or_default();
+                player::set_chr_dbg_flag(ChrDbgOffset::InfiniteGoods, new_state).send_error();
             }
             Self::Hidden => {
-                let new_state = !is_chr_dbg_flag(ChrDbgOffsets::Hidden).unwrap_or_default();
-                player::set_chr_dbg_flag(ChrDbgOffsets::Hidden, new_state).send_error();
+                let new_state = !is_chr_dbg_flag(ChrDbgOffset::Hidden).unwrap_or_default();
+                player::set_chr_dbg_flag(ChrDbgOffset::Hidden, new_state).send_error();
             }
             Self::Silent => {
-                let new_state = !is_chr_dbg_flag(ChrDbgOffsets::Silent).unwrap_or_default();
-                player::set_chr_dbg_flag(ChrDbgOffsets::Silent, new_state).send_error();
+                let new_state = !is_chr_dbg_flag(ChrDbgOffset::Silent).unwrap_or_default();
+                player::set_chr_dbg_flag(ChrDbgOffset::Silent, new_state).send_error();
             }
             Self::InfiniteArrows => {
-                let new_state = !is_chr_dbg_flag(ChrDbgOffsets::InfiniteArrows).unwrap_or_default();
-                player::set_chr_dbg_flag(ChrDbgOffsets::InfiniteArrows, new_state).send_error();
+                let new_state = !is_chr_dbg_flag(ChrDbgOffset::InfiniteArrows).unwrap_or_default();
+                player::set_chr_dbg_flag(ChrDbgOffset::InfiniteArrows, new_state).send_error();
             }
             Self::TorrentNoDeath => {
                 let new_state = !GameState::state_flags().torrent_no_death;
@@ -331,7 +298,7 @@ impl TogglesItems {
     fn to_list_item(&self, player_tab: &PlayerTab) -> ListItem<'_> {
         let text = match self {
             Self::NoDeath => {
-                let state = player::is_chr_dbg_flag(ChrDbgOffsets::PlayerNoDeath).unwrap_or_default();
+                let state = player::is_chr_dbg_flag(ChrDbgOffset::PlayerNoDeath).unwrap_or_default();
                 "No Death".create_toggle_str(state)
             }
             Self::NoDamage => {
@@ -347,35 +314,35 @@ impl TogglesItems {
                 "Infinite Poise".create_toggle_str(state)
             }
             Self::OneShot => {
-                let state = player::is_chr_dbg_flag(ChrDbgOffsets::OneShot).unwrap_or_default();
+                let state = player::is_chr_dbg_flag(ChrDbgOffset::OneShot).unwrap_or_default();
                 "One Shot".create_toggle_str(state)
             }
             Self::RuneArc => {
-                let state = player_tab.stats.rune_arc || GameState::state_flags().rune_arc;
+                let state = player_tab.stats.rune_arc_active || GameState::state_flags().rune_arc;
                 "Rune Arc".create_toggle_str(state)
             }
             Self::InfiniteStamina => {
-                let state = player::is_chr_dbg_flag(ChrDbgOffsets::InfiniteStam).unwrap_or_default();
+                let state = player::is_chr_dbg_flag(ChrDbgOffset::InfiniteStam).unwrap_or_default();
                 "Infinite Stamina".create_toggle_str(state)
             }
             Self::InfiniteFp => {
-                let state = player::is_chr_dbg_flag(ChrDbgOffsets::InfiniteFp).unwrap_or_default();
+                let state = player::is_chr_dbg_flag(ChrDbgOffset::InfiniteFp).unwrap_or_default();
                 "Infinite FP".create_toggle_str(state)
             }
             Self::InfiniteConsumables => {
-                let state = player::is_chr_dbg_flag(ChrDbgOffsets::InfiniteGoods).unwrap_or_default();
+                let state = player::is_chr_dbg_flag(ChrDbgOffset::InfiniteGoods).unwrap_or_default();
                 "Infinite Consumables".create_toggle_str(state)
             }
             Self::Silent => {
-                let state = player::is_chr_dbg_flag(ChrDbgOffsets::Silent).unwrap_or_default();
+                let state = player::is_chr_dbg_flag(ChrDbgOffset::Silent).unwrap_or_default();
                 "Silent".create_toggle_str(state)
             }
             Self::Hidden => {
-                let state = player::is_chr_dbg_flag(ChrDbgOffsets::Hidden).unwrap_or_default();
+                let state = player::is_chr_dbg_flag(ChrDbgOffset::Hidden).unwrap_or_default();
                 "Hidden".create_toggle_str(state)
             }
             Self::InfiniteArrows => {
-                let state = player::is_chr_dbg_flag(ChrDbgOffsets::InfiniteArrows).unwrap_or_default();
+                let state = player::is_chr_dbg_flag(ChrDbgOffset::InfiniteArrows).unwrap_or_default();
                 "Infinite Arrows".create_toggle_str(state)
             }
             Self::TorrentNoDeath => {
@@ -412,55 +379,48 @@ impl TogglesItems {
 }
 
 impl Stats {
-    fn to_list_item(&self, stats: &PlayerStats) -> ListItem<'_> {
+    fn to_list_item(&self, stats: &PlayerGameData) -> ListItem<'_> {
         let text = match self {
-            Self::Vigor => format!("{} Vigor", stats.vigor),
-            Self::Mind => format!("{} Mind", stats.mind),
-            Self::Endurance => format!("{} Endurance", stats.endurance),
-            Self::Strength => format!("{} Strength", stats.strength),
-            Self::Dexterity => format!("{} Dexterity", stats.dexterity),
-            Self::Intelligence => format!("{} Intelligence", stats.intelligence),
-            Self::Faith => format!("{} Faith", stats.faith),
-            Self::Arcane => format!("{} Arcane", stats.arcane),
-            Self::Scadutree => format!("{} Scadutree", stats.scadutree),
-            Self::SpiritAsh => format!("{} Spirit Ash", stats.spirit_ash),
-            Self::RuneLevel => format!("{} Rune Memory", stats.rune_memory),
-            Self::RuneMem => format!("{} Rune Memory", stats.rune_memory),
+            Self::Vigor => format!("{:<2} Vigor", stats.vigor),
+            Self::Mind => format!("{:<2} Mind", stats.mind),
+            Self::Endurance => format!("{:<2} Endurance", stats.endurance),
+            Self::Strength => format!("{:<2} Strength", stats.strength),
+            Self::Dexterity => format!("{:<2} Dexterity", stats.dexterity),
+            Self::Intelligence => format!("{:<2} Intelligence", stats.intelligence),
+            Self::Faith => format!("{:<2} Faith", stats.faith),
+            Self::Arcane => format!("{:<2} Arcane", stats.arcane),
+            Self::Scadutree => format!("{:<2} Scadutree", stats.scadutree_blessing),
+            Self::SpiritAsh => format!("{:<2} Spirit Ash", stats.reversed_spirit_ash),
         };
         ListItem::from(text)
-    }
-    fn set_input(&self, input: &mut InputPrompt<InputRequest>) {
-        input.show("Set Stat", PromptType::I32, InputRequest::Stat)
     }
 
     pub fn set_stat(&self, val: i32) -> Result<()> {
         match self {
-            Self::Vigor => player::set_stat(PlayerGameDataOffset::Vigor.val(), val),
-            Self::Mind => player::set_stat(PlayerGameDataOffset::Mind.val(), val),
-            Self::Endurance => player::set_stat(PlayerGameDataOffset::Endurance.val(), val),
-            Self::Strength => player::set_stat(PlayerGameDataOffset::Strength.val(), val),
-            Self::Dexterity => player::set_stat(PlayerGameDataOffset::Dexterity.val(), val),
-            Self::Intelligence => player::set_stat(PlayerGameDataOffset::Intelligence.val(), val),
-            Self::Faith => player::set_stat(PlayerGameDataOffset::Faith.val(), val),
-            Self::Arcane => player::set_stat(PlayerGameDataOffset::Arcane.val(), val),
-            Self::Scadutree => player::set_dlc_stat(PlayerGameDataOffset::Scadutree.val(), val as u8),
-            Self::SpiritAsh => player::set_dlc_stat(PlayerGameDataOffset::SpiritAsh.val(), val as u8),
-            _ => Ok(()),
+            Self::Vigor => player::set_stat(PlayerGameDataOffset::Vigor, val),
+            Self::Mind => player::set_stat(PlayerGameDataOffset::Mind, val),
+            Self::Endurance => player::set_stat(PlayerGameDataOffset::Endurance, val),
+            Self::Strength => player::set_stat(PlayerGameDataOffset::Strength, val),
+            Self::Dexterity => player::set_stat(PlayerGameDataOffset::Dexterity, val),
+            Self::Intelligence => player::set_stat(PlayerGameDataOffset::Intelligence, val),
+            Self::Faith => player::set_stat(PlayerGameDataOffset::Faith, val),
+            Self::Arcane => player::set_stat(PlayerGameDataOffset::Arcane, val),
+            Self::Scadutree => player::set_dlc_stat(PlayerGameDataOffset::Scadutree, val as u8),
+            Self::SpiritAsh => player::set_dlc_stat(PlayerGameDataOffset::SpiritAsh, val as u8),
         }
     }
-    fn increment_stat(&self, stats: &PlayerStats, val: i32) -> Result<()> {
+    fn increment_stat(&self, stats: &PlayerGameData, val: i32) -> Result<()> {
         match self {
-            Self::Vigor => self.set_stat(stats.vigor + val),
-            Self::Mind => self.set_stat(stats.mind + val),
-            Self::Endurance => self.set_stat(stats.endurance + val),
-            Self::Strength => self.set_stat(stats.strength + val),
-            Self::Dexterity => self.set_stat(stats.dexterity + val),
-            Self::Intelligence => self.set_stat(stats.intelligence + val),
-            Self::Faith => self.set_stat(stats.faith + val),
-            Self::Arcane => self.set_stat(stats.arcane + val),
-            Self::Scadutree => self.set_stat(stats.scadutree as i32 + val),
-            Self::SpiritAsh => self.set_stat(stats.spirit_ash as i32 + val),
-            _ => Ok(()),
+            Self::Vigor => self.set_stat(stats.vigor as i32+ val),
+            Self::Mind => self.set_stat(stats.mind as i32 + val),
+            Self::Endurance => self.set_stat(stats.endurance as i32 + val),
+            Self::Strength => self.set_stat(stats.strength as i32 + val),
+            Self::Dexterity => self.set_stat(stats.dexterity as i32 + val),
+            Self::Intelligence => self.set_stat(stats.intelligence as i32 + val),
+            Self::Faith => self.set_stat(stats.faith as i32 + val),
+            Self::Arcane => self.set_stat(stats.arcane as i32 + val),
+            Self::Scadutree => self.set_stat(stats.scadutree_blessing as i32 + val),
+            Self::SpiritAsh => self.set_stat(stats.reversed_spirit_ash as i32 + val),
         }
     }
     const ARRAY: &[Stats] = &[
@@ -493,12 +453,4 @@ impl Stats {
         let items: Vec<ListItem> = array.iter().map(|i| i.to_list_item(&player_tab.stats)).collect();
         tabs_list(items, Some("Stats"), &player_tab.tab, STATS_IDX)
     }
-}
-
-#[derive(Clone, Copy)]
-enum InputRequest {
-    Health,
-    Runes,
-    AnimationSpeed,
-    Stat,
 }

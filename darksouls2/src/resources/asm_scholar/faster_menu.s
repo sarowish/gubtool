@@ -3,4 +3,4 @@ cmp DWORD PTR [rdi+0x8], 0x17
 jne exit
 mov DWORD PTR [rdi+0x8], 0x47
 exit:
-jmp 0x0
+jmp OFFSET hook_loc

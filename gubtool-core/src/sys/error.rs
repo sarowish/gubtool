@@ -1,6 +1,4 @@
-use utils::slice_ops::SliceError;
-
-use crate::game_version::Game;
+use crate::{game_version::Game, slice_ops::SliceError};
 use std::{fmt::Display, io::ErrorKind, panic::Location};
 
 pub type ProcResult<T = ()> = Result<T, ProcessError>;
@@ -32,7 +30,7 @@ pub enum ProcessError {
         timeout: std::time::Duration,
     },
     InvalidPointer { pointer_type: PointerType },
-    Slice { slice_error: utils::slice_ops::SliceError },
+    Slice { slice_error: SliceError },
     InvalidGame { expected: Game }
 }
 

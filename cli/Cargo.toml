@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 clap = { workspace = true }
 anyhow = { workspace = true }
+tokio = { workspace = true }
 
 gubtool-core = { version = "0.1.0", path = "../gubtool-core" }
 darksouls2 = { version = "0.1.0", path = "../darksouls2" }

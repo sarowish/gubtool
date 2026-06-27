@@ -1,5 +1,5 @@
-use std::{fmt::Display, str::FromStr};
 use serde::{Deserialize, Serialize};
+use std::{fmt::Display, str::FromStr};
 use thiserror::Error;
 
 const HIGHEST_ACT: u8 = 50;

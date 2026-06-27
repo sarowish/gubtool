@@ -1,9 +1,10 @@
 push rax
-mov rax, QWORD PTR [rip+0x0]
-mov rax, QWORD PTR [rax+0x1E508]
+movabs rax, OFFSET world_chr_man
+mov rax, QWORD PTR [rax]
+mov rax, QWORD PTR [rax+OFFSET player_ins_off]
 cmp rax, QWORD PTR [rbp+0x8]
 pop rax
-je 0x0
+je OFFSET skip_grab_jmp_location
 mov edx, DWORD PTR [r14+0x44]
 lea rcx, [rsp+0x40]
-jmp 0x0
+jmp OFFSET hook_loc

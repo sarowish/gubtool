@@ -78,6 +78,26 @@ pub const MAX_POSTURE: Offset = Offset {
 pub mod stats_offsets {
     use crate::offsets::Offset;
 
+    pub const STATS: Offset = Offset {
+        vanilla: 0x4,
+        scholar: 0x8,
+    };
+
+    pub const SOUL_LEVEL: Offset = Offset {
+        vanilla: 0xCC,
+        scholar: 0xD0,
+    };
+
+    pub const SOULS: Offset = Offset {
+        vanilla: 0xE8,
+        scholar: 0xEC,
+    };
+
+    pub const SOUL_MEMORY: Offset = Offset {
+        vanilla: 0xF0,
+        scholar: 0xF4,
+    };
+
     pub const COVENANT: Offset = Offset {
         vanilla: 0x1A9,
         scholar: 0x1AD,

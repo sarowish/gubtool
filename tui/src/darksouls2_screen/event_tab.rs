@@ -1,4 +1,5 @@
 use crate::{
+    app::App,
     common::{
         StrExt,
         controls::draw_controls,
@@ -6,12 +7,15 @@ use crate::{
         stateful_list::StatefulList,
         tab_state::TabState,
         tabs_list,
-    }, event::{AnyhowExt, ResultExt}, input::input_prompt::{InputPrompt, PromptType}, ui_state::UiState
+    },
+    event::{AnyhowExt, ResultExt},
+    input::request_input,
+    mutate_app, spawn_task,
 };
 use crossterm::event::{KeyCode, KeyEvent};
 use darksouls2::{
     event::{self, Ds2EventLogger, is_event_log_hook, set_event_log_hook},
-    resources::{map_ids::MapId, event_flags::EventFlag},
+    resources::{event_flags::EventFlag, map_ids::MapId},
 };
 use ratatui::{
     Frame,
@@ -46,7 +50,6 @@ pub struct EventTab {
     event: Option<u32>,
     log: Ds2EventLogger,
     table_state: TableState,
-    input: InputPrompt<InputRequest>,
 }
 
 impl EventTab {
@@ -59,7 +62,6 @@ impl EventTab {
             event: None,
             log: Ds2EventLogger::default(),
             table_state: TableState::default(),
-            input: InputPrompt::new(),
         }
     }
 
@@ -80,15 +82,13 @@ impl EventTab {
             logs_table(
                 &self.log,
                 self.tab.block_style(LOG_IDX),
-                is_event_log_hook().unwrap_or_default(),
+                is_event_log_hook(),
             ),
             layout[LOG_IDX],
             &mut self.table_state,
         );
 
         draw_controls(frame, layout[LOG_IDX], event_log_table::CONTROLS);
-
-        self.input.draw_popup_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
@@ -96,18 +96,18 @@ impl EventTab {
             handle_log_table_keys(&mut self.table_state, &mut self.log, key);
         }
 
-        if self.input.show {
-            self.input.handle_keys(key);
-            if key.code == KeyCode::Enter {
-                self.handle_input_enter();
-            }
-            return;
-        }
-
         self.tab.handle_keys(key);
+
         match key.code {
-            KeyCode::Char('s') => self.handle_input(),
-            KeyCode::Enter => self.handle_select(),
+            KeyCode::Backspace => {
+                if self.tab.current_list == COMMANDS_IDX {
+                    let Some(selected) = self.tab.get_list_selected(self.tab.current_list) else { return };
+                    CommandsItems::ARRAY[selected].set_input();
+                }
+            }
+            KeyCode::Enter => {
+                self.handle_select();
+            }
             _ => (),
         }
     }
@@ -117,29 +117,10 @@ impl EventTab {
             match self.tab.current_list {
                 COMMANDS_IDX => CommandsItems::ARRAY[selected].execute(&self),
                 LOG_IDX => {
-                    let new_state = !is_event_log_hook().unwrap_or_default();
+                    let new_state = !is_event_log_hook();
                     set_event_log_hook(new_state).send_error();
                 }
                 _ => (),
-            }
-        }
-    }
-
-    fn handle_input(&mut self) {
-        if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
-            match self.tab.current_list {
-                COMMANDS_IDX => CommandsItems::ARRAY[selected].set_input(&mut self.input),
-                _ => (),
-            }
-        }
-    }
-
-    fn handle_input_enter(&mut self) {
-        match self.input.last_request.unwrap() {
-            InputRequest::Event => {
-               let val = self.input.parse_text::<u32>();
-                self.event = val;
-                UiState::update_ds2(|c| { c.event = val; }).ok();
             }
         }
     }
@@ -240,9 +221,17 @@ impl CommandsItems {
             }
         }
     }
-    fn set_input(&self, input: &mut InputPrompt<InputRequest>) {
+    fn set_input(&self) {
         match self {
-            Self::Event => input.show("Set New Value", PromptType::U32, InputRequest::Event),
+            Self::Event => {
+                spawn_task! {
+                    if let Some(val) = request_input::<u32>(None).await {
+                        mutate_app!(|app: &mut App| {
+                            app.dark_souls_2.event.event = Some(val);
+                        });
+                    }
+                }
+            }
             _ => (),
         }
     }
@@ -252,7 +241,7 @@ impl CommandsItems {
                 let state =
                     event::get_event_flag(event_tab.event.unwrap_or_default()).unwrap_or_default();
                 format!(
-                    "Event Flag ({})",
+                    "Event Flag: {}",
                     event_tab.event.map(|v| v.to_string()).unwrap_or_default()
                 )
                 .create_toggle_str(state)
@@ -342,9 +331,4 @@ impl CommandsItems {
         let items: Vec<ListItem> = array.iter().map(|i| i.to_list_item(event_tab)).collect();
         tabs_list(items, None, &event_tab.tab, COMMANDS_IDX)
     }
-}
-
-#[derive(Clone, Copy)]
-enum InputRequest {
-    Event,
 }

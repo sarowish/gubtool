@@ -1,5 +1,5 @@
 use crate::offsets::Offset;
-use gubtool_core::attached::module_base;
+use gubtool_core::{address::Address, attached::module_base};
 
 pub const SIZE: usize = 0x5000;
 
@@ -9,6 +9,7 @@ pub const BASE: Offset = Offset {
 };
 
 #[repr(u64)]
+#[derive(Clone, Copy)]
 pub enum CaveOffset {
     ItemArgs = 0x0,                                     // 0x23
     ItemSpawnStack = 0x30,                              // 0x300
@@ -19,38 +20,44 @@ pub enum CaveOffset {
     NpcTalkArgs = 0x3E0,                                // 0x30
     NpcPos = 0x410,                                     // 0x20
 
+    LevelUpBuffer = 0x440,                              // 0x100
+    NegativeFlag = 0x540,                               // u8
+
     StateHandlerFlags = 0xF00,                          // 0x100
     // Hooks
     PlayerNoDamageHook = 0x1000,                        // 0x2C
     InfinitePoiseHook = 0x1030,                         // 0x2C
-    SaveTargetHook = 0x1060,                            // 0x13
-    CreditsSkipHook = 0x1080,                           // 0x26
+    SaveTargetHook = 0x1060,                            // 0x1B
+    CreditsSkipHook = 0x1080,                           // 0x2A
     FasterMenuHook = 0x10B0,                            // 0x1A
-    EventLogHook = 0x10D0,                              // 0x39
-    IvorySkipHook = 0x11B0,                             // 0xC1
-    IvoryKnightsHook = 0x1290,                          // 0x24
+    EventLogHook = 0x10D0,                              // 0x41
+    IvorySkipHook = 0x1120,                             // 0xC1
+    IvoryKnightsHook = 0x1200,                          // 0x24
     // Shellcode
     RunThreadAsm = 0x2001,                              // 0x60
     // Keep at least 16 bytes of buffer
     // for completion flag and appended flag setter
     WarpRequestAsm = 0x2070,                            // 0x29
-    ItemSpawnAsm = 0x20B0,                              // 0x125
-    SetEventAsm = 0x21F0,                               // 0x2F
-    GiveSoulsAsm = 0x2230,                              // 0x29
-    BonfireUnlockAsm = 0x2270,                          // 0x27
-    BonfireUnlockAllAsm = 0x22B0,                       // 0x4B
-    BonfireRestAsm = 0x23A0,                            // 0x25
-    OpenMenuAsm = 0x23E0,                               // 0x33
-    MenuChrStateAsm = 0x2430,                           // 0x2A
+    ItemSpawnAsm = 0x20B0,                              // 0x154
+    SetEventAsm = 0x2220,                               // 0x2C
+    GiveSoulsAsm = 0x2270,                              // 0x26
+    BonfireUnlockAsm = 0x22B0,                          // 0x27
+    BonfireUnlockAllAsm = 0x22F0,                       // 0x4B
+    BonfireRestAsm = 0x2350,                            // 0x25
+    OpenMenuAsm = 0x2390,                               // 0x33
+    MenuChrStateAsm = 0x23E0,                           // 0x2A
+    LevelUpAsm = 0x2420,                                // 0xF4
 
 
     EventLogWriteIdx = 0x3FFC,                          // i32
     EventLogBuffer = 0x4000,                            // 0x1000
 }
 
-impl CaveOffset {
-    pub fn addr(self) -> u64 {
-        module_base().saturating_add(BASE.resolve()).saturating_add(self as u64)
+impl Address for CaveOffset {
+    fn addr(&self) -> u64 {
+        module_base()
+            .saturating_add(BASE.resolve())
+            .saturating_add(*self as u64)
     }
 }
 

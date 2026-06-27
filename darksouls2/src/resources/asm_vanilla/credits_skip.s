@@ -1,7 +1,10 @@
 sub esp, 0x1FC
-cmp DWORD PTR ds:0x0, 0x0
+push esi
+mov esi, OFFSET modify_once_flag
+cmp DWORD PTR [esi], 0x0
 jne skip
 mov DWORD PTR [ecx+0x14], 0x7
-mov DWORD PTR ds:0x0, 0x1
+mov DWORD PTR [esi], 0x1
 skip:
-jmp 0x0
+pop esi
+jmp hook_loc

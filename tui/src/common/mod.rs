@@ -8,7 +8,6 @@ use crate::{
     common::tab_state::TabState,
     theme::{self, theme},
 };
-use anyhow::{Result, anyhow, ensure};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
@@ -115,20 +114,6 @@ macro_rules! impl_handle_keys {
     };
 }
 impl_handle_keys!(TableState);
-
-
-pub fn parse_act_sequence(input: String) -> Result<Vec<u8>> {
-    input
-        .split_whitespace()
-        .map(|s| {
-            let val = s
-                .parse::<u8>()
-                .map_err(|_| anyhow!("Expects integers seperated by spaces"))?;
-            ensure!(val <= 50, "Highest act number is 50");
-            Ok(val)
-        })
-        .collect()
-}
 
 pub fn draw_popup_selector(title: &'static str, items: &[impl Display], state: &mut ListState, frame: &mut Frame) {
     let rect = centered_rect(50, 50, frame.area());

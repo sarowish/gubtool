@@ -12,7 +12,6 @@ const ENTRIES: &[(&str, &str)] = &[
     ("hjkl, ← ↑ ↓ → ", "Navigate list"),
     ("ctrl-hjkl, ← ↑ ↓ → ", "Switch list"),
     ("Enter", "Select"),
-    ("s", "Set value"),
     ("f", "Search"),
     ("1-6", "Switch tab"),
     ("tab", "Select next tab"),

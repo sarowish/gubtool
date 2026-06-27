@@ -1,6 +1,4 @@
-use phf::phf_map;
-
-pub static CHR_NAMES: phf::Map<i32, &'static str> = phf_map! {
+pub static CHR_NAMES: phf::Map<i32, &'static str> = phf::phf_map! {
     2010 => "Blaidd",
     2030 => "Rennala",
     2031 => "Rennala",

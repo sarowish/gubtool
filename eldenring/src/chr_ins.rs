@@ -1,18 +1,20 @@
-use std::time::Duration;
-
 use crate::{
     emevd,
     mem::*,
     offsets::{
-        self, ChainReadExt, chr_ins::*, code_cave::CaveOffset, functions, world_chr_man
+        self, ChainReadExt,
+        chr_ins::*,
+        code_cave::CaveOffset,
+        module_offsets::{BasePointer, Function},
+        world_chr_man,
     },
     phase_transition,
     resources::{ASM, chr_names::CHR_NAMES},
     target,
 };
 use anyhow::ensure;
-use gubtool_core::sys::error::ProcResult;
-use utils::slice_ops::*;
+use gubtool_core::{slice_ops::*, sys::error::ProcResult};
+use std::time::Duration;
 
 pub type ChrIns = ProcResult<u64>;
 
@@ -21,7 +23,7 @@ pub trait ChrInsExt {
     fn get_max_hp(&self) -> ProcResult<i32>;
     fn set_hp(&self, val: i32) -> ProcResult;
     fn get_hp_pct(&self) -> anyhow::Result<f32>;
-    fn set_hp_pct(&self, val: i32) -> anyhow::Result<()>;
+    fn set_hp_pct(&self, val: f32) -> anyhow::Result<()>;
     fn set_no_death(&self, val: bool) -> ProcResult;
     fn is_no_death(&self) -> ProcResult<bool>;
     fn set_no_damage(&self, val: bool) -> ProcResult;
@@ -80,26 +82,22 @@ pub trait ChrInsExt {
 }
 
 pub fn chr_ins_from_entity_id(entity_id: u32) -> ChrIns {
-    let location = CaveOffset::ChrInsFromEntityIdAsm.addr();
-    let looked_up_entity_id = CaveOffset::LookedUpEntityId.addr();
-    let world_chr_man = read::<u64>(world_chr_man::base_ptr())?;
+    let mut fun = ASM.get_function("chr_ins_from_entity_id");
+    let mut asm = fun.take_bytes();
 
-    let fun = ASM.get_function("chr_ins_from_entity_id");
-    let mut asm = fun.get_bytes();
-
-    write_to_slice::<u64>(&mut asm, fun.reloc("world_chr_man"), world_chr_man)?;
+    write_addr_to_slice(&mut asm, fun.reloc("world_chr_man"), BasePointer::WorldChrMan)?;
     write_to_slice::<u32>(&mut asm, fun.reloc("entity_id"), entity_id)?;
-    write_to_slice::<u64>(&mut asm, fun.reloc("fn_chr_ins"), functions::get_chr_ins_by_entity_id())?;
-    write_to_slice::<u64>(&mut asm, fun.reloc("looked_up"), looked_up_entity_id)?;
+    write_addr_to_slice(&mut asm, fun.reloc("fn_chr_ins"), Function::GetChrInsByEntityId)?;
+    write_addr_to_slice(&mut asm, fun.reloc("looked_up"), CaveOffset::LookedUpEntityId)?;
 
-    spawn_thread_join(location, asm)?;
-    read::<u64>(looked_up_entity_id)
+    spawn_thread_join(CaveOffset::ChrInsFromEntityIdAsm, asm)?;
+    read::<u64>(CaveOffset::LookedUpEntityId)
 }
 
 pub fn chr_ins_from_handle(handle: u64) -> ChrIns {
     let pool_index = (handle >> 20) & 0xFF;
     let slot_index = handle & 0xFFFFF;
-    read::<u64>(world_chr_man::base_ptr())
+    read::<u64>(BasePointer::WorldChrMan)
         .read_offset(world_chr_man::chr_set_pool() + pool_index * 8)
         .read_offset(world_chr_man::chr_set_offsets::CHR_SET_ENTRIES)
         .read_offset(slot_index * 16)
@@ -131,11 +129,11 @@ impl ChrInsExt for ChrIns {
         Ok((current as f32 / max as f32) * 100.0)
     }
 
-    fn set_hp_pct(&self, pct: i32) -> anyhow::Result<()> {
+    fn set_hp_pct(&self, pct: f32) -> anyhow::Result<()> {
         let max = self.get_max_hp()?;
         ensure!(max != 0, "Could not set hp percentage: Tried to divide by zero");
-        let val = (pct * max) / 100;
-        Ok(write::<i32>(self.data_pointer()?.saturating_add(data_offsets::HEALTH), val)?)
+        let val = (pct * max as f32) / 100.0;
+        Ok(write::<i32>(self.data_pointer()?.saturating_add(data_offsets::HEALTH), val as i32)?)
     }
 
     fn set_no_death(&self, state: bool) -> ProcResult {
@@ -281,25 +279,25 @@ impl ChrInsExt for ChrIns {
     }
 
     fn set_speffect(self, speffect_id: u32) -> ProcResult {
-        let location = CaveOffset::SetSpeffectAsm.addr();
+        let mut fun = ASM.get_function("set_speffect");
+        let mut asm = fun.take_bytes();
 
-        let mut asm = ASM.get_function("set_speffect").get_bytes();
-        write_to_slice::<u64>(&mut asm, 2, self?)?;
-        write_to_slice::<i64>(&mut asm, 12, speffect_id)?;
-        write_to_slice::<u64>(&mut asm, 22, functions::set_speffect())?;
+        write_addr_to_slice(&mut asm, fun.reloc("chr_ins_ptr"), self?)?;
+        write_to_slice::<i64>(&mut asm, fun.reloc("speffect_id"), speffect_id)?;
+        write_addr_to_slice(&mut asm, fun.reloc("fn_set_speffect"), Function::SetSpeffect)?;
 
-        spawn_thread_join(location, asm)
+        spawn_thread_join(CaveOffset::SetSpeffectAsm, asm)
     }
 
     fn remove_speffect(&self, speffect_id: u32) -> ProcResult {
-        let location = CaveOffset::RemoveSpeffectAsm.addr();
+        let mut fun = ASM.get_function("remove_speffect");
+        let mut asm = fun.take_bytes();
 
-        let mut asm = ASM.get_function("remove_speffect").get_bytes();
-        write_to_slice::<u64>(&mut asm, 2, self.special_effect_pointer()?)?;
-        write_to_slice::<i64>(&mut asm, 12, speffect_id)?;
-        write_to_slice::<u64>(&mut asm, 22, functions::remove_speffect())?;
+        write_addr_to_slice(&mut asm, fun.reloc("speffect_ptr"), self.special_effect_pointer()?)?;
+        write_to_slice::<i64>(&mut asm, fun.reloc("speffect_id"), speffect_id)?;
+        write_addr_to_slice(&mut asm, fun.reloc("fn_remove_speffect"), Function::RemoveSpeffect)?;
 
-        spawn_thread_join(location, asm)
+        spawn_thread_join(CaveOffset::RemoveSpeffectAsm, asm)
     }
 
     fn has_speffect(&self, speffect_id: u32) -> ProcResult<bool> {
@@ -343,7 +341,7 @@ impl ChrInsExt for ChrIns {
     }
 
     fn set_as_target(&self) -> ProcResult {
-        write::<u64>(CaveOffset::SavedTargetPointer.addr(), self.clone()?)
+        write::<u64>(CaveOffset::SavedTargetPointer, self.clone()?)
     }
 
     fn chr_id(&self) -> ProcResult<i32> {

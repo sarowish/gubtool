@@ -1,3 +1,6 @@
-mov QWORD PTR [rip+0x0], rdi
+push rax
+movabs rax, OFFSET saved_ptr_loc
+mov QWORD PTR [rax], rdi
 mov QWORD PTR [rbx+0xC0], rdi
-jmp 0x0
+pop rax
+jmp OFFSET hook_loc

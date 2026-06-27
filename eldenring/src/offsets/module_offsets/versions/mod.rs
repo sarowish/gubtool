@@ -1,0 +1,30 @@
+include!("1_2_0.rs");
+include!("1_2_1.rs");
+include!("1_2_2.rs");
+include!("1_2_3.rs");
+include!("1_3_0.rs");
+include!("1_3_1.rs");
+include!("1_3_2.rs");
+include!("1_4_0.rs");
+include!("1_4_1.rs");
+include!("1_5_0.rs");
+include!("1_6_0.rs");
+include!("1_7_0.rs");
+include!("1_8_0.rs");
+include!("1_8_1.rs");
+include!("1_9_0.rs");
+include!("1_9_1.rs");
+include!("2_0_0.rs");
+include!("2_0_1.rs");
+include!("2_2_0.rs");
+include!("2_2_3.rs");
+include!("2_3_0.rs");
+include!("2_4_0.rs");
+include!("2_5_0.rs");
+include!("2_6_0.rs");
+include!("2_6_1.rs");
+include!("2_6_2.rs");
+
+use crate::offsets::module_offsets::structs::{
+    BasePointers, Data, ExternalFunctionPointers, Functions, Hooks, ModuleOffsets, Patches,
+};

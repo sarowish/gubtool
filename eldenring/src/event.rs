@@ -1,14 +1,23 @@
 use crate::{
-    chr_ins::ChrInsExt, event, mem::*, offsets::{ChainReadExt, code_cave::CaveOffset, functions, virtual_memory_flag}, player, resources::{
+    chr_ins::ChrInsExt,
+    event,
+    mem::*,
+    offsets::{
+        ChainReadExt,
+        code_cave::CaveOffset,
+        module_offsets::{BasePointer, Function},
+    },
+    player,
+    resources::{
         ASM,
         bosses::{Boss, bosses_array},
         talk_commands::TalkCommand,
-    }, utils::{character_loaded_check, dlc_check}
+    },
+    utils::{dlc_check, player_loaded_check},
 };
 use anyhow::{anyhow, ensure};
-use gubtool_core::sys::error::ProcResult;
+use gubtool_core::{address::Address, slice_ops::*, sys::error::ProcResult};
 use shared::event_log::{EventLog, EventLogger};
-use utils::slice_ops::*;
 
 pub fn get_event(event_id: u32) -> anyhow::Result<bool> {
     let (data_ptr, block_offset) = event_flag_lookup(event_id)?;
@@ -23,17 +32,15 @@ pub fn _set_event_direct(event_id: u32, state: bool) -> anyhow::Result<()> {
 }
 
 pub fn set_event(event_id: u32, state: bool) -> ProcResult {
-    let virt_mem_flag = read::<u64>(virtual_memory_flag::base_ptr())?;
+    let mut fun = ASM.get_function("set_event");
+    let mut asm = fun.take_bytes();
 
-    let fun = ASM.get_function("set_event");
-    let mut asm = fun.get_bytes();
+    write_addr_to_slice(&mut asm, fun.reloc("virt_mem_flag"), BasePointer::VirtualMemFlag)?;
+    write_to_slice::<u32>(&mut asm, fun.reloc("event_id"), event_id)?;
+    write_to_slice::<u32>(&mut asm, fun.reloc("state"), state)?;
+    write_addr_to_slice(&mut asm, fun.reloc_find("fn_set_event"), Function::SetEvent)?;
 
-    write_to_slice::<i64>(&mut asm, fun.reloc("virt_mem_flag"), virt_mem_flag)?;
-    write_to_slice::<i64>(&mut asm, fun.reloc("event_id"), event_id)?;
-    write_to_slice::<i64>(&mut asm, fun.reloc("state"), state)?;
-    write_to_slice::<i64>(&mut asm, fun.reloc("fn_set_event"), functions::set_event())?;
-
-    spawn_thread_join(CaveOffset::SetEventAsm.addr(), asm)
+    spawn_thread_join(CaveOffset::SetEventAsm, asm)
 }
 
 struct VirtMemInfo {
@@ -45,7 +52,7 @@ struct VirtMemInfo {
 
 impl VirtMemInfo {
     pub fn read() -> ProcResult<Self> {
-        let bytes = read::<u64>(virtual_memory_flag::base_ptr())
+        let bytes = read::<u64>(BasePointer::VirtualMemFlag)
             .read::<[u8; 0x40]>()?;
         Ok(Self {
             block_size: read_from_slice::<u32>(&bytes, 0x1C)?,
@@ -114,22 +121,21 @@ fn event_flag_lookup(event_id: u32) -> anyhow::Result<(u64, u32)> {
     Err(anyhow!("flag not found"))
 }
 
-pub fn execute_talk_command(command_id: i32, params: &'static [i32], handle: u64) -> ProcResult {
-    let location = CaveOffset::EzStateTalkAsm.addr();
-    let params_location = CaveOffset::EzStateParams.addr();
+pub fn execute_talk_command(command_id: i32, params: &'static [i32], chr_handle: u64) -> ProcResult {
     let params: Vec<u8> = params.iter().flat_map(|&x| x.to_le_bytes()).collect();
 
-    let fun = ASM.get_function("execute_talk_command");
-    let mut asm = fun.get_bytes();
-    write_to_slice::<i32>(&mut asm, 18, command_id)?;
-    write_rel_i32(&mut asm, location, 23, functions::external_event_temp_ctor(), 4)?;
-    write_to_slice::<u64>(&mut asm, 65, handle)?;
-    write_to_slice::<i32>(&mut asm, 78, params.len())?;
-    write_rel_i32(&mut asm, location, 93, params_location, 4)?;
-    write_rel_i32(&mut asm, location, 155, functions::execute_talk_command(), 4)?;
+    let mut fun = ASM.get_function("execute_talk_command");
+    let mut asm = fun.take_bytes();
 
-    write_bytes(params_location, &params)?;
-    spawn_thread_join(location, asm)
+    write_to_slice::<i32>(&mut asm, fun.reloc("command_id"), command_id)?;
+    write_addr_to_slice(&mut asm, fun.reloc("fn_external_event_temp_ctor"), Function::ExternalEventTempCtor)?;
+    write_addr_to_slice(&mut asm, fun.reloc("chr_handle"), chr_handle)?;
+    write_to_slice::<i32>(&mut asm, fun.reloc("params_len"), params.len())?;
+    write_addr_to_slice(&mut asm, fun.reloc("params_loc"), CaveOffset::EzStateParams)?;
+    write_addr_to_slice(&mut asm, fun.reloc("fn_execute_talk_command"), Function::ExecuteTalkCommand)?;
+
+    write_bytes(CaveOffset::EzStateParams, &params)?;
+    spawn_thread_join(CaveOffset::EzStateTalkAsm, asm)
 }
 
 impl TalkCommand {
@@ -180,29 +186,26 @@ const EVENT_LOG_HOOK_ORIGINAL: [u8; 5] = [0x48, 0x89, 0x5C, 0x24, 0x08];
 pub fn set_event_log_hook(state: bool) -> ProcResult {
     match state {
         true => install_event_log_hook(),
-        false => write_bytes(functions::set_event(), &EVENT_LOG_HOOK_ORIGINAL),
+        false => write_bytes(Function::SetEvent, &EVENT_LOG_HOOK_ORIGINAL),
     }
 }
 
 pub fn is_event_log_hook() -> ProcResult<bool> {
-    read::<[u8; 5]>(functions::set_event())
+    read::<[u8; 5]>(Function::SetEvent)
         .map(|bytes| bytes != EVENT_LOG_HOOK_ORIGINAL)
 }
 
 fn install_event_log_hook() -> ProcResult {
-    let location = CaveOffset::EventLogHook.addr();
-    let write_index = CaveOffset::EventLogWriteIdx.addr();
-    let buffer = CaveOffset::EventLogBuffer.addr();
+    let location = CaveOffset::EventLogHook;
 
-    let fun = ASM.get_function("event_log");
-    let mut asm = fun.get_bytes();
+    let mut fun = ASM.get_function("event_log");
+    let mut asm = fun.take_bytes();
 
-    write_rel_i32(&mut asm, location, fun.reloc("write_index_1"), write_index, 4)?;
-    write_rel_i32(&mut asm, location, fun.reloc("buffer"), buffer, 4)?;
-    write_rel_i32(&mut asm, location, fun.reloc("write_index_2"), write_index, 4)?;
-    write_rel_i32(&mut asm, location, fun.reloc("hook_loc"), functions::set_event() + 5, 4)?;
+    write_addr_to_slice(&mut asm, fun.reloc("write_index"), CaveOffset::EventLogWriteIdx)?;
+    write_addr_to_slice(&mut asm, fun.reloc("buffer"), CaveOffset::EventLogBuffer)?;
+    write_rel_i32(&mut asm, location, fun.reloc("hook_loc"), Function::SetEvent.add_offset(5), 4)?;
 
-    install_hook(&asm, location, functions::set_event(), 5)
+    install_hook(&asm, location, Function::SetEvent, 5)
 }
 
 pub fn fight_fortissax() -> anyhow::Result<()> {
@@ -225,7 +228,7 @@ pub fn fight_elden_beast() -> anyhow::Result<()> {
 }
 
 pub fn set_dlc_clear(state: bool) -> anyhow::Result<()> {
-    character_loaded_check()?;
+    player_loaded_check()?;
     dlc_check()?;
     set_event(70, state)?;
     Ok(())
@@ -237,7 +240,7 @@ pub fn get_dlc_clear() -> anyhow::Result<bool> {
 }
 
 pub fn unlock_metyr() -> anyhow::Result<()> {
-    character_loaded_check()?;
+    player_loaded_check()?;
     dlc_check()?;
     let events = [
         2050400600, 2053460600, 2051459226, 2051459228, 2051459229, 2051459230, 2051455023,
@@ -253,8 +256,8 @@ pub const ALIVE: &str = "Alive";
 pub const ALIVE_SE: &str = "Alive (Second Encounter)";
 
 impl Boss {
-    pub fn revive(&self, first_encounter: bool, warp: bool) -> anyhow::Result<()> {
-        character_loaded_check()?;
+    pub fn revive(&self, first_encounter: bool) -> anyhow::Result<()> {
+        player_loaded_check()?;
         if self.dlc {
             dlc_check()?;
         }
@@ -266,9 +269,6 @@ impl Boss {
         self.flags
             .iter()
             .try_for_each(|(id, state)| set_event(*id, *state))?;
-        if warp {
-            self.warp()?
-        }
         Ok(())
     }
     pub fn revive_status(&self) -> &str {
@@ -290,5 +290,5 @@ impl Boss {
 pub fn mass_revive(dlc: bool, first_encounter: bool) -> anyhow::Result<()> {
     bosses_array(dlc)
         .iter()
-        .try_for_each(|boss| boss.revive(first_encounter, false))
+        .try_for_each(|boss| boss.revive(first_encounter))
 }

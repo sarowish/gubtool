@@ -1,11 +1,8 @@
 use crate::{
     mem::is_scholar,
-    offsets::{Offset, module_offsets::module_offsets},
+    offsets::{Offset, module_offsets::BasePointer},
 };
-
-pub fn base_ptr() -> u64 {
-    gubtool_core::attached::module_base() + module_offsets().base_ptrs.game_manager_imp
-}
+use gubtool_core::address::Address;
 
 pub const CHARACTER_MANAGER: Offset = Offset {
     vanilla: 0,
@@ -151,8 +148,8 @@ pub const PX_WORLD: Offset = Offset {
 
 pub fn player_coords_chain() -> [u64; 7] {
     match crate::mem::is_scholar() {
-        true => [base_ptr(), PX_WORLD.resolve(), 0x18, 0x1F8, 0x18, 0x8, 0x1A0],
-        false => [base_ptr(), PX_WORLD.resolve(), 0xC, 0x168, 0xC, 0x4, 0x120],
+        true => [BasePointer::GameManagerImp.addr(), PX_WORLD.resolve(), 0x18, 0x1F8, 0x18, 0x8, 0x1A0],
+        false => [BasePointer::GameManagerImp.addr(), PX_WORLD.resolve(), 0xC, 0x168, 0xC, 0x4, 0x120],
     }
 }
 
@@ -177,8 +174,8 @@ pub mod dl_back_allocator_offsets {
 
 pub fn fe_item_select_menu_chain() -> [u64; 7] {
     match is_scholar() {
-        true => [base_ptr(), DL_BACK_ALLOCATOR.resolve(), 0x110, 0x10, 0x38, 0x30, 0x30],
-        false => [base_ptr(), DL_BACK_ALLOCATOR.resolve(), 0x88, 0x8, 0x1C, 0x18, 0x18],
+        true => [BasePointer::GameManagerImp.addr(), DL_BACK_ALLOCATOR.resolve(), 0x110, 0x10, 0x38, 0x30, 0x30],
+        false => [BasePointer::GameManagerImp.addr(), DL_BACK_ALLOCATOR.resolve(), 0x88, 0x8, 0x1C, 0x18, 0x18],
     }
 }
 

@@ -19,7 +19,7 @@ mov r14, 0x3009bde
 mov rdi, 0x20024683
 movabs r15, OFFSET fn_get_map_entity
 movabs rbx, OFFSET fn_get_map_object
-movabs rbp, OFFSET fn_set_event_1
+movabs rbp, OFFSET fn_set_event
 mov rsi, rcx
 sub rsp, 0x28
 loop_start:
@@ -55,4 +55,4 @@ pop rdx
 pop rcx
 exit:
 mov [rsp+0x10], rsi
-jmp OFFSET fn_set_event_2
+jmp OFFSET hook_loc

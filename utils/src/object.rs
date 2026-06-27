@@ -1,6 +1,11 @@
 use object::{Object, ObjectSection, ObjectSymbol, RelocationTarget};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, env, fs, path::PathBuf, process::Command};
+use std::{
+    collections::{HashMap, VecDeque},
+    env, fs,
+    path::PathBuf,
+    process::Command,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AsmFolder {
@@ -15,36 +20,67 @@ impl AsmFolder {
             .collect();
         Self { functions: map }
     }
-    pub fn get_function(&self, name: &'static str) -> &AsmFunction {
-        self.functions.get(name).unwrap()
+
+    pub fn get_function(&self, name: &'static str) -> AsmFunction {
+        self.functions.get(name).unwrap().clone()
     }
+
     pub fn print_function_sizes(&self) {
-        self.functions.iter().for_each(|(key, fun)| {
-            println!("{}, {:#X}", key, fun.bytes.len())
-        });
+        self.functions
+            .iter()
+            .for_each(|(key, fun)| println!("{}, {:#X}", key, fun.bytes.len()));
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AsmFunction {
-    pub name: String,
+    name: String,
     bytes: Vec<u8>,
-    relocations: Vec<Relocation>,
+    relocations: VecDeque<Relocation>,
 }
 
 impl AsmFunction {
-    pub fn new(name: String, bytes: Vec<u8>, relocations: Vec<Relocation>) -> Self {
-        Self { name, bytes, relocations }
+    pub fn new(name: String, bytes: Vec<u8>, relocations: VecDeque<Relocation>) -> Self {
+        Self {
+            name,
+            bytes,
+            relocations,
+        }
     }
-    pub fn get_bytes(&self) -> Vec<u8> {
-        self.bytes.clone()
+
+    pub fn take_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.bytes)
     }
-    pub fn reloc(&self, name: &'static str) -> u64 {
-        self.relocations.iter().find(|s| s.symbol == name).unwrap().offset
+
+    pub fn print_relocs(&self) {
+        self.relocations
+            .iter()
+            .for_each(|r| println!("{:#X}, {}", r.offset, r.symbol));
+    }
+
+    #[track_caller]
+    pub fn reloc(&mut self, name: &'static str) -> u64 {
+        let reloc = self.relocations.pop_front().unwrap();
+
+        if reloc.symbol == name {
+            reloc.offset
+        } else {
+            panic!("symbol mismatch")
+        }
+    }
+
+    #[track_caller]
+    pub fn reloc_find(&mut self, name: &'static str) -> u64 {
+        let pos = self.relocations
+            .iter()
+            .position(|s| s.symbol == name)
+            .unwrap();
+        let popped = self.relocations.remove(pos).unwrap();
+        popped.offset
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Relocation {
     symbol: String,
     offset: u64,
@@ -66,8 +102,7 @@ pub fn build(folders: &[(&'static str, &'static str, bool)]) {
         let mut functions = Vec::<AsmFunction>::new();
 
         for file in fs::read_dir(path).unwrap() {
-
-            // compile
+            // assemble
 
             let file_path = file.unwrap().path();
 
@@ -85,13 +120,13 @@ pub fn build(folders: &[(&'static str, &'static str, bool)]) {
             cmd.arg("-o");
             cmd.arg(&obj);
             let status = cmd.status().unwrap();
-            assert!(status.success(), "failed to compile {:?}", file_path);
+            assert!(status.success(), "failed to assemble {:?}", file_path);
 
             println!("cargo:rerun-if-changed={}", &file_path.display());
 
             // parse object file
 
-            let mut relocations: Vec<Relocation> = Vec::new();
+            let mut relocations: VecDeque<Relocation> = VecDeque::new();
 
             let bytes = fs::read(&obj).unwrap();
             let obj_file = object::File::parse(&*bytes).unwrap();
@@ -104,7 +139,7 @@ pub fn build(folders: &[(&'static str, &'static str, bool)]) {
                     RelocationTarget::Symbol(symbol_index) => {
                         let symbol = obj_file.symbol_by_index(symbol_index).unwrap();
                         relocations
-                            .push(Relocation::new(symbol.name().unwrap().to_string(), offset));
+                            .push_back(Relocation::new(symbol.name().unwrap().to_string(), offset));
                     }
                     _ => (),
                 }

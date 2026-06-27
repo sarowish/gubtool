@@ -10,13 +10,13 @@ push ecx
 push edx
 push ebx
 mov edi, ecx
-mov ebx, 0x0
 mov DWORD PTR [ebp-0x4], 0x32250000
 mov DWORD PTR [ebp-0x8], 0x3
 mov DWORD PTR [ebp-0xC], 0x3009BDE
 mov DWORD PTR [ebp-0x10], 0x20024683
-mov DWORD PTR [ebp-0x14], 0x0
-mov DWORD PTR [ebp-0x18], 0x0
+mov DWORD PTR [ebp-0x14], OFFSET fn_get_map_entity
+mov DWORD PTR [ebp-0x18], OFFSET fn_get_map_object
+mov ebx, OFFSET fn_set_event
 loop_start:
 push DWORD PTR [ebp-0xC]
 push DWORD PTR [ebp-0x4]
@@ -53,4 +53,4 @@ original_set_event:
 push ebp
 mov ebp, esp
 sub esp, 0x8
-jmp 0x0
+jmp OFFSET hook_loc

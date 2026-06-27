@@ -1,11 +1,20 @@
 use crate::{
+    app::App,
     common::{
         block, blockless_list, controls::draw_controls, label_list, stateful_list::StatefulList,
         tab_state::TabState,
-    }, darksouls2_screen::GameState, event::{AnyhowExt, ResultExt}, input::fuzzy_finder::FuzzyFinder, theme::theme
+    },
+    darksouls2_screen::GameState,
+    event::{AnyhowExt, ResultExt},
+    input::request_search,
+    mutate_app, spawn_task,
+    theme::theme,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use darksouls2::{bonfire, resources::{bonfires, bosses}};
+use darksouls2::{
+    bonfire,
+    resources::{bonfires, bosses},
+};
 use nucleo_matcher::Utf32String;
 use ratatui::{
     Frame,
@@ -28,7 +37,6 @@ const BONFIRE_CONTROLS: &[(&str, &str)] = &[
 
 pub struct TravelTab {
     tab: TabState,
-    fuzzy_finder: FuzzyFinder,
 }
 
 impl TravelTab {
@@ -38,7 +46,6 @@ impl TravelTab {
         list_states[BONFIRES_IDX] = StatefulList::new(bonfires::BONFIRES.len());
         TravelTab {
             tab: TabState::new(list_states),
-            fuzzy_finder: FuzzyFinder::default(),
         }
     }
 
@@ -82,21 +89,9 @@ impl TravelTab {
             bonfire_area,
             &mut self.tab.get_list_state(BONFIRES_IDX),
         );
-
-        self.fuzzy_finder.draw_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
-        if self.fuzzy_finder.show {
-            self.fuzzy_finder.handle_keys(key);
-            if key.code == KeyCode::Enter {
-                if let Some(selected) = self.fuzzy_finder.selected_idx() {
-                    self.tab.set_list_selected(self.tab.current_list, selected);
-                }
-            }
-            return;
-        }
-
         self.tab.handle_keys(key);
 
         match key.code {
@@ -104,7 +99,7 @@ impl TravelTab {
                 self.handle_select()
             }
             KeyCode::Char('f') => {
-                let list = if self.tab.current_list == BOSSES_IDX {
+                let entries = if self.tab.current_list == BOSSES_IDX {
                     bosses::BOSSES.iter()
                         .map(|boss| Utf32String::from(format!("{}", boss.name)))
                         .collect::<Vec<Utf32String>>()
@@ -113,7 +108,14 @@ impl TravelTab {
                         .map(|bonfire| Utf32String::from(format!("{}|{}", bonfire.name, bonfire.main_area)))
                         .collect::<Vec<Utf32String>>()
                 };
-                self.fuzzy_finder.show(list);
+                spawn_task! {
+                    if let Some(new_idx) = request_search(entries).await {
+                        mutate_app!(|app: &mut App| {
+                            let tab = &mut app.dark_souls_2.travel.tab;
+                            tab.set_list_selected(tab.current_list, new_idx);
+                        });
+                    }
+                }
             }
             KeyCode::Char('t') => {
                 if self.tab.current_list == BONFIRES_IDX {

@@ -1,12 +1,7 @@
-use crate::offsets::module_offsets;
 use gubtool_core::{
-    attached::{module_base, version},
+    attached::version,
     game_version::EldenRingVersion::*,
 };
-
-pub fn base_ptr() -> u64 {
-    module_base() + module_offsets().base_ptrs.world_chr_man
-}
 
 pub fn chr_set_pool() -> u64 {
     match version() {

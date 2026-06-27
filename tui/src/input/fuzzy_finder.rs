@@ -1,5 +1,7 @@
 use crate::{
-    common::{block, centered_rect, stateful_list::StatefulList}, event::{Event, send_event}, input::Input, theme::{self, theme}
+    common::{block, centered_rect, stateful_list::StatefulList},
+    input::Input,
+    theme::{self, theme},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use nucleo_matcher::{
@@ -23,34 +25,42 @@ pub struct FuzzyFinder {
     list_state: StatefulList,
     match_count: usize,
     pub show: bool,
+    sender: Option<tokio::sync::oneshot::Sender<Option<usize>>>,
 }
 
 impl Default for FuzzyFinder {
     fn default() -> Self {
         Self {
             matcher: Matcher::new(Config::DEFAULT.match_paths()),
-            input: Input::new(),
+            input: Input::default(),
             pattern: Pattern::default(),
             entries: None,
             matched: Vec::new(),
             list_state: StatefulList::new(0),
             match_count: 0,
             show: false,
+            sender: None,
         }
     }
 }
 
 impl FuzzyFinder {
-    pub fn selected_idx(&self) -> Option<usize> {
+    pub fn show(
+        &mut self,
+        entries: Vec<Utf32String>,
+        sender: tokio::sync::oneshot::Sender<Option<usize>>,
+    ) {
+        self.entries = Some(entries);
+        self.sender = Some(sender);
+        self.update_matches();
+        self.show = true;
+    }
+
+    fn selected_idx(&self) -> Option<usize> {
         self.list_state.selected().map(|selected| self.matched[selected].idx)
     }
 
-    pub fn reset(&mut self) {
-        self.input.set_text("");
-        self.entries.take();
-    }
-
-    pub fn update_matches(&mut self) {
+    fn update_matches(&mut self) {
         self.pattern
             .reparse(&self.input.text, CaseMatching::Smart, Normalization::Smart);
 
@@ -73,19 +83,6 @@ impl FuzzyFinder {
         self.match_count = self.matched.len();
         self.matched.sort_by(|a, b| b.score.cmp(&a.score));
         self.list_state.select(0);
-    }
-
-    pub fn show(&mut self, entries: Vec<Utf32String>) {
-        send_event(Event::BlockInputs(true));
-        self.entries = Some(entries);
-        self.update_matches();
-        self.show = true;
-    }
-
-    fn hide(&mut self) {
-        send_event(Event::BlockInputs(false));
-        self.reset();
-        self.show = false;
     }
 
     pub fn draw_checked(&mut self, frame: &mut Frame) {
@@ -206,8 +203,20 @@ impl FuzzyFinder {
             (KeyCode::Up, _) | (KeyCode::BackTab, _) | (KeyCode::Char('k'), KeyModifiers::CONTROL) => {
                 self.list_state.decrement(1);
             }
-            (KeyCode::Enter, _) | (KeyCode::Esc, _) => {
-                self.hide();
+            (KeyCode::Esc, _) => {
+                self.input.set_text("");
+                self.entries.take();
+                self.sender = None;
+                self.show = false;
+
+            }
+            (KeyCode::Enter, _) => {
+                if let Some(tx) = self.sender.take() {
+                    let _ = tx.send(self.selected_idx());
+                }
+                self.input.set_text("");
+                self.entries.take();
+                self.show = false;
             }
             _ => {
                 let _ = self.input.handle_keys(key);
@@ -218,7 +227,7 @@ impl FuzzyFinder {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Matched {
+struct Matched {
     idx: usize,
     score: Option<u32>,
     name: String,
@@ -228,7 +237,7 @@ pub struct Matched {
 }
 
 impl Matched {
-    pub fn new(text: String, idx: usize, score: Option<u32>, indices: &[u32]) -> Self {
+    fn new(text: String, idx: usize, score: Option<u32>, indices: &[u32]) -> Self {
         let (name, label, name_indices, label_indices) =
         if let Some(split_byte_idx) = text.find('|') {
             let split_char_idx = text[..split_byte_idx].chars().count();

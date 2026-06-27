@@ -1,8 +1,12 @@
-use config::user::attach_config_error::AttachConfigError;
+use crate::app::App;
+use config::attach::attach_config_error::AttachConfigError;
 use crossterm::event::{self, Event as CEvent, KeyEvent};
 use gubtool_core::{attached::AttachError, error_log::log_error, sys::error::ProcessError};
+use nucleo_matcher::Utf32String;
 use std::{
-    sync::{OnceLock, mpsc}, thread, time::{Duration, Instant}
+    sync::{OnceLock, mpsc},
+    thread,
+    time::{Duration, Instant},
 };
 
 pub enum Event {
@@ -12,6 +16,9 @@ pub enum Event {
     Info((String, InfoType)),
     BlockInputs(bool),
     ApplyAttach,
+    Input((&'static str, tokio::sync::oneshot::Sender<String>, std::any::TypeId)),
+    Search((Vec<Utf32String>, tokio::sync::oneshot::Sender<Option<usize>>)),
+    State(Box<dyn FnOnce(&mut App) + Send>),
 }
 
 pub enum InfoType {

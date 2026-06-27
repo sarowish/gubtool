@@ -1,7 +1,12 @@
 use crate::{
-    common::{StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list}, eldenring_screen::GameState, event::ResultExt, input::input_prompt::{InputPrompt, PromptType}, theme::theme
+    common::{StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list},
+    eldenring_screen::GameState,
+    event::ResultExt,
+    input::request_input,
+    spawn_task,
+    theme::theme,
 };
-use config::{Config, user::AttachConfig};
+use config::{Config, attach::AttachConfig};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use eldenring::{
     game_state::{StateFlagOffset, StateFlags},
@@ -45,10 +50,9 @@ const MENUS_IDX: usize = 2;
 const SHOPS_IDX: usize = 3;
 
 pub struct UtilityTab {
-    pub tab: TabState,
+    tab: TabState,
     preferences: AttachConfig,
     menu_shop_idx: usize,
-    input: InputPrompt<InputRequest>,
 }
 
 impl UtilityTab {
@@ -62,7 +66,6 @@ impl UtilityTab {
             tab: TabState::new(list_states),
             preferences: AttachConfig::read().unwrap_or_default(),
             menu_shop_idx: 0,
-            input: InputPrompt::new(),
         }
     }
 
@@ -112,8 +115,6 @@ impl UtilityTab {
             );
         }
         frame.render_widget(self.menu_shop_tab(), layout[MENUS_IDX]);
-
-        self.input.draw_popup_checked(frame);
     }
 
     fn menu_shop_tab(&self) -> Tabs<'static> {
@@ -131,14 +132,6 @@ impl UtilityTab {
     pub fn handle_keys(&mut self, key: KeyEvent) {
         if self.tab.current_list == SHOPS_IDX {
             self.tab.set_length(SHOPS_IDX, shops_array(GameState::dlc()).len())
-        }
-
-        if self.input.show {
-            self.input.handle_keys(key);
-            if key.code == KeyCode::Enter {
-                self.handle_input_enter();
-            }
-            return;
         }
 
         self.tab.handle_keys(key);
@@ -175,30 +168,10 @@ impl UtilityTab {
         if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
             match self.tab.current_list {
                 OPTIONS_IDX => TogglesItems::ARRAY[selected].execute(),
-                ACTIONS_IDX => ActionsItems::ARRAY[selected].execute(&mut self.input),
+                ACTIONS_IDX => ActionsItems::ARRAY[selected].execute(),
                 MENUS_IDX => MENUS[selected].execute().send_error(),
                 SHOPS_IDX => shops_array(GameState::dlc())[selected].execute().send_error(),
                 _ => (),
-            }
-        }
-    }
-
-    fn handle_input_enter(&self) {
-        match self.input.last_request.unwrap() {
-            InputRequest::FpsCap => {
-                if let Some(val) = self.input.parse_text::<f32>() {
-                    utility::set_fps_cap(val).send_error()
-                }
-            }
-            InputRequest::ClearCount => {
-                if let Some(val) = self.input.parse_text::<i32>() {
-                    utility::set_ng_cycle(val).send_error()
-                }
-            }
-            InputRequest::GameSpeed => {
-                if let Some(val) = self.input.parse_text::<f32>() {
-                    utility::set_game_speed(val).send_error()
-                }
             }
         }
     }
@@ -218,19 +191,19 @@ impl TogglesItems {
     fn execute(&self) {
         match self {
             Self::ToggleMusic => {
-                let new_state = !utility::is_music_muted().unwrap_or_default();
+                let new_state = !utility::is_music_muted();
                 utility::mute_music(new_state).send_error()
             }
             Self::RemoveLogos => {
-                let new_state = !utility::is_logo_patch().unwrap_or_default();
+                let new_state = !utility::is_logo_patch();
                 utility::set_logo_patch(new_state).send_error()
             }
             Self::ShowAllMaps => {
-                let new_state = !utility::is_show_all_maps_on().unwrap_or_default();
+                let new_state = !utility::is_show_all_maps_on();
                 utility::show_all_maps(new_state).send_error()
             }
             Self::ShowAllGraces => {
-                let new_state = !utility::is_show_all_graces_on().unwrap_or_default();
+                let new_state = !utility::is_show_all_graces_on();
                 utility::show_all_graces(new_state).send_error()
             }
             Self::StutterFix => {
@@ -239,7 +212,7 @@ impl TogglesItems {
                 let _ = utility::set_stutter_fix(new_state);
             }
             Self::FreezeWorld => {
-                let new_state = !utility::is_freeze_world_on().unwrap_or_default();
+                let new_state = !utility::is_freeze_world_on();
                 utility::set_freeze_world(new_state).send_error()
             }
             Self::DisableAreaTitleCards => {
@@ -252,23 +225,23 @@ impl TogglesItems {
                 let _ = utility::draw_hitboxes(new_state, false);
             }
             Self::MapAnywhere => {
-                let new_state = !utility::is_map_anywhere().unwrap_or_default();
+                let new_state = !utility::is_map_anywhere();
                 utility::set_map_anywhere(new_state).send_error()
             }
             Self::TravelAnywhere => {
-                let new_state = !utility::is_travel_anywhere().unwrap_or_default();
+                let new_state = !utility::is_travel_anywhere();
                 utility::set_travel_anywhere(new_state).send_error()
             }
             Self::DisableRoll => {
-                let new_state = !utility::is_control_disabled(ControlFlag::Roll).unwrap_or_default();
+                let new_state = !utility::is_control_disabled(ControlFlag::Roll);
                 utility::set_control(ControlFlag::Roll, new_state).send_error()
             }
             Self::DisableJump => {
-                let new_state = !utility::is_control_disabled(ControlFlag::Jump).unwrap_or_default();
+                let new_state = !utility::is_control_disabled(ControlFlag::Jump);
                 utility::set_control(ControlFlag::Jump, new_state).send_error()
             }
             Self::DisableBackstep => {
-                let new_state = !utility::is_control_disabled(ControlFlag::Backstep).unwrap_or_default();
+                let new_state = !utility::is_control_disabled(ControlFlag::Backstep);
                 utility::set_control(ControlFlag::Backstep, new_state).send_error()
             }
         }
@@ -276,19 +249,19 @@ impl TogglesItems {
     fn to_list_item(&self) -> ListItem<'_> {
         let text = match self {
             Self::ToggleMusic => {
-                let state = utility::is_music_muted().unwrap_or_default();
+                let state = utility::is_music_muted();
                 "Mute Music".create_toggle_str(state)
             }
             Self::RemoveLogos => {
-                let state = utility::is_logo_patch().unwrap_or_default();
+                let state = utility::is_logo_patch();
                 "Remove Logos".create_toggle_str(state)
             }
             Self::ShowAllMaps => {
-                let state = utility::is_show_all_maps_on().unwrap_or_default();
+                let state = utility::is_show_all_maps_on();
                 "Show All Maps".create_toggle_str(state)
             }
             Self::ShowAllGraces => {
-                let state = utility::is_show_all_graces_on().unwrap_or_default();
+                let state = utility::is_show_all_graces_on();
                 "Show All Graces".create_toggle_str(state)
             }
             Self::StutterFix => {
@@ -296,7 +269,7 @@ impl TogglesItems {
                 "Stutter Fix".create_toggle_str(state)
             }
             Self::FreezeWorld => {
-                let state = utility::is_freeze_world_on().unwrap_or_default();
+                let state = utility::is_freeze_world_on();
                 "Freeze World".create_toggle_str(state)
             }
             Self::DisableAreaTitleCards => {
@@ -308,23 +281,23 @@ impl TogglesItems {
                 "Draw Hitboxes".create_toggle_str(state)
             }
             Self::MapAnywhere => {
-                let state = utility::is_map_anywhere().unwrap_or_default();
+                let state = utility::is_map_anywhere();
                 "Allow Map In Combat".create_toggle_str(state)
             }
             Self::TravelAnywhere => {
-                let state = utility::is_travel_anywhere().unwrap_or_default();
+                let state = utility::is_travel_anywhere();
                 "Allow Travel In Dungeons".create_toggle_str(state)
             }
             Self::DisableRoll => {
-                let state = utility::is_control_disabled(ControlFlag::Roll).unwrap_or_default();
+                let state = utility::is_control_disabled(ControlFlag::Roll);
                 "Disable Roll".create_toggle_str(state)
             }
             Self::DisableJump => {
-                let state = utility::is_control_disabled(ControlFlag::Jump).unwrap_or_default();
+                let state = utility::is_control_disabled(ControlFlag::Jump);
                 "Disable Jump".create_toggle_str(state)
             }
             Self::DisableBackstep => {
-                let state = utility::is_control_disabled(ControlFlag::Backstep).unwrap_or_default();
+                let state = utility::is_control_disabled(ControlFlag::Backstep);
                 "Disable Backstep".create_toggle_str(state)
             }
         };
@@ -352,12 +325,30 @@ impl TogglesItems {
 }
 
 impl ActionsItems {
-    fn execute(&self, input: &mut InputPrompt<InputRequest>) {
+    fn execute(&self) {
         match self {
-            Self::FpsCap => input.show("Set FPS Cap", PromptType::F32, InputRequest::FpsCap),
-            Self::GameSpeed => input.show("Set Game Speed", PromptType::F32, InputRequest::GameSpeed),
+            Self::FpsCap => {
+                spawn_task! {
+                    if let Some(val) = request_input::<f32>(None).await {
+                        utility::set_fps_cap(val).send_error()
+                    }
+                }
+            }
+            Self::GameSpeed => {
+                spawn_task! {
+                    if let Some(val) = request_input::<f32>(None).await {
+                        utility::set_game_speed(val).send_error()
+                    }
+                }
+            }
+            Self::ClearCount => {
+                spawn_task! {
+                    if let Some(val) = request_input::<i32>(None).await {
+                        utility::set_ng_cycle(val).send_error()
+                    }
+                }
+            }
             Self::Quitout => utility::quitout().send_error(),
-            Self::ClearCount => input.show("Set Clearcount", PromptType::I32, InputRequest::GameSpeed),
             Self::TriggerNewGameCycle => utility::trigger_new_game().send_error(),
         }
     }
@@ -365,11 +356,10 @@ impl ActionsItems {
         let text = match self {
             Self::FpsCap => {
                 format!("FPS Cap: {}",
-                    utility::get_fps_cap().unwrap_or_default())
+                    utility::get_fps_cap())
             }
             Self::GameSpeed => {
-                format!("Game Speed: {}",
-                    utility::get_game_speed().unwrap_or_default())
+                format!("Game Speed: {}", utility::get_game_speed())
             }
             Self::Quitout => {
                 "Quitout".to_string()
@@ -395,11 +385,4 @@ impl ActionsItems {
         let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item()).collect();
         tabs_list(items, None, &utility_tab.tab, ACTIONS_IDX)
     }
-}
-
-#[derive(Clone, Copy)]
-enum InputRequest {
-    FpsCap,
-    GameSpeed,
-    ClearCount,
 }

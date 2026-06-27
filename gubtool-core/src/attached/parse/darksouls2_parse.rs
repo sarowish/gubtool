@@ -3,7 +3,8 @@ use crate::{
         AddressSize, GameProcess,
         error::ParseError,
         parse::{
-            DEFAULT_BASE_32, DEFAULT_BASE_64, parse_environ_for_path, pe_version_32, pe_version_64, scan_maps_for_path
+            DEFAULT_BASE_32, DEFAULT_BASE_64, parse_environ_for_path, pe_version_32, pe_version_64,
+            scan_maps_for_path,
         },
     },
     game_version::{

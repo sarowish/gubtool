@@ -1,6 +1,8 @@
 use std::{fmt::Display, panic::Location};
 use pelite::Pod;
 
+use crate::{address::Address, attached::is_32};
+
 #[derive(Debug, Copy, Clone)]
 pub struct SliceError {
     error_kind: SliceErrorKind,
@@ -86,15 +88,33 @@ fn rel_i32(target: u64, source: u64) -> Result<i32, SliceError> {
 }
 
 #[track_caller]
-pub fn write_rel_i32(asm: &mut Vec<u8>, location: u64, offset: u64, target: u64, bytes_to_next_instr: u64) -> Result<(), SliceError> {
-    write_to_slice::<i32>(asm, offset, rel_i32(target, location + offset + bytes_to_next_instr)?)
+pub fn write_rel_i32(asm: &mut Vec<u8>, location: impl Address, offset: u64, target: impl Address, bytes_to_next_instr: u64) -> Result<(), SliceError> {
+    write_to_slice::<i32>(asm, offset, rel_i32(target.addr(), location.addr() + offset + bytes_to_next_instr)?)
 }
 
 #[track_caller]
-pub fn get_hook_bytes(code_location: u64, hook_location: u64, original_instruction_size: usize) -> Result<Vec<u8>, SliceError> {
+pub fn read_addr_from_slice(array: &mut [u8], offset: u64)  -> Result<u64, SliceError> {
+    if is_32() {
+        read_from_slice::<u32>(array, offset).map(|addr| addr as u64)
+    } else {
+        read_from_slice::<u64>(array, offset)
+    }
+}
+
+#[track_caller]
+pub fn write_addr_to_slice(array: &mut [u8], offset: u64, addr: impl Address) -> Result<(), SliceError> {
+    if is_32() {
+        write_to_slice::<u32>(array, offset, addr.addr())
+    } else {
+        write_to_slice::<u64>(array, offset, addr.addr())
+    }
+}
+
+#[track_caller]
+pub fn get_hook_bytes(code_location: impl Address, hook_location: impl Address, original_instruction_size: u64) -> Result<Vec<u8>, SliceError> {
     let mut bytes = vec![0xE9, 0x00, 0x00, 0x00, 0x00];
     let nop_num = original_instruction_size.saturating_sub(5);
-    let nops = vec![0x90; nop_num];
+    let nops = vec![0x90; nop_num as usize];
     bytes.extend_from_slice(&nops);
     write_rel_i32(&mut bytes, hook_location, 1, code_location, 4)?;
     Ok(bytes)

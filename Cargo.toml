@@ -34,6 +34,8 @@ object = "0.39.1"
 bincode = "1"
 chrono = "0.4.44"
 glam = "0.33.0"
+tokio = { version = "1.52.3", features = ["full"] }
+strum = { version = "0.28", features = ["derive"] }
 
 [workspace.lints.rust]
 dead_code = "allow"

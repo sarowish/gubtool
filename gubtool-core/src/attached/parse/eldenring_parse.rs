@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::{
     attached::{
         AddressSize, GameProcess,
@@ -12,6 +10,7 @@ use crate::{
     },
 };
 use nix::unistd::Pid;
+use std::path::PathBuf;
 
 pub(super) fn parse(pid: Pid, comm: &'static str) -> GameProcess {
     let mut parse_errors: Vec<ParseError> = Vec::new();

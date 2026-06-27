@@ -1,3 +1,3 @@
-movups xmm0,XMMWORD PTR [rip+0x0]
-movups XMMWORD PTR [rax+0xAA0], xmm0
-jmp 0x0
+movups xmm0, XMMWORD PTR [rip+OFFSET new_val]
+movups XMMWORD PTR [rax+OFFSET property_offset], xmm0
+jmp OFFSET hook_loc

@@ -128,6 +128,22 @@ pub const MENU_CHR_STATE: AobScan = AobScan {
     scan_mode: ScanMode::Absolute,
 };
 
+pub const LEVEL_UP: AobScan = AobScan {
+    name: "LevelUp()",
+    pattern: "48 85 d2 0f 84 ? ? ? ? 48 89 5c 24 18 57 48 81 ec 20 01 00 00 48 8b 05 ? ? ? ? 48 33 c4",
+    scan_origin: 0x38B1A0,
+    offset: 0,
+    scan_mode: ScanMode::Absolute,
+};
+
+pub const LEVEL_LOOKUP: AobScan = AobScan {
+    name: "LevelLookup()",
+    pattern: "d1 ee 48 8b cd 8b d6 e8 ? ? ? ? 48 8b d8 eb e3 48 8b cb 0f b7 01",
+    scan_origin: 0x38D140,
+    offset: -0x5C,
+    scan_mode: ScanMode::Absolute,
+};
+
 pub const SET_SHARED_FLAG: AobScan = AobScan {
     name: "SetSharedFlag",
     pattern: "83 fa 07 77 ? 48 63 c2 44 38 84 08 ? ? ? ? 74 ? 44 88 84 08 ? ? ? ?",

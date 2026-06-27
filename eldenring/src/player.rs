@@ -1,23 +1,29 @@
-pub use crate::offsets::{chr_dbg_flags::ChrDbgOffsets, game_data_man::PlayerGameDataOffset};
+use std::ptr;
+
+pub use crate::offsets::{chr_dbg_flags::ChrDbgOffset, game_data_man::PlayerGameDataOffset};
 use crate::{
     chr_ins::{self, ChrIns, ChrInsExt},
     mem::*,
     offsets::{
-        ChainReadExt, chr_dbg_flags::{self}, code_cave::CaveOffset, functions, game_data_man, hooks::{self}, patches, world_chr_man
+        ChainReadExt,
+        code_cave::CaveOffset,
+        game_data_man,
+        module_offsets::{BasePointer, Data, Function, Hook, Patch},
+        world_chr_man,
     },
     resources::ASM,
-    utils::{character_loaded_check, dlc_check},
+    utils::player_loaded_check,
 };
 use gubtool_core::{
+    address::Address,
     attached::version,
-    game_version::EldenRingVersion::*, sys::error::{PointerType, ProcResult, ProcessError},
+    game_version::EldenRingVersion::*,
+    slice_ops::*,
+    sys::error::{PointerType, ProcResult, ProcessError},
 };
-use utils::slice_ops::*;
 
 pub fn player_ins() -> ChrIns {
-    match read::<u64>(world_chr_man::base_ptr())
-        .read_offset(world_chr_man::player_ins())
-    {
+    match read::<u64>(BasePointer::WorldChrMan).read_offset(world_chr_man::player_ins()) {
         Ok(ptr) if ptr != 0x0 => Ok(ptr),
         Ok(_) | Err(_) => Err(ProcessError::InvalidPointer {
             pointer_type: PointerType::PlayerIns,
@@ -31,12 +37,12 @@ pub fn torrent_ins() -> ChrIns {
     chr_ins::chr_ins_from_handle(handle)
 }
 
-pub fn set_chr_dbg_flag(offset: ChrDbgOffsets, state: bool) -> ProcResult {
-    write::<u8>(chr_dbg_flags::base() + offset as u64, state as u8)
+pub fn set_chr_dbg_flag(offset: ChrDbgOffset, state: bool) -> ProcResult {
+    write::<u8>(Data::ChrDbgFlags.add_offset(offset as u64), state as u8)
 }
 
-pub fn is_chr_dbg_flag(offset: ChrDbgOffsets) -> ProcResult<bool> {
-    read::<u8>(chr_dbg_flags::base() + offset as u64).map(|val| val == 1)
+pub fn is_chr_dbg_flag(offset: ChrDbgOffset) -> ProcResult<bool> {
+    read::<u8>(Data::ChrDbgFlags.add_offset(offset as u64)).map(|val| val == 1)
 }
 
 pub fn set_rune_arc(state: bool) -> ProcResult {
@@ -51,19 +57,23 @@ pub fn set_rfbs() -> ProcResult {
     player_ins.set_hp((max_hp * 20) / 100 - 1)
 }
 
+pub fn set_runes(amount: u32) -> ProcResult {
+    let current_amount = PlayerGameData::read().rune_count;
+    let to_give = amount as i32 - current_amount as i32;
+    give_runes(to_give as i64)
+}
+
 pub fn give_runes(amount: i64) -> ProcResult {
-    character_loaded_check()?;
+    player_loaded_check()?;
 
-    let location = CaveOffset::GiveRunesAsm.addr();
+    let mut fun = ASM.get_function("give_runes");
+    let mut asm = fun.take_bytes();
 
-    let fun = ASM.get_function("give_runes");
-    let mut asm = fun.get_bytes();
-
-    write_to_slice::<u64>(&mut asm, fun.reloc("player_game_data"), player_game_data()?)?;
+    write_addr_to_slice(&mut asm, fun.reloc("player_game_data"), player_game_data()?)?;
     write_to_slice::<i64>(&mut asm, fun.reloc("amount"), amount)?;
-    write_to_slice::<u64>(&mut asm, fun.reloc("fn_give_runes"), functions::give_runes())?;
+    write_addr_to_slice(&mut asm, fun.reloc("fn_give_runes"), Function::GiveRunes)?;
 
-    spawn_thread_join(location, asm)
+    spawn_thread_join(CaveOffset::GiveRunesAsm, asm)
 }
 
 pub fn map_coords() -> ProcResult<[f32; 3]> {
@@ -79,35 +89,40 @@ pub fn map_angle() -> ProcResult<f32> {
 }
 
 fn install_grab_hook() -> ProcResult {
-    let mut asm = ASM.get_function("grab_hook").get_bytes();
-    let location = CaveOffset::NoGrabHook.addr();
-    let skip_grab_jmp_location = hooks::player_no_grab() + 0x95;
+    let mut fun = ASM.get_function("grab_hook");
+    let mut asm = fun.take_bytes();
 
-    write_rel_i32(&mut asm, location, 4, world_chr_man::base_ptr(), 4)?;
-    write_to_slice::<i32>(&mut asm, 11, world_chr_man::player_ins())?;
-    write_rel_i32(&mut asm, location, 22, skip_grab_jmp_location, 4)?;
-    write_rel_i32(&mut asm, location, 36, hooks::player_no_grab() + 9, 4)?;
+    let location = CaveOffset::NoGrabHook;
+    let skip_grab_jmp_location = Hook::PlayerNoGrab.add_offset(0x95);
 
-    install_hook(&asm, location, hooks::player_no_grab(), 9)
+    write_addr_to_slice(&mut asm, fun.reloc("world_chr_man"), BasePointer::WorldChrMan)?;
+    write_to_slice::<i32>(&mut asm, fun.reloc("player_ins_off"), world_chr_man::player_ins())?;
+    write_rel_i32(&mut asm, location, fun.reloc("skip_grab_jmp_location"), skip_grab_jmp_location, 4)?;
+    write_rel_i32(&mut asm, location, fun.reloc("hook_loc"), Hook::PlayerNoGrab.add_offset(9), 4)?;
+
+    install_hook(&asm, location, Hook::PlayerNoGrab, 9)
 }
 
 const GRAB_HOOK_BYTES_ORIGINAL: [u8; 9] = [0x41, 0x8B, 0x56, 0x44, 0x48, 0x8D, 0x4C, 0x24, 0x40];
 fn uninstall_grab_hook() -> ProcResult {
-    write_bytes(hooks::player_no_grab(), &GRAB_HOOK_BYTES_ORIGINAL)
+    write_bytes(Hook::PlayerNoGrab, &GRAB_HOOK_BYTES_ORIGINAL)
 }
 
 fn install_infinite_poise_hook() -> ProcResult {
-    let mut asm = ASM.get_function("infinite_poise_hook").get_bytes();
-    let location = CaveOffset::InfinitePoiseHook.addr();
+    let mut fun = ASM.get_function("infinite_poise_hook");
+    let mut asm = fun.take_bytes();
 
-    write_rel_i32(&mut asm, location, 11, world_chr_man::base_ptr(), 4)?;
-    write_to_slice::<i32>(&mut asm, 18, world_chr_man::player_ins())?;
-    write_to_slice::<i32>(&mut asm, 27, world_chr_man::player_ins())?;
-    write_rel_i32(&mut asm, location, 64, world_chr_man::base_ptr(), 4)?;
-    write_rel_i32(&mut asm, location, 84, functions::get_chr_ins_by_entity_id(), 4)?;
-    write_rel_i32(&mut asm, location, 107, hooks::player_infinite_poise() + 7, 4)?;
-
-    install_hook(&asm, location, hooks::player_infinite_poise(), 7)
+    write_addr_to_slice(&mut asm, fun.reloc("world_chr_man"), BasePointer::WorldChrMan)?;
+    write_to_slice::<i32>(&mut asm, fun.reloc("player_ins_off"), world_chr_man::player_ins())?;
+    write_addr_to_slice(&mut asm, fun.reloc("fn_get_chr_ins"), Function::GetChrInsByEntityId)?;
+    write_rel_i32(
+        &mut asm,
+        CaveOffset::InfinitePoiseHook,
+        fun.reloc("hook_loc"),
+        Hook::PlayerInfinitePoise.add_offset(7),
+        4,
+    )?;
+    install_hook(&asm, CaveOffset::InfinitePoiseHook, Hook::PlayerInfinitePoise, 7)
 }
 
 fn infinite_poise_bytes_original() -> [u8; 7] {
@@ -119,11 +134,11 @@ fn infinite_poise_bytes_original() -> [u8; 7] {
     }
 }
 fn uninstall_infinite_poise_hook() -> ProcResult {
-    write_bytes(hooks::player_infinite_poise(), &infinite_poise_bytes_original())
+    write_bytes(Hook::PlayerInfinitePoise, &infinite_poise_bytes_original())
 }
 
 pub fn is_infinite_poise() -> ProcResult<bool> {
-    read::<[u8; 7]>(hooks::player_infinite_poise())
+    read::<[u8; 7]>(Hook::PlayerInfinitePoise)
         .map(|val| val != infinite_poise_bytes_original())
 }
 
@@ -143,110 +158,155 @@ pub fn set_infinite_poise(val: bool) -> ProcResult {
 pub fn set_torrent_anywhere(state: bool) -> ProcResult {
     match state {
         true => {
-            write_bytes(patches::torrent_disabled_underworld(), &[0x30, 0xC0, 0x90])?;
-            write_bytes(patches::whistle_disabled(), &[0x30, 0xC0, 0x90])
+            write_bytes(Patch::TorrentDisabledUnderworld, &[0x30, 0xC0, 0x90])?;
+            write_bytes(Patch::WhistleDisabled, &[0x30, 0xC0, 0x90])
         }
         false => {
-            write_bytes(patches::torrent_disabled_underworld(), &[0x0F, 0x95, 0xC0])?;
-            write_bytes(patches::whistle_disabled(), &[0x0F, 0x95, 0xC0])
+            write_bytes(Patch::TorrentDisabledUnderworld, &[0x0F, 0x95, 0xC0])?;
+            write_bytes(Patch::WhistleDisabled, &[0x0F, 0x95, 0xC0])
         }
     }
 }
 
 pub fn is_torrent_anywhere() -> ProcResult<bool> {
-    read::<[u8; 3]>(patches::whistle_disabled()).map(|val| val != [0x0F, 0x95, 0xC0])
+    read::<[u8; 3]>(Patch::WhistleDisabled)
+        .map(|val| val != [0x0F, 0x95, 0xC0])
 }
 
 fn player_game_data() -> ProcResult<u64> {
-    read::<u64>(game_data_man::base_ptr())
+    read::<u64>(BasePointer::GameDataMan)
         .read_offset(game_data_man::PLAYER_GAME_DATA)
 }
 
-impl PlayerGameDataOffset {
-    pub fn val(self) -> u64 {
-        self as u64
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct PlayerStats {
-    pub vigor: i32,
-    pub mind: i32,
-    pub endurance: i32,
-    pub strength: i32,
-    pub dexterity: i32,
-    pub intelligence: i32,
-    pub faith: i32,
-    pub arcane: i32,
-    pub rune_level: i32,
-    pub runes: i32,
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct PlayerGameData {
+    vftable: usize,
+    pub character_event_id: u32,
+    pub player_id: u32,
+    pub current_hp: u32,
+    pub current_max_hp: u32,
+    pub base_max_hp: u32,
+    pub current_fp: u32,
+    pub current_max_fp: u32,
+    pub base_max_fp: u32,
+    unk28: f32,
+    pub current_stamina: u32,
+    pub current_max_stamina: u32,
+    pub base_max_stamina: u32,
+    unk38: f32,
+    pub vigor: u32,
+    pub mind: u32,
+    pub endurance: u32,
+    pub strength: u32,
+    pub dexterity: u32,
+    pub intelligence: u32,
+    pub faith: u32,
+    pub arcane: u32,
+    pub base_hero_point: f32,
+    pub base_hero_point_2: f32,
+    pub base_durability: f32,
+    pub level: u32,
+    pub rune_count: u32,
     pub rune_memory: u32,
-    pub scadutree: u8,
-    pub spirit_ash: u8,
-    pub rune_arc: bool,
+    unk74: u32,
+    pub poison_resist: u32,
+    pub rot_resist: u32,
+    pub bleed_resist: u32,
+    pub death_resist: u32,
+    pub frost_resist: u32,
+    pub sleep_resist: u32,
+    pub madness_resist: u32,
+    pub pending_block_clear_bonus: f32,
+    pub chr_type: i32,
+    character_name: [u16; 17],
+    pub gender: u8,
+    pub archetype: u8,
+    pub vow_type: u8,
+    unkc1: u8,
+    pub voice_type: u8,
+    pub starting_gift: u8,
+    unkc4: u8,
+    pub unlocked_magic_slots: u8,
+    pub unlocked_talisman_slots: u8,
+    pub matchmaking_spirit_ashes_level: u8,
+    pub total_summon_count: u32,
+    pub coop_success_count: u32,
+    pub game_data_man_index: u32,
+    unkd4: [u8; 0xb],
+    pub furlcalling_finger_remedy_active: bool,
+    unke0: u8,
+    unke1: u8,
+    pub matching_weapon_level: u8,
+    pub white_ring_active: u8,
+    pub blue_ring_active: u8,
+    pub multiplay_role: u8,
+    unke6: u8,
+    pub is_my_world: bool,
+    unke8: [u8; 0x3],
+    unke9: bool,
+    pub character_id: u32,
+    pub invasions_success_count: u32,
+    pub solo_breakin_point: u32,
+    pub invaders_killed: u32,
+    pub scadutree_blessing: u8,
+    pub reversed_spirit_ash: u8,
+    pub resist_curse_item_count: u8,
+    pub rune_arc_active: bool,
+    unk100: bool,
+    pub max_hp_flask: u8,
+    pub max_fp_flask: u8,
 }
 
-impl PlayerStats {
-    pub fn new() -> PlayerStats {
-        let mut stats = PlayerStats::default();
-        stats.update().ok();
-        stats
-    }
-    pub fn update(&mut self) -> ProcResult {
-        character_loaded_check()?;
-        let array = read::<[u8; 0x100]>(player_game_data()?)?;
-        self.vigor = read_from_slice::<i32>(&array, PlayerGameDataOffset::Vigor.val())?;
-        self.mind = read_from_slice::<i32>(&array, PlayerGameDataOffset::Mind.val())?;
-        self.endurance = read_from_slice::<i32>(&array, PlayerGameDataOffset::Endurance.val())?;
-        self.strength = read_from_slice::<i32>(&array, PlayerGameDataOffset::Strength.val())?;
-        self.dexterity = read_from_slice::<i32>(&array, PlayerGameDataOffset::Dexterity.val())?;
-        self.intelligence = read_from_slice::<i32>(&array, PlayerGameDataOffset::Intelligence.val())?;
-        self.faith = read_from_slice::<i32>(&array, PlayerGameDataOffset::Faith.val())?;
-        self.arcane = read_from_slice::<i32>(&array, PlayerGameDataOffset::Arcane.val())?;
-        self.rune_level = read_from_slice::<i32>(&array, PlayerGameDataOffset::RuneLevel.val())?;
-        self.runes = read_from_slice::<i32>(&array, PlayerGameDataOffset::Runes.val())?;
-        self.rune_memory = read_from_slice::<u32>(&array, PlayerGameDataOffset::RuneMemory.val())?;
-        self.scadutree = array[PlayerGameDataOffset::Scadutree.val() as usize];
-        self.spirit_ash = array[PlayerGameDataOffset::SpiritAsh.val() as usize];
-        self.rune_arc = array[PlayerGameDataOffset::RuneArc.val() as usize] != 0;
-        Ok(())
+impl PlayerGameData {
+    pub fn read() -> Self {
+        if player_loaded_check().is_err() {
+            return Self::default()
+        }
+        let bytes = read::<u64>(BasePointer::GameDataMan)
+            .read_offset(game_data_man::PLAYER_GAME_DATA)
+            .read::<[u8; std::mem::size_of::<Self>()]>()
+            .unwrap_or([0x0; std::mem::size_of::<Self>()]);
+        unsafe {
+            ptr::read_unaligned(bytes.as_ptr() as *const Self)
+        }
     }
 }
 
-pub fn set_stat(player_game_data_offset: u64, val: i32) -> anyhow::Result<()> {
-    character_loaded_check()?;
-    anyhow::ensure!((0..=99).contains(&val), "Valid range: [0,99]");
+pub fn set_stat(player_game_data_offset: PlayerGameDataOffset, val: i32) -> anyhow::Result<()> {
+    player_loaded_check()?;
+
+    let val = val.clamp(0, 99);
 
     let game_data = player_game_data()?;
-    let current_val = read::<i32>(game_data + player_game_data_offset)?;
+    let current_val = read::<i32>(game_data + player_game_data_offset as u64)?;
 
     let diff = val - current_val;
-    let current_level = read::<i32>(game_data + PlayerGameDataOffset::RuneLevel.val())?;
+    let current_level = read::<i32>(game_data + PlayerGameDataOffset::RuneLevel as u64)?;
 
     if val > current_val {
         let mut rune_cost = 0;
         for i in 1..=diff {
             rune_cost += level_up_cost(current_level + i);
         }
-        let current_rune_mem = read::<u32>(game_data + PlayerGameDataOffset::RuneMemory.val())?;
+        let current_rune_mem = read::<u32>(game_data + PlayerGameDataOffset::RuneMemory as u64)?;
         let new_rune_mem = std::cmp::min(current_rune_mem as u64 + rune_cost as u64, 0xFFFFFFFF);
         write::<u32>(
-            game_data + PlayerGameDataOffset::RuneMemory.val(),
+            game_data + PlayerGameDataOffset::RuneMemory as u64,
             new_rune_mem as u32,
         )?;
     }
     write::<i32>(
-        game_data + PlayerGameDataOffset::RuneLevel.val(),
+        game_data + PlayerGameDataOffset::RuneLevel as u64,
         current_level + diff,
     )?;
-    write::<i32>(game_data + player_game_data_offset, val)?;
+    write::<i32>(game_data + player_game_data_offset as u64, val)?;
     Ok(())
 }
 
-pub fn set_dlc_stat(player_game_data_offset: u64, val: u8) -> anyhow::Result<()> {
-    dlc_check()?;
-    anyhow::ensure!((0..=20).contains(&val), "Valid range: [0,20]");
-    write::<u8>(player_game_data()? + player_game_data_offset, val)?;
+pub fn set_dlc_stat(player_game_data_offset: PlayerGameDataOffset, val: u8) -> anyhow::Result<()> {
+    player_loaded_check()?;
+    write::<u8>(player_game_data()? + player_game_data_offset as u64, val.clamp(0, 20))?;
     Ok(())
 }
 

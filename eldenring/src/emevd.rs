@@ -1,29 +1,29 @@
-use gubtool_core::sys::error::ProcResult;
-use utils::slice_ops::write_to_slice;
-
 use crate::{
     mem::{EXECUTE_EMEVD_COMMAND_MUTEX, spawn_thread_join, write_bytes},
-    offsets::{code_cave::CaveOffset, cs_emk_system, functions},
-    resources::ASM, utils::character_loaded_check,
+    offsets::{
+        code_cave::CaveOffset,
+        module_offsets::{BasePointer, Function},
+    },
+    resources::ASM,
+    utils::player_loaded_check,
 };
+use gubtool_core::{slice_ops::*, sys::error::ProcResult};
 
 fn execute_emevd_command(group_id: i32, command_id: i32, args: &[u8]) -> ProcResult {
-    let location = CaveOffset::EmevdAsm.addr();
-    let args_location = CaveOffset::EmevdArgs.addr();
+    let mut fun = ASM.get_function("execute_emevd_command");
+    let mut asm = fun.take_bytes();
 
-    let fun = ASM.get_function("execute_emevd_command");
-    let mut asm = fun.get_bytes();
-    write_to_slice::<u64>(&mut asm, fun.reloc("fn_emk_event_ins_ctor"), functions::emk_event_ins_ctor())?;
+    write_addr_to_slice(&mut asm, fun.reloc("fn_emk_event_ins_ctor"), Function::EmkEventInsCtor)?;
     write_to_slice::<i32>(&mut asm, fun.reloc("group_id"), group_id)?;
     write_to_slice::<i32>(&mut asm, fun.reloc("command_id"), command_id)?;
-    write_to_slice::<u64>(&mut asm, fun.reloc("args_location"), args_location)?;
-    write_to_slice::<u64>(&mut asm, fun.reloc("cs_emk_system_base"), cs_emk_system::base_ptr())?;
-    write_to_slice::<u64>(&mut asm, fun.reloc("fn_emevd_switch"), functions::emevd_switch())?;
+    write_addr_to_slice(&mut asm, fun.reloc("args_location"), CaveOffset::EmevdArgs)?;
+    write_addr_to_slice(&mut asm, fun.reloc("cs_emk_system_base"), BasePointer::CsEmkSystem)?;
+    write_addr_to_slice(&mut asm, fun.reloc("fn_emevd_switch"), Function::EmevdSwitch)?;
 
     let _handle = EXECUTE_EMEVD_COMMAND_MUTEX.lock().unwrap();
 
-    write_bytes(args_location, args)?;
-    spawn_thread_join(location, asm)
+    write_bytes(CaveOffset::EmevdArgs, args)?;
+    spawn_thread_join(CaveOffset::EmevdAsm, asm)
 }
 
 pub fn set_night() -> ProcResult {
@@ -37,7 +37,7 @@ pub fn set_night() -> ProcResult {
 }
 
 pub fn rest() -> ProcResult {
-    character_loaded_check()?;
+    player_loaded_check()?;
     execute_emevd_command(2004, 47, &[])
 }
 
@@ -47,6 +47,7 @@ pub fn disable_title_card() -> ProcResult {
 }
 
 pub fn reset_character_position(entity_id: u32) -> ProcResult {
+    player_loaded_check()?;
     let mut param_data: [u8; 20] = [0x0; 20];
     write_to_slice::<u32>(&mut param_data, 0, entity_id)?;
     execute_emevd_command(2004, 81, &param_data)

@@ -1,5 +1,5 @@
 push rax
-movabs rax, OFFSET game_man
+movabs rax, OFFSET game_man_imp
 mov rax, QWORD PTR [rax]
 cmp QWORD PTR [rax+0xD0], rcx
 jne normal

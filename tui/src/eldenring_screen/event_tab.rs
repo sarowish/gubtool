@@ -1,4 +1,5 @@
 use crate::{
+    app::App,
     common::{
         StrExt,
         controls::draw_controls,
@@ -6,7 +7,11 @@ use crate::{
         stateful_list::StatefulList,
         tab_state::TabState,
         tabs_list,
-    }, eldenring_screen::GameState, event::{AnyhowExt, ResultExt}, input::input_prompt::{InputPrompt, PromptType}, ui_state::UiState
+    },
+    eldenring_screen::GameState,
+    event::{AnyhowExt, ResultExt},
+    input::request_input,
+    mutate_app, spawn_task,
 };
 use crossterm::event::{KeyCode, KeyEvent};
 use eldenring::event::{self, ErEventLogger, get_dlc_clear, is_event_log_hook, set_event_log_hook};
@@ -29,13 +34,10 @@ const COMMANDS_IDX: usize = 0;
 const LOG_IDX: usize = 1;
 
 pub struct EventTab {
-    pub tab: TabState,
-    pub event: Option<u32>,
-    pub first_encounter: bool,
-    pub warp: bool,
+    tab: TabState,
+    event: Option<u32>,
     log: ErEventLogger,
     table_state: TableState,
-    input: InputPrompt<InputRequest>,
 }
 
 impl EventTab {
@@ -45,11 +47,8 @@ impl EventTab {
         EventTab {
             tab: TabState::new(list_states),
             event: None,
-            first_encounter: false,
-            warp: true,
             log: ErEventLogger::default(),
             table_state: TableState::default(),
-            input: InputPrompt::new(),
         }
     }
 
@@ -81,8 +80,6 @@ impl EventTab {
         );
 
         draw_controls(frame, layout[LOG_IDX], event_log_table::CONTROLS);
-
-        self.input.draw_popup_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
@@ -90,29 +87,19 @@ impl EventTab {
             handle_log_table_keys(&mut self.table_state, &mut self.log, key);
         }
 
-        if self.input.show {
-            self.input.handle_keys(key);
-            if key.code == KeyCode::Enter {
-                self.handle_input_enter();
-            }
-            return;
-        }
-
         self.tab.handle_keys(key);
 
         match key.code {
-            KeyCode::Char('s') => self.handle_input(),
-            KeyCode::Enter => self.handle_select(),
-            _ => (),
-        }
-    }
-
-    fn handle_input(&mut self) {
-        if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
-            match self.tab.current_list {
-                COMMANDS_IDX => CommandsItems::ARRAY[selected].set_input(&mut self.input),
-                _ => (),
+            KeyCode::Backspace => {
+                if self.tab.current_list == COMMANDS_IDX {
+                    let Some(selected) = self.tab.get_list_selected(self.tab.current_list) else { return };
+                    CommandsItems::array()[selected].set_input();
+                }
             }
+            KeyCode::Enter => {
+                self.handle_select();
+            }
+            _ => (),
         }
     }
 
@@ -125,16 +112,6 @@ impl EventTab {
                 set_event_log_hook(new_state).send_error();
             }
             _ => (),
-        }
-    }
-
-    fn handle_input_enter(&mut self) {
-        match self.input.last_request.unwrap() {
-            InputRequest::Event => {
-               let val = self.input.parse_text::<u32>();
-                self.event = val;
-                UiState::update_er(|c| { c.event = val; }).ok();
-            }
         }
     }
 }
@@ -163,9 +140,17 @@ impl CommandsItems {
             }
         }
     }
-    fn set_input(&self, input: &mut InputPrompt<InputRequest>) {
+    fn set_input(&self) {
         match self {
-            Self::Event => input.show("Set New Value", PromptType::U32, InputRequest::Event),
+            Self::Event => {
+                spawn_task! {
+                    if let Some(val) = request_input::<u32>(None).await {
+                        mutate_app!(|app: &mut App| {
+                            app.elden_ring.event.event = Some(val);
+                        });
+                    }
+                }
+            }
             _ => (),
         }
     }
@@ -173,7 +158,7 @@ impl CommandsItems {
         let text = match self {
             Self::Event => {
                 let state = event::get_event(event_tab.event.unwrap_or_default()).unwrap_or_default();
-                format!("Event ({})",
+                format!("Event: {}",
                 event_tab.event.map(|v| v.to_string()).unwrap_or_default())
                     .create_toggle_str(state)
             }
@@ -213,9 +198,4 @@ impl CommandsItems {
         let items: Vec<ListItem> = array.iter().map(|i| i.to_list_item(event_tab)).collect();
         tabs_list(items, None, &event_tab.tab, COMMANDS_IDX)
     }
-}
-
-#[derive(Clone, Copy)]
-enum InputRequest {
-    Event,
 }

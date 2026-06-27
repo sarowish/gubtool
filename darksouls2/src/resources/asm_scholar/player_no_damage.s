@@ -1,5 +1,5 @@
 push rcx
-movabs rcx, OFFSET game_man
+movabs rcx, OFFSET game_man_imp
 mov rcx, QWORD PTR [rcx]
 mov rcx, QWORD PTR [rcx+0xd0]
 cmp rcx, rbx

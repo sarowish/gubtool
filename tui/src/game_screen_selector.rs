@@ -11,7 +11,6 @@ use ratatui::{
     widgets::{Clear, List, ListItem},
 };
 
-
 const GAMES: &[Game] = &[
     Game::DarkSouls2,
     Game::EldenRing,
@@ -33,11 +32,12 @@ impl GameScreenSelector {
 
         frame.render_stateful_widget(Self::list(), layout, &mut self.list.state);
     }
+
     fn list() -> List<'static> {
         let items = GAMES.iter()
         .map(|game| ListItem::new(format!("{}", game)) )
         .collect();
-        list(items, Some("Game Screen Selection"))
+        list(items, Some("Select Game Screen"))
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent, game_screen: &mut Game, current_screen: &mut CurrentScreen) {

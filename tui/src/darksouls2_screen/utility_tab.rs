@@ -2,7 +2,8 @@ use crate::{
     common::{StrExt, stateful_list::StatefulList, tab_state::TabState, tabs_list},
     darksouls2_screen::GameState,
     event::ResultExt,
-    input::input_prompt::{InputPrompt, PromptType},
+    input::request_input,
+    spawn_task,
     theme::theme,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -37,9 +38,8 @@ const SHOPS_IDX: usize = 3;
 const TRADES_IDX: usize = 4;
 
 pub struct UtilityTab {
-    pub tab: TabState,
+    tab: TabState,
     menu_shop_idx: usize,
-    input: InputPrompt<InputRequest>,
 }
 
 impl UtilityTab {
@@ -53,7 +53,6 @@ impl UtilityTab {
         UtilityTab {
             tab: TabState::new(list_states),
             menu_shop_idx: 0,
-            input: InputPrompt::new(),
         }
     }
 
@@ -112,18 +111,8 @@ impl UtilityTab {
             _ => (),
         }
         frame.render_widget(self.menu_shop_tab(), layout[MENUS_IDX]);
-
-        self.input.draw_popup_checked(frame);
     }
     pub fn handle_keys(&mut self, key: KeyEvent) {
-        if self.input.show {
-            self.input.handle_keys(key);
-            if key.code == KeyCode::Enter {
-                self.handle_input_enter();
-            }
-            return;
-        }
-
         self.tab.handle_keys(key);
 
         match self.tab.current_list {
@@ -175,7 +164,7 @@ impl UtilityTab {
         if let Some(selected) = self.tab.get_list_selected(self.tab.current_list) {
             match self.tab.current_list {
                 TOGGLES_IDX => TogglesItem::ARRAY[selected].execute(),
-                OPTIONS_IDX => OptionsItem::ARRAY[selected].execute(&mut self.input),
+                OPTIONS_IDX => OptionsItem::ARRAY[selected].execute(),
                 MENUS_IDX => menu::open_menu(MENUS[selected]).send_error(),
                 SHOPS_IDX => menu::open_shop(SHOPS[selected]).send_error(),
                 TRADES_IDX => menu::open_trade(TRADES[selected]).send_error(),
@@ -217,23 +206,13 @@ impl UtilityTab {
             .collect();
         tabs_list(items, None, &self.tab, TRADES_IDX)
     }
-
-    fn handle_input_enter(&self) {
-        match self.input.last_request.unwrap() {
-            InputRequest::NewGame => {
-                if let Some(val) = self.input.parse_text::<u8>() {
-                    utility::set_ng(val).send_error();
-                }
-            }
-        }
-    }
 }
 
 impl TogglesItem {
     fn execute(&self) {
         match self {
             Self::SkipCredits => {
-                let new_state = !utility::is_credits_skip().unwrap_or_default();
+                let new_state = !utility::is_credits_skip();
                 utility::set_credits_skip(new_state).send_error();
             }
             Self::FastQuitout => {
@@ -241,11 +220,11 @@ impl TogglesItem {
                 StateFlags::set(StateFlagOffset::FastQuitout, new_state).send_error();
             }
             Self::DisableRoll => {
-                let new_state = !utility::is_disable_roll().unwrap_or_default();
+                let new_state = !utility::is_disable_roll();
                 utility::set_disable_roll(new_state).send_error();
             }
             Self::DisableBackstep => {
-                let new_state = !utility::is_disable_backstep().unwrap_or_default();
+                let new_state = !utility::is_disable_backstep();
                 utility::set_disable_backstep(new_state).send_error();
             }
         }
@@ -253,7 +232,7 @@ impl TogglesItem {
     fn to_list_item(&self) -> ListItem<'_> {
         let text = match self {
             Self::SkipCredits => {
-                let state = utility::is_credits_skip().unwrap_or_default();
+                let state = utility::is_credits_skip();
                 "Skip Credits".create_toggle_str(state)
             }
             Self::FastQuitout => {
@@ -261,11 +240,11 @@ impl TogglesItem {
                 "Fast Quitout".create_toggle_str(state)
             }
             Self::DisableRoll => {
-                let state = utility::is_disable_roll().unwrap_or_default();
+                let state = utility::is_disable_roll();
                 "Disable Roll".create_toggle_str(state)
             }
             Self::DisableBackstep => {
-                let state = utility::is_disable_backstep().unwrap_or_default();
+                let state = utility::is_disable_backstep();
                 "Disable Backstep".create_toggle_str(state)
             }
         };
@@ -284,9 +263,15 @@ impl TogglesItem {
 }
 
 impl OptionsItem {
-    fn execute(&self, input: &mut InputPrompt<InputRequest>) {
+    fn execute(&self) {
         match self {
-            Self::NewGame => input.show("Set New Game Value", PromptType::U8, InputRequest::NewGame),
+            Self::NewGame => {
+                spawn_task! {
+                    if let Some(val) = request_input::<u8>(None).await {
+                        utility::set_ng(val).send_error();
+                    }
+                }
+            }
         }
     }
     fn to_list_item(&self) -> ListItem<'_> {
@@ -302,9 +287,4 @@ impl OptionsItem {
         let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item()).collect();
         tabs_list(items, None, &utility_tab.tab, OPTIONS_IDX)
     }
-}
-
-#[derive(Clone, Copy)]
-enum InputRequest {
-    NewGame,
 }

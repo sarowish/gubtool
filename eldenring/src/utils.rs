@@ -1,21 +1,19 @@
-use std::{
-    thread,
-    time::{Duration, Instant},
-};
-
 use crate::{
     event::get_event,
     game_state,
     mem::*,
-    offsets::{self, ChainReadExt, cs_dlc_imp},
+    offsets::{self, ChainReadExt, cs_dlc_imp, module_offsets::BasePointer},
     resources::ASM,
 };
-use anyhow::{bail};
+use anyhow::bail;
 use gubtool_core::{
     attached::version,
-    game_version::{
-        EldenRingVersion::*,
-    }, sys::error::{PointerType::PlayerIns, ProcResult, ProcessError},
+    game_version::EldenRingVersion::*,
+    sys::error::{PointerType::PlayerIns, ProcResult, ProcessError},
+};
+use std::{
+    thread,
+    time::{Duration, Instant},
 };
 use thiserror::Error;
 
@@ -27,16 +25,17 @@ pub struct DlcError;
 #[error("Requires version 1.12 or above")]
 pub struct VersionError;
 
-pub fn is_dlc_available() -> ProcResult<bool> {
-    read::<u64>(cs_dlc_imp::base_ptr())
+pub fn is_dlc_available() -> bool {
+    read::<u64>(BasePointer::CsDlcImp)
         .add_offset(cs_dlc_imp::BYTE_FLAGS)
         .add_offset(cs_dlc_imp::flags::DLC_CHECK)
         .read::<u8>()
         .map(|val| val == 1)
+        .unwrap_or_default()
 }
 
 pub fn dlc_check() -> Result<(), DlcError> {
-    if !is_dlc_available().unwrap_or_default() {
+    if !is_dlc_available() {
         Err(DlcError)
     } else {
         Ok(())
@@ -66,7 +65,7 @@ pub fn version_check() -> Result<(), VersionError> {
     }
 }
 
-pub fn character_loaded_check() -> ProcResult {
+pub fn player_loaded_check() -> ProcResult {
     if !game_state::is_loaded() {
         Err(ProcessError::InvalidPointer { pointer_type: PlayerIns })
     } else {
@@ -98,21 +97,8 @@ pub fn scan_and_print_base_offsets() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn read_base_pointers() -> ProcResult {
-    println!("world_chr_man: {:#X}", read::<u64>(offsets::world_chr_man::base_ptr())?);
-    println!("field_area: {:#X}", read::<u64>(offsets::field_area::base_ptr())?);
-    println!("game_man: {:#X}", read::<u64>(offsets::game_man::base_ptr())?);
-    println!("game_data_man: {:#X}", read::<u64>(offsets::game_data_man::base_ptr())?);
-    println!("cs_emk_system: {:#X}", read::<u64>(offsets::cs_emk_system::base_ptr())?);
-    println!("virtual_memory_flag: {:#X}", read::<u64>(offsets::virtual_memory_flag::base_ptr())?);
-    println!("damage_manager: {:#X}", read::<u64>(offsets::damage_manager::base_ptr())?);
-    println!("map_item_impl: {:#X}", read::<u64>(offsets::map_item_impl::base_ptr())?);
-    println!("user_input_manager: {:#X}", read::<u64>(offsets::dl_user_input_manager_impl::base_ptr())?);
-    println!("cs_flipper_imp: {:#X}", read::<u64>(offsets::cs_flipper_imp::base_ptr())?);
-    println!("cs_dlc_imp: {:#X}\n", read::<u64>(offsets::cs_dlc_imp::base_ptr())?);
-    Ok(())
-}
-
 pub fn print_asm_sizes() {
+    println!("Elden Ring");
     ASM.print_function_sizes();
+    println!("\n");
 }

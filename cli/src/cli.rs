@@ -1,35 +1,52 @@
 use anyhow::{Ok, ensure};
 use clap::{Parser, Subcommand, ValueEnum};
 use eldenring::{self, chr_ins::ChrInsExt};
-use gubtool_core::{attached::{self, game}, game_version::Game};
+use gubtool_core::{
+    attached::{self, game},
+    game_version::Game,
+};
 use std::{thread, time::Duration};
-use tui::tui;
+use tui;
 
 #[derive(Parser)]
 #[command(name = "gubtool")]
+#[derive(Clone, Copy)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
+#[derive(Clone, Copy)]
 pub enum Commands {
     Quitout,
     KillTarget,
     NextPhase,
     AobScan,
+    AsmSizes,
     Test,
 }
 
 pub fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
     if cli.command.is_none() {
-        tui().ok();
+        if let Err(e) = tui::run() {
+            eprintln!("{e:?}");
+        }
         return Ok(());
     }
 
-    ensure!(attached::auto_attach().is_some(), "Game not found");
+    match cli.command.unwrap() {
+        Commands::AsmSizes => {
+            gubtool_core::sys::print_asm_sizes();
+            darksouls2::utils::print_asm_sizes();
+            eldenring::utils::print_asm_sizes();
+        },
+        _ => (),
+    }
 
+    ensure!(attached::auto_attach().is_some(), "Game not found");
     let game = game().unwrap();
 
     match cli.command.unwrap() {
@@ -46,7 +63,7 @@ pub fn run() -> anyhow::Result<()> {
                 eldenring::chr_ins::ChrInsExt::set_hp(&eldenring::target::target_ins(), 0)?
             }
             Game::DarkSouls2 => {
-                if !darksouls2::target::is_target_hook_active()? {
+                if !darksouls2::target::is_target_hook_active() {
                     darksouls2::target::install_target_hook()?;
                     thread::sleep(Duration::from_millis(50));
                 }
@@ -63,6 +80,7 @@ pub fn run() -> anyhow::Result<()> {
         },
         Commands::Test => {
         },
+        _ => (),
     }
     Ok(())
 }

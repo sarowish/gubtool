@@ -1,4 +1,4 @@
-use crate::resources::{scan_patterns, versions_module_offsets};
+use crate::{offsets::module_offsets::versions, resources::scan_patterns};
 use anyhow::Result;
 use gubtool_core::{aob_scanner, attached::version, game_version::EldenRingVersion::*};
 
@@ -83,35 +83,35 @@ pub struct ExternalFunctionPointers {
     pub kernel32_close_handle: u64,
 }
 
-pub fn module_offsets() -> &'static ModuleOffsets {
+pub(super) fn module_offsets() -> &'static ModuleOffsets {
     match version() {
-        Some(Version1_2_0) => &versions_module_offsets::OFFSETS_1_2_0,
-        Some(Version1_2_1) => &versions_module_offsets::OFFSETS_1_2_1,
-        Some(Version1_2_2) => &versions_module_offsets::OFFSETS_1_2_2,
-        Some(Version1_2_3) => &versions_module_offsets::OFFSETS_1_2_3,
-        Some(Version1_3_0) => &versions_module_offsets::OFFSETS_1_3_0,
-        Some(Version1_3_1) => &versions_module_offsets::OFFSETS_1_3_1,
-        Some(Version1_3_2) => &versions_module_offsets::OFFSETS_1_3_2,
-        Some(Version1_4_0) => &versions_module_offsets::OFFSETS_1_4_0,
-        Some(Version1_4_1) => &versions_module_offsets::OFFSETS_1_4_1,
-        Some(Version1_5_0) => &versions_module_offsets::OFFSETS_1_5_0,
-        Some(Version1_6_0) => &versions_module_offsets::OFFSETS_1_6_0,
-        Some(Version1_7_0) => &versions_module_offsets::OFFSETS_1_7_0,
-        Some(Version1_8_0) => &versions_module_offsets::OFFSETS_1_8_0,
-        Some(Version1_8_1) => &versions_module_offsets::OFFSETS_1_8_1,
-        Some(Version1_9_0) => &versions_module_offsets::OFFSETS_1_9_0,
-        Some(Version1_9_1) => &versions_module_offsets::OFFSETS_1_9_1,
-        Some(Version2_0_0) => &versions_module_offsets::OFFSETS_2_0_0,
-        Some(Version2_0_1) => &versions_module_offsets::OFFSETS_2_0_1,
-        Some(Version2_2_0) => &versions_module_offsets::OFFSETS_2_2_0,
-        Some(Version2_2_3) => &versions_module_offsets::OFFSETS_2_2_3,
-        Some(Version2_3_0) => &versions_module_offsets::OFFSETS_2_3_0,
-        Some(Version2_4_0) => &versions_module_offsets::OFFSETS_2_4_0,
-        Some(Version2_5_0) => &versions_module_offsets::OFFSETS_2_5_0,
-        Some(Version2_6_0) => &versions_module_offsets::OFFSETS_2_6_0,
-        Some(Version2_6_1) => &versions_module_offsets::OFFSETS_2_6_1,
-        Some(Version2_6_2) => &versions_module_offsets::OFFSETS_2_6_2,
-        _ => &versions_module_offsets::OFFSETS_2_6_2,
+        Some(Version1_2_0) => &versions::OFFSETS_1_2_0,
+        Some(Version1_2_1) => &versions::OFFSETS_1_2_1,
+        Some(Version1_2_2) => &versions::OFFSETS_1_2_2,
+        Some(Version1_2_3) => &versions::OFFSETS_1_2_3,
+        Some(Version1_3_0) => &versions::OFFSETS_1_3_0,
+        Some(Version1_3_1) => &versions::OFFSETS_1_3_1,
+        Some(Version1_3_2) => &versions::OFFSETS_1_3_2,
+        Some(Version1_4_0) => &versions::OFFSETS_1_4_0,
+        Some(Version1_4_1) => &versions::OFFSETS_1_4_1,
+        Some(Version1_5_0) => &versions::OFFSETS_1_5_0,
+        Some(Version1_6_0) => &versions::OFFSETS_1_6_0,
+        Some(Version1_7_0) => &versions::OFFSETS_1_7_0,
+        Some(Version1_8_0) => &versions::OFFSETS_1_8_0,
+        Some(Version1_8_1) => &versions::OFFSETS_1_8_1,
+        Some(Version1_9_0) => &versions::OFFSETS_1_9_0,
+        Some(Version1_9_1) => &versions::OFFSETS_1_9_1,
+        Some(Version2_0_0) => &versions::OFFSETS_2_0_0,
+        Some(Version2_0_1) => &versions::OFFSETS_2_0_1,
+        Some(Version2_2_0) => &versions::OFFSETS_2_2_0,
+        Some(Version2_2_3) => &versions::OFFSETS_2_2_3,
+        Some(Version2_3_0) => &versions::OFFSETS_2_3_0,
+        Some(Version2_4_0) => &versions::OFFSETS_2_4_0,
+        Some(Version2_5_0) => &versions::OFFSETS_2_5_0,
+        Some(Version2_6_0) => &versions::OFFSETS_2_6_0,
+        Some(Version2_6_1) => &versions::OFFSETS_2_6_1,
+        Some(Version2_6_2) => &versions::OFFSETS_2_6_2,
+        _ => &versions::OFFSETS_2_6_2,
     }
 }
 

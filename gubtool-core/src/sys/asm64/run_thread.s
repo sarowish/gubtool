@@ -6,12 +6,12 @@ movabs r8, OFFSET code_address
 mov QWORD PTR [rsp+0x20], 0x0 # dwCreationFlags
 mov QWORD PTR [rsp+0x28], 0x0 # lpThreadId
 movabs rax, OFFSET create_thread
-call rax
+call QWORD PTR [rax]
 test rax, rax
 je finish
 mov rcx, rax
 movabs rax, OFFSET close_handle
-call rax
+call QWORD PTR [rax]
 test rax, rax
 je finish
 movabs rdi, OFFSET flag_loc

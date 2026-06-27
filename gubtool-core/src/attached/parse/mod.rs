@@ -1,12 +1,19 @@
 mod darksouls2_parse;
 mod eldenring_parse;
 
-use crate::{attached::{GameProcess, error::{ParseError, ParsePeError}}, game_version::Game};
+use crate::{
+    attached::{
+        GameProcess,
+        error::{ParseError, ParsePeError},
+    },
+    game_version::Game,
+};
 use nix::unistd::Pid;
 use pelite::{
     FileMap,
     pe32::{self, Pe as Pe32},
-    pe64::{self, Pe as Pe64}, resources::FindError,
+    pe64::{self, Pe as Pe64},
+    resources::FindError,
 };
 use std::{
     fs::{self, DirEntry},

@@ -7,4 +7,4 @@ jne normal
 xor r8d, r8d
 normal:
 mov BYTE PTR [rax+rcx*1+0x3a1], r8b
-jmp 0x0
+jmp OFFSET hook_loc

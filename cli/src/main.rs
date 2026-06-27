@@ -1,5 +1,6 @@
 mod cli;
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     cli::run()
 }

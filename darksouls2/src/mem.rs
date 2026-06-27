@@ -1,66 +1,73 @@
-use crate::offsets::{self, code_cave::CaveOffset};
+use crate::offsets::{code_cave::CaveOffset, module_offsets::ExternalFunctionPointer};
 use gubtool_core::{
+    address::Address,
     attached::{game, version},
     game_version::{DarkSouls2Version::*, Game},
-    sys::{error::{ProcResult, ProcessError}, *},
+    slice_ops::*,
+    sys::{
+        error::{ProcResult, ProcessError},
+        *,
+    },
 };
 use pelite::Pod;
-use utils::slice_ops::*;
 use std::sync::{LazyLock, Mutex};
 
-pub static ITEM_SPAWN_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 pub static MASS_SPAWN_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-pub static TRAVEL_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[track_caller]
-pub fn read<T: Pod>(address: u64) -> ProcResult<T> {
+pub fn read<T: Pod>(address: impl Address) -> ProcResult<T> {
     ensure_ds2()?;
     read_unsafe(address)
 }
 
 #[track_caller]
-pub fn write<T: Pod>(address: u64, value: T) -> ProcResult {
+pub fn write<T: Pod>(address: impl Address, value: T) -> ProcResult {
     ensure_ds2()?;
     write_unsafe(address, value)
 }
 
 #[track_caller]
-pub fn write_bytes(address: u64, data: &[u8]) -> ProcResult {
+pub fn write_bytes(address: impl Address, data: &[u8]) -> ProcResult {
     ensure_ds2()?;
     write_bytes_unsafe(address, data)
 }
 
-pub fn install_hook_without_code(code_location: u64, hook_location: u64, original_instruction_size: usize) -> ProcResult {
+pub fn install_hook_without_code(code_location: impl Address, hook_location: impl Address, original_instruction_size: u64) -> ProcResult {
     let hookbytes = get_hook_bytes(code_location, hook_location, original_instruction_size)?;
     write_bytes(hook_location, &hookbytes)
 }
 
-pub fn install_hook(code: &[u8], code_location: u64, hook_location: u64, original_instruction_size: usize) -> ProcResult {
+pub fn install_hook(code: &[u8], code_location: impl Address, hook_location: impl Address, original_instruction_size: u64) -> ProcResult {
     let hookbytes = get_hook_bytes(code_location, hook_location, original_instruction_size)?;
     write_bytes(code_location, &code)?;
     write_bytes(hook_location, &hookbytes)
 }
 
-pub fn spawn_thread_join(thread_start_address: u64, thread_code: Vec<u8>) -> ProcResult {
+pub fn spawn_thread_join(thread_start_address: impl Address, thread_code: Vec<u8>) -> ProcResult {
     ensure_ds2()?;
     gubtool_core::sys::spawn_thread_join(
         CaveOffset::RunThreadAsm.addr(),
         thread_start_address,
         thread_code,
-        read_address(offsets::kernel32_create_thread())?,
-        read_address(offsets::kernel32_close_handle())?,
+        ExternalFunctionPointer::Kernel32CreateThread,
+        ExternalFunctionPointer::Kernel32CloseHandle,
     )
 }
 
-pub fn spawn_thread_release(thread_start_address: u64, thread_code: Vec<u8>) -> ProcResult {
+pub fn spawn_thread_release(thread_start_address: impl Address, thread_code: Vec<u8>) -> ProcResult {
     ensure_ds2()?;
     gubtool_core::sys::spawn_thread_release(
         CaveOffset::RunThreadAsm.addr(),
         thread_start_address,
         thread_code,
-        read_address(offsets::kernel32_create_thread())?,
-        read_address(offsets::kernel32_close_handle())?,
+        ExternalFunctionPointer::Kernel32CreateThread,
+        ExternalFunctionPointer::Kernel32CloseHandle,
     )
+}
+
+pub fn read_address(address: impl Address) -> ProcResult<u64> {
+    ensure_ds2()?;
+    read_address_unsafe(address)
 }
 
 pub fn is_scholar() -> bool {
@@ -96,31 +103,13 @@ pub fn follow_pointers(pointers: &[u64], read_final: bool) -> ProcResult<u64> {
 }
 
 #[track_caller]
-pub fn read_address(address: u64) -> ProcResult<u64> {
-    if is_scholar() {
-        read::<u64>(address)
-    } else {
-        read::<u32>(address).map(|addr| addr as u64)
-    }
-}
-
-#[track_caller]
-pub fn read_addr_from_slice(array: &[u8], offset: u64) -> ProcResult<u64> {
-    Ok(if is_scholar() {
-        read_from_slice::<u64>(array, offset)?
-    } else {
-        read_from_slice::<u32>(array, offset).map(|addr| addr as u64)?
-    })
-}
-
-#[track_caller]
-pub fn is_bit_set(address: u64, mask: u8) -> ProcResult<bool> {
+pub fn is_bit_set(address: impl Address, mask: u8) -> ProcResult<bool> {
     read::<u8>(address)
         .map(|byte| byte & mask != 0)
 }
 
 #[track_caller]
-pub fn set_bit(address: u64, mask: u8, value: bool) -> ProcResult<()> {
+pub fn set_bit(address: impl Address, mask: u8, value: bool) -> ProcResult<()> {
     let current_byte = read::<u8>(address)?;
     let new_byte = match value {
         true => current_byte | mask,

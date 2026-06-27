@@ -1,11 +1,11 @@
 use crate::{
     chr_ctrl::ChrCtrlExt,
     mem::*,
-    offsets::{ChainReadExt, code_cave::CaveOffset, game_manager_imp},
+    offsets::{ChainReadExt, code_cave::CaveOffset, game_manager_imp, module_offsets::BasePointer},
     player, utility,
 };
-use gubtool_core::sys::error::ProcResult;
-use utils::slice_ops::*;
+use gubtool_core::{address::Address, sys::error::ProcResult};
+use gubtool_core::slice_ops::*;
 
 pub struct GameStateHandler {
     pub loaded: bool,
@@ -63,7 +63,7 @@ impl GameStateHandler {
 
         if flags.fast_quitout {
             utility::set_faster_menu(true)?
-        } else if utility::is_faster_menu()? {
+        } else if utility::is_faster_menu() {
             utility::set_faster_menu(false)?
         }
 
@@ -78,13 +78,13 @@ impl StateFlags {
         Ok(flags)
     }
     pub fn update(&mut self) -> ProcResult {
-        let flags = read::<[u8; 0x100]>(CaveOffset::StateHandlerFlags.addr())?;
+        let flags = read::<[u8; 0x100]>(CaveOffset::StateHandlerFlags)?;
         self.player_no_death = read_flag_from_slice(&flags, StateFlagOffset::PlayerNoDeath)?;
         self.fast_quitout = read_flag_from_slice(&flags, StateFlagOffset::FastQuitout)?;
         Ok(())
     }
     pub fn set(flag_offset: StateFlagOffset, state: bool) -> ProcResult {
-        write::<u8>(CaveOffset::StateHandlerFlags.addr() + flag_offset as u64, state as u8)
+        write::<u8>(CaveOffset::StateHandlerFlags.add_offset(flag_offset as u64), state as u8)
     }
     pub const fn const_default() -> Self {
         Self {
@@ -105,7 +105,7 @@ fn read_flag_from_slice(flags: &[u8; 0x100], flag_offset: StateFlagOffset) -> Re
 }
 
 pub fn is_loading_screen() -> bool {
-    read_address(game_manager_imp::base_ptr())
+    read_address(BasePointer::GameManagerImp)
         .add_offset(game_manager_imp::LOADING_FLAG)
         .read::<u8>()
         .map(|val| val == 0x1)
@@ -113,7 +113,7 @@ pub fn is_loading_screen() -> bool {
 }
 
 pub fn is_loaded() -> bool {
-    read_address(game_manager_imp::base_ptr())
+    read_address(BasePointer::GameManagerImp)
         .read_offset(game_manager_imp::PLAYER_CTRL)
         .map(|val| val != 0x0)
         .unwrap_or_default()

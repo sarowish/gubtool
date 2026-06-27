@@ -13,7 +13,7 @@ impl TabState {
     pub fn new(list_states: Vec<StatefulList>) -> Self {
         Self {
             current_list: 0,
-            lists_states: list_states
+            lists_states: list_states,
         }
     }
     pub fn get_list_state(&mut self, idx: usize) -> &mut ListState {
@@ -27,6 +27,9 @@ impl TabState {
     }
     pub fn set_length(&mut self, idx: usize, len: usize) {
         self.lists_states[idx].size = len
+    }
+    pub fn current_list_selected(&self) -> Option<usize> {
+        self.get_list_selected(self.current_list)
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {

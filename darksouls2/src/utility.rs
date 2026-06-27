@@ -1,31 +1,31 @@
 use crate::{
     mem::*,
     offsets::{
-        self, ChainReadExt,
+        ChainReadExt,
         code_cave::CaveOffset,
         game_manager_imp::{
             self,
             game_data_manager_offsets::{self, clearcount_ptr_offsets},
         },
-        hooks, patches,
+        module_offsets::{BasePointer, Data, Hook, Patch},
     },
-    resources::{scholar, vanilla},
+    resources::asm_function,
 };
-use gubtool_core::sys::error::ProcResult;
-use utils::slice_ops::*;
+use gubtool_core::slice_ops::*;
+use gubtool_core::{address::Address, attached::is_32, sys::error::ProcResult};
 
 pub fn quitout() -> ProcResult {
-    read_address(game_manager_imp::base_ptr())
+    read_address(BasePointer::GameManagerImp)
         .add_offset(game_manager_imp::QUITOUT)
         .write::<u8>(0x6)
 }
 
 pub fn get_area_id() -> ProcResult<u32> {
-    read::<u32>(offsets::map_id())
+    read::<u32>(Data::MapId)
 }
 
 pub fn get_ng() -> ProcResult<u8> {
-    read_address(game_manager_imp::base_ptr())
+    read_address(BasePointer::GameManagerImp)
         .read_offset(game_manager_imp::GAME_DATA_MANAGER)
         .read_offset(game_data_manager_offsets::CLEARCOUNT_PTR)
         .add_offset(clearcount_ptr_offsets::CLEARCOUNT)
@@ -33,130 +33,128 @@ pub fn get_ng() -> ProcResult<u8> {
 }
 
 pub fn set_ng(count: u8) -> ProcResult {
-    read_address(game_manager_imp::base_ptr())
+    read_address(BasePointer::GameManagerImp)
         .read_offset(game_manager_imp::GAME_DATA_MANAGER)
         .read_offset(game_data_manager_offsets::CLEARCOUNT_PTR)
         .add_offset(clearcount_ptr_offsets::CLEARCOUNT)
         .write::<u8>(count)
 }
 
-pub fn trigger_ng() -> ProcResult {
-    Ok(())
-}
-
+const VANILLA_MENU_PATCH_ORIGINAL: [u8; 2] = [0x0F, 0x85];
+const SCHOLAR_MENU_PATCH_ORIGINAL: [u8; 2] = [0x75, 0xEA];
 pub fn set_faster_menu(state: bool) -> ProcResult {
-    let location = CaveOffset::FasterMenuHook.addr();
-    match (state, is_scholar()) {
-        (true, true) => {
-                write_bytes(patches::menu_transition(), &[0x74, 0xEA])?;
-                install_menu_hook_scholar(location)
-        }
-        (true, false) => {
-                write_bytes(patches::menu_transition(), &[0x0F, 0x84])?;
-                install_menu_hook_vanilla(location)
-        }
-        (false, true) => {
-                write_bytes(patches::menu_transition(), &[0x75, 0xEA])?;
-                write_bytes(hooks::faster_menu(), &[0x48, 0x89, 0x84, 0x24, 0x50, 0x01, 0x00, 0x00])
-        }
-        (false, false) => {
-                write_bytes(patches::menu_transition(), &[0x0F, 0x85])?;
-                write_bytes(hooks::faster_menu(), &[0x33, 0xC5, 0x89, 0x45, 0xFC])
-        }
-    }
-}
+    if state {
+        let orig_instr_len = if is_32() { 5 } else { 8 };
+        let patch_bytes = if is_32() { [0x0F, 0x84] } else { [0x74, 0xEA] };
+        write_bytes(Patch::MenuTransition, &patch_bytes)?;
 
-fn install_menu_hook_scholar(location: u64) -> ProcResult {
-    let mut asm = scholar::ASM.get_function("faster_menu").get_bytes();
-    write_rel_i32(&mut asm, location, 22, hooks::faster_menu() + 8, 4)?;
-
-    install_hook(&asm, location, hooks::faster_menu(), 8)
-}
-
-fn install_menu_hook_vanilla(location: u64) -> ProcResult {
-    let mut asm = vanilla::ASM.get_function("faster_menu").get_bytes();
-    write_rel_i32(&mut asm, location, 16, hooks::faster_menu() + 5, 4)?;
-
-    install_hook(&asm, location, hooks::faster_menu(), 5)
-}
-
-pub fn is_faster_menu() -> ProcResult<bool> {
-    if is_scholar() {
-        read::<[u8; 8]>(hooks::faster_menu())
-            .map(|val| val != [0x48, 0x89, 0x84, 0x24, 0x50, 0x01, 0x00, 0x00])
+        let mut fun = asm_function("faster_menu");
+        let mut asm = fun.take_bytes();
+        write_rel_i32(
+            &mut asm,
+            CaveOffset::FasterMenuHook,
+            fun.reloc("hook_loc"),
+            Hook::FasterMenu.add_offset(orig_instr_len),
+            4
+        )?;
+        install_hook(&asm, CaveOffset::FasterMenuHook, Hook::FasterMenu, orig_instr_len)
     } else {
-        read::<[u8; 5]>(hooks::faster_menu())
-            .map(|val| val != [0x33, 0xC5, 0x89, 0x45, 0xFC])
+        let patch_orig = if is_32() {
+            &VANILLA_MENU_PATCH_ORIGINAL
+        } else {
+            &SCHOLAR_MENU_PATCH_ORIGINAL
+        };
+        let hook_orig: &[u8] = if is_32() {
+            &[0x33, 0xC5, 0x89, 0x45, 0xFC]
+        } else {
+            &[0x48, 0x89, 0x84, 0x24, 0x50, 0x01, 0x00, 0x0]
+        };
+        write_bytes(Patch::MenuTransition, patch_orig)?;
+        write_bytes(Hook::FasterMenu, hook_orig)
     }
 }
 
+pub fn is_faster_menu() -> bool {
+    let patch_orig = if is_32() {
+        VANILLA_MENU_PATCH_ORIGINAL
+    } else {
+        SCHOLAR_MENU_PATCH_ORIGINAL
+    };
+    read::<[u8; 2]>(Patch::MenuTransition)
+        .map(|val| val != patch_orig)
+        .unwrap_or_default()
+}
+
+const VANILLA_CREDITS_ORIGINAL: [u8; 6] = [0x81, 0xEC, 0xFC, 0x01, 0x00, 0x00];
+const SCHOLAR_CREDITS_ORIGINAL: [u8; 7] = [0x48, 0x81, 0xEC, 0x20, 0x02, 0x00, 0x00];
 pub fn set_credits_skip(state: bool) -> ProcResult {
-    let location = CaveOffset::CreditsSkipHook.addr();
-    let modify_once = CaveOffset::CreditsModifyOnceFlag.addr();
-    match (state, is_scholar()) {
-        (true, true) => install_credits_hook_scholar(location, modify_once),
-        (true, false) => install_credits_hook_vanilla(location, modify_once),
-        (false, true) => write_bytes(hooks::credits_skip(), &[0x48, 0x81, 0xEC, 0x20, 0x02, 0x00, 0x00]),
-        (false, false) => write_bytes(hooks::credits_skip(), &[0x81, 0xEC, 0xFC, 0x01, 0x00, 0x00]),
+    if state {
+    let orig_instr_len = if is_32() { 6 } else { 7 };
+    let modify_once = CaveOffset::CreditsModifyOnceFlag;
+    let mut fun = asm_function("credits_skip");
+    let mut asm = fun.take_bytes();
+
+    write_addr_to_slice(&mut asm, fun.reloc("modify_once_flag"), modify_once)?;
+    write_rel_i32(
+        &mut asm,
+        CaveOffset::CreditsSkipHook,
+        fun.reloc("hook_loc"),
+        Hook::CreditsSkip.add_offset(orig_instr_len),
+        4
+    )?;
+
+    write::<u8>(modify_once, 0x0)?;
+    install_hook(&asm, CaveOffset::CreditsSkipHook, Hook::CreditsSkip, orig_instr_len)
+
+    } else {
+        let bytes: &[u8] = if is_32() {
+            &VANILLA_CREDITS_ORIGINAL
+        } else {
+            &SCHOLAR_CREDITS_ORIGINAL
+        };
+        write_bytes(Hook::CreditsSkip, bytes)
     }
 }
 
-fn install_credits_hook_scholar(location: u64, modify_once: u64) -> ProcResult {
-    let mut asm = scholar::ASM.get_function("credits_skip").get_bytes();
-
-    write_rel_i32(&mut asm, location, 9, modify_once, 5)?;
-    write_rel_i32(&mut asm, location, 25, modify_once, 8)?;
-    write_rel_i32(&mut asm, location, 34, hooks::credits_skip() + 7, 4)?;
-
-    write::<u8>(modify_once, 0)?;
-    install_hook(&asm, location, hooks::credits_skip(), 7)
-}
-
-fn install_credits_hook_vanilla(location: u64, modify_once: u64) -> ProcResult {
-    let mut asm = vanilla::ASM.get_function("credits_skip").get_bytes();
-
-    write_to_slice::<u32>(&mut asm, 8, modify_once)?;
-    write_to_slice::<u32>(&mut asm, 24, modify_once)?;
-    write_rel_i32(&mut asm, location, 33, hooks::credits_skip() + 6, 4)?;
-
-    write::<u8>(modify_once, 0)?;
-    install_hook(&asm, location, hooks::credits_skip(), 6)
-}
-
-pub fn is_credits_skip() -> ProcResult<bool> {
+pub fn is_credits_skip() -> bool {
     if is_scholar() {
-        read::<[u8; 7]>(hooks::credits_skip())
+        read::<[u8; 7]>(Hook::CreditsSkip)
             .map(|val| val != [0x48, 0x81, 0xEC, 0x20, 0x02, 0x00, 0x00])
     } else {
-        read::<[u8; 6]>(hooks::credits_skip())
+        read::<[u8; 6]>(Hook::CreditsSkip)
             .map(|val| val != [0x81, 0xEC, 0xFC, 0x01, 0x00, 0x00])
     }
+    .unwrap_or_default()
 }
 
+const DISABLE_ROLL_ORIGINAL: [u8; 2] = [0xB0, 0x01];
 pub fn set_disable_roll(state: bool) -> ProcResult {
     let bytes = if state {
         [0x30, 0xC0]
     } else {
-        [0xB0, 0x01]
+        DISABLE_ROLL_ORIGINAL
     };
-    write_bytes(patches::no_roll(), &bytes)
+    write_bytes(Patch::NoRoll, &bytes)
 }
 
-pub fn is_disable_roll() -> ProcResult<bool> {
-    read::<[u8; 2]>(patches::no_roll())
-        .map(|val| val != [0xB0, 0x01])
+pub fn is_disable_roll() -> bool {
+    read::<[u8; 2]>(Patch::NoRoll)
+        .map(|val| val != DISABLE_ROLL_ORIGINAL)
+        .unwrap_or_default()
 }
 
+const DISABLE_BACKSTEP_ORIGINAL: [u8; 3] = [0x0F, 0x95, 0xC0];
 pub fn set_disable_backstep(state: bool) -> ProcResult {
     let bytes = if state {
         [0x30, 0xC0, 0x90]
     } else {
-        [0x0F, 0x95, 0xC0]
+        DISABLE_BACKSTEP_ORIGINAL
     };
-    write_bytes(patches::no_backstep(), &bytes)
+    write_bytes(Patch::NoBackstep, &bytes)
 }
 
-pub fn is_disable_backstep() -> ProcResult<bool> {
-    read::<[u8; 3]>(patches::no_backstep())
-        .map(|val| val != [0x0F, 0x95, 0xC0])
+pub fn is_disable_backstep() -> bool {
+    read::<[u8; 3]>(Patch::NoBackstep)
+        .map(|val| val != DISABLE_BACKSTEP_ORIGINAL)
+        .unwrap_or_default()
 }

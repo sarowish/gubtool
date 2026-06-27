@@ -14,25 +14,24 @@ use crate::{
         utility_tab::UtilityTab,
     },
 };
-use config::{Config, user::{AttachConfig, AttachConfigTrait}};
 use crossterm::event::KeyEvent;
 use eldenring::{
     chr_ins::{ChrIns, ChrInsExt},
     game_state::{GameStateHandler, StateFlags},
     player, target,
 };
-use ratatui::{Frame, layout::Rect, text::Line};
+use ratatui::{Frame, layout::Rect};
 
 pub struct EldenRing {
     tabs_widget: TabsWidget,
-    pub game_state: GameStateHandler,
-    pub player: PlayerTab,
-    pub target: TargetTab,
-    pub items: ItemTab,
-    pub utility: UtilityTab,
-    pub travel: TravelTab,
-    pub event: EventTab,
-    pub elden_beast_map: EldenBeastMap,
+    game_state: GameStateHandler,
+    player: PlayerTab,
+    target: TargetTab,
+    items: ItemTab,
+    utility: UtilityTab,
+    travel: TravelTab,
+    event: EventTab,
+    elden_beast_map: EldenBeastMap,
 }
 
 static mut GAME_STATE: GameState = {
@@ -82,7 +81,7 @@ impl EldenRing {
         Self {
             tabs_widget: TabsWidget {
                 current_tab: 0,
-                title: "Elden Ring",
+                title: Some("Elden Ring"),
                 tabs: &["Player", "Target", "Utility", "Items", "Travel", "Events"],
             },
             game_state: GameStateHandler::new(),
@@ -154,15 +153,12 @@ impl EldenRing {
     pub fn on_attach(&mut self) -> anyhow::Result<()> {
         self.game_state = GameStateHandler::new();
         target::install_target_hook()?;
-        if let Ok(config) = AttachConfig::read() {
-            config.elden_ring.apply()?;
-        }
         Ok(())
     }
 }
 
-pub fn dbg_lines() -> Vec<Line<'static>> {
-    let debug_info = [
+pub fn dbg_lines() -> Vec<String> {
+    vec![
         format!("player loaded: {}", GameState::loaded()),
         format!("dlc available: {}", GameState::dlc()),
         format!("target pointer: {:#X}", GameState::target_ins().unwrap_or_default()),
@@ -171,7 +167,5 @@ pub fn dbg_lines() -> Vec<Line<'static>> {
         format!("target lua timers: {:?}", GameState::target_ins().get_lua_timers().unwrap_or_default()),
         format!("has speffect 15500: {}", GameState::target_ins().has_speffect(15500).unwrap_or_default()),
         format!("has speffect 15507: {}", GameState::target_ins().has_speffect(15507).unwrap_or_default()),
-    ];
-
-    debug_info.iter().map(|f| Line::raw(f.to_string())).collect()
+    ]
 }

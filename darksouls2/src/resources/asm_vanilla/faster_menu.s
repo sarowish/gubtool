@@ -4,4 +4,4 @@ cmp BYTE PTR [ecx+0x4], 0x18
 jne exit
 mov BYTE PTR [ecx+0x4], 0x38
 exit:
-jmp 0x0
+jmp OFFSET hook_loc

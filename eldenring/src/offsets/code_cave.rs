@@ -1,10 +1,10 @@
-pub const SIZE: usize = 0x8000;
+use gubtool_core::{address::Address, attached::module_base};
 
-fn base() -> u64 {
-    gubtool_core::attached::module_base() + 0x4000000
-}
+pub const SIZE: usize = 0x8000;
+pub const BASE_OFFSET: u64 = 0x4000000;
 
 #[repr(u64)]
+#[derive(Clone, Copy)]
 pub enum CaveOffset {
     SavedTargetPointer = 0x0,                           // u64
     LookedUpHandle = 0x8,                               // u64
@@ -31,36 +31,38 @@ pub enum CaveOffset {
 
     StateHandlerFlags = 0xF00,                          // 0x100
     // Hooks
-    SaveTargetHook = 0x1000,                            // 0x13
-    TargetNoStaggerHook = 0x1020,                       // 0x1C
-    ForceActSequenceHook = 0x1040,                      // 0x4E
-    InfinitePoiseHook = 0x1090,                         // 0x6F
-    NoGrabHook = 0x1100,                                // 0x28
-    WarpCoordsHook = 0x1130,                            // 0x13
-    WarpAngleHook = 0x1150,                             // 0x13
-    ActionHook = 0x1170,                                // 0x32
-    EventLogHook = 0x11B0,                              // 0x39
+    SaveTargetHook = 0x1000,                            // 0x1D
+    TargetNoStaggerHook = 0x1020,                       // 0x22
+    ForceActSequenceHook = 0x1050,                      // 0x5C
+    InfinitePoiseHook = 0x10B0,                         // 0x82
+    NoGrabHook = 0x1140,                                // 0x2E
+    WarpCoordsHook = 0x1170,                            // 0x13
+    WarpAngleHook = 0x1190,                             // 0x13
+    ActionHook = 0x11B0,                                // 0x32
+    EventLogHook = 0x11F0,                              // 0x44
     // Shellcode
     RunThreadAsm = 0x2001,                              // 0x60
     // Keep at least 16 bytes of buffer
     // for completion flag and appended flag setter
     GraceWarpAsm = 0x2070,                              // 0x31
     BlockWarpAsm = 0x20C0,                              // 0x2B
-    ItemSpawnAsm = 0x2100,                              // 0x50
-    SetEventAsm = 0x2160,                               // 0x33
-    GiveRunesAsm = 0x21B0,                              // 0x29
-    EzStateTalkAsm = 0x21F0,                            // 0xA7
-    EmevdAsm = 0x22C0,                                  // 0xE0
-    ChrInsFromEntityIdAsm = 0x23C0,                     // 0x37
-    SetSpeffectAsm = 0x2410,                            // 0x29
-    RemoveSpeffectAsm = 0x2450,                         // 0x29
+    ItemSpawnAsm = 0x2100,                              // 0x73
+    SetEventAsm = 0x2190,                               // 0x30
+    GiveRunesAsm = 0x21E0,                              // 0x29
+    EzStateTalkAsm = 0x2230,                            // 0xB8
+    EmevdAsm = 0x2300,                                  // 0xE0
+    ChrInsFromEntityIdAsm = 0x2400,                     // 0x3A
+    SetSpeffectAsm = 0x2450,                            // 0x29
+    RemoveSpeffectAsm = 0x2490,                         // 0x29
 
     EventLogWriteIdx = 0x3FFC,                          // i32
     EventLogBuffer = 0x4000,                            // 0x1000
 }
 
-impl CaveOffset {
-    pub fn addr(self) -> u64 {
-        base() + self as u64
+impl Address for CaveOffset {
+    fn addr(&self) -> u64 {
+        module_base()
+            .saturating_add(BASE_OFFSET)
+            .saturating_add(*self as u64)
     }
 }

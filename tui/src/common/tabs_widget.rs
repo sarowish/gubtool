@@ -10,7 +10,7 @@ use ratatui_themes::Style;
 
 pub struct TabsWidget {
     pub current_tab: i64,
-    pub title: &'static str,
+    pub title: Option<&'static str>,
     pub tabs: &'static [&'static str],
 }
 
@@ -25,7 +25,7 @@ impl TabsWidget {
             .areas(layout);
 
         let tabs = Tabs::new(self.tabs.to_owned())
-            .block(block(Some(self.title), None))
+            .block(block(self.title, None))
             .highlight_style(Style::from(theme().accent).bold())
             .select(self.current_tab as usize)
             .divider(symbols::line::VERTICAL);
@@ -48,8 +48,34 @@ impl TabsWidget {
                 if digit <= self.tabs.len() as u32 && digit != 0 {
                     self.current_tab = digit as i64 - 1
                 }
-            },
+            }
             _ => (),
         }
+    }
+
+    pub fn handle_keys_arrows(&mut self, key: KeyEvent) {
+        match (key.code, key.modifiers) {
+            (KeyCode::Char('h') | KeyCode::Left, _) => {
+                let tabs_len = self.tabs.len() as i64;
+                self.current_tab = (self.current_tab + tabs_len - 1) % tabs_len;
+            }
+            (KeyCode::Char('l') | KeyCode::Right, _) => {
+                let tabs_len = self.tabs.len() as i64;
+                self.current_tab = (self.current_tab.clone() + tabs_len + 1) % tabs_len;
+            }
+            _ => (),
+        }
+    }
+
+    pub fn current_tab(&self) -> &'static str {
+        self.tabs[self.current_tab as usize]
+    }
+
+    pub fn draw_thin(&self, frame: &mut Frame, layout: Rect) {
+        let tabs = Tabs::new(self.tabs.to_owned())
+            .highlight_style(Style::from(theme().secondary))
+            .select(self.current_tab as usize)
+            .divider(symbols::DOT);
+        frame.render_widget(tabs, layout);
     }
 }

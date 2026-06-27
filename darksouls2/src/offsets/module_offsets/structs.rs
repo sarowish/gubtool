@@ -1,8 +1,13 @@
 use crate::{
     mem::is_scholar,
-    resources::{scholar_patterns, vanilla_patterns, versions_module_offsets},
+    offsets::module_offsets::versions,
+    resources::{scholar_patterns, vanilla_patterns},
 };
-use gubtool_core::{aob_scanner::{self, ScanError}, attached::version, game_version::DarkSouls2Version::*};
+use gubtool_core::{
+    aob_scanner::{self, ScanError},
+    attached::version,
+    game_version::DarkSouls2Version::*,
+};
 
 #[derive(Debug)]
 pub struct ModuleOffsets {
@@ -36,6 +41,8 @@ pub struct Functions {
     pub bonfire_unlock: u64,
     pub open_menu: u64,
     pub menu_chr_state: u64,
+    pub level_up: u64,
+    pub level_lookup: u64,
 }
 
 #[derive(Debug)]
@@ -78,26 +85,19 @@ pub struct ExternalFunctionPointers {
     pub kernel32_load_library_w: u64,
 }
 
-pub fn module_offsets() -> &'static ModuleOffsets {
+pub(super) fn module_offsets() -> &'static ModuleOffsets {
     match version() {
-        Some(Vanilla1_0_10) => &versions_module_offsets::VANILLA_1_0_10,
-        Some(Vanilla1_0_11) => &versions_module_offsets::VANILLA_1_0_11,
-        Some(Vanilla1_0_12) => &versions_module_offsets::VANILLA_1_0_12,
-        Some(Scholar1_0_1) => &versions_module_offsets::SCHOLAR_1_0_1,
-        Some(Scholar1_0_2) => &versions_module_offsets::SCHOLAR_1_0_2,
-        Some(Scholar1_0_3) => &versions_module_offsets::SCHOLAR_1_0_3,
-        _ => &versions_module_offsets::SCHOLAR_1_0_3,
+        Some(Vanilla1_0_10) => &versions::VANILLA_1_0_10,
+        Some(Vanilla1_0_11) => &versions::VANILLA_1_0_11,
+        Some(Vanilla1_0_12) => &versions::VANILLA_1_0_12,
+        Some(Scholar1_0_1) => &versions::SCHOLAR_1_0_1,
+        Some(Scholar1_0_2) => &versions::SCHOLAR_1_0_2,
+        Some(Scholar1_0_3) => &versions::SCHOLAR_1_0_3,
+        _ => &versions::SCHOLAR_1_0_3,
     }
 }
 
-pub fn scan() -> Result<ModuleOffsets, ScanError> {
-    match is_scholar() {
-        true => scan_scholar(),
-        false => scan_vanilla(),
-    }
-}
-
-fn scan_scholar() -> Result<ModuleOffsets, ScanError> {
+pub fn scan_scholar() -> Result<ModuleOffsets, ScanError> {
     Ok(ModuleOffsets {
         base_ptrs: BasePointers {
             game_manager_imp: aob_scanner::scan(scholar_patterns::GAME_MANAGER_IMP)?,
@@ -118,6 +118,8 @@ fn scan_scholar() -> Result<ModuleOffsets, ScanError> {
             bonfire_unlock: aob_scanner::scan(scholar_patterns::BONFIRE_UNLOCK)?,
             open_menu: aob_scanner::scan(scholar_patterns::OPEN_MENU)?,
             menu_chr_state: aob_scanner::scan(scholar_patterns::MENU_CHR_STATE)?,
+            level_up: aob_scanner::scan(scholar_patterns::LEVEL_UP)?,
+            level_lookup: aob_scanner::scan(scholar_patterns::LEVEL_LOOKUP)?,
         },
         hooks: Hooks {
             set_shared_flag: aob_scanner::scan(scholar_patterns::SET_SHARED_FLAG)?,
@@ -154,7 +156,7 @@ fn scan_scholar() -> Result<ModuleOffsets, ScanError> {
     })
 }
 
-fn scan_vanilla() -> Result<ModuleOffsets, ScanError> {
+pub fn scan_vanilla() -> Result<ModuleOffsets, ScanError> {
     Ok(ModuleOffsets {
         base_ptrs: BasePointers {
             game_manager_imp: aob_scanner::scan(vanilla_patterns::GAME_MANAGER_IMP)?,
@@ -175,11 +177,13 @@ fn scan_vanilla() -> Result<ModuleOffsets, ScanError> {
             bonfire_unlock: aob_scanner::scan(vanilla_patterns::BONFIRE_UNLOCK)?,
             open_menu: aob_scanner::scan(vanilla_patterns::OPEN_MENU)?,
             menu_chr_state: aob_scanner::scan(vanilla_patterns::MENU_CHR_STATE)?,
+            level_up: aob_scanner::scan(vanilla_patterns::LEVEL_UP)?,
+            level_lookup: aob_scanner::scan(vanilla_patterns::LEVEL_LOOKUP)?,
         },
         hooks: Hooks {
             set_shared_flag: aob_scanner::scan(vanilla_patterns::SET_SHARED_FLAG)?,
             locked_target_pointer: aob_scanner::scan(vanilla_patterns::LOCKED_TARGET_POINTER)?,
-            credits_skip: aob_scanner::scan(vanilla_patterns::CREDITS_SKIP).unwrap_or_default(),
+            credits_skip: aob_scanner::scan(vanilla_patterns::CREDITS_SKIP)?,
             faster_menu: aob_scanner::scan(vanilla_patterns::FASTER_MENU)?,
             event_log: aob_scanner::scan(vanilla_patterns::EVENT_LOG)?,
             player_no_damage: aob_scanner::scan(vanilla_patterns::PLAYER_NO_DAMAGE)?,
@@ -194,7 +198,7 @@ fn scan_vanilla() -> Result<ModuleOffsets, ScanError> {
             no_hollowing: aob_scanner::scan(vanilla_patterns::NO_HOLLOWING)?,
             no_soul_loss: aob_scanner::scan(vanilla_patterns::NO_SOUL_LOSS)?,
             player_hidden: aob_scanner::scan(vanilla_patterns::PLAYER_HIDDEN)?,
-            player_silent: aob_scanner::scan(vanilla_patterns::PLAYER_SILENT).unwrap_or_default(),
+            player_silent: aob_scanner::scan(vanilla_patterns::PLAYER_SILENT)?,
             menu_transition: aob_scanner::scan(vanilla_patterns::MENU_TRANSITION)?,
             no_roll: aob_scanner::scan(vanilla_patterns::NO_ROLL)?,
             no_backstep: aob_scanner::scan(vanilla_patterns::NO_BACKSTEP)?,
@@ -209,4 +213,11 @@ fn scan_vanilla() -> Result<ModuleOffsets, ScanError> {
             kernel32_load_library_w: aob_scanner::scan(vanilla_patterns::KERNEL32_LOAD_LIBRARY_W)?,
         },
     })
+}
+
+pub fn scan() -> Result<ModuleOffsets, ScanError> {
+    match is_scholar() {
+        true => scan_scholar(),
+        false => scan_vanilla(),
+    }
 }

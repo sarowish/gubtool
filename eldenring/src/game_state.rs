@@ -2,14 +2,16 @@ use crate::{
     chr_ins::{ChrInsExt, chr_ins_from_handle},
     emevd,
     mem::*,
-    offsets::{ChainReadExt, code_cave::CaveOffset, game_data_man, menu_man, world_chr_man},
+    offsets::{
+        ChainReadExt, code_cave::CaveOffset, game_data_man, menu_man, module_offsets::BasePointer,
+        world_chr_man,
+    },
     player::{self, player_ins, torrent_ins},
     target::target_ins,
     utility,
     utils::{is_dlc_available, is_version_dlc_compat},
 };
-use gubtool_core::sys::error::ProcResult;
-use utils::slice_ops::*;
+use gubtool_core::{address::Address, slice_ops::*, sys::error::ProcResult};
 
 #[derive(Default)]
 pub struct GameStateHandler {
@@ -82,10 +84,10 @@ impl GameStateHandler {
             utility::draw_hitboxes(true, false)?;
         }
 
-        let handle = read::<u64>(CaveOffset::LookedUpHandle.addr())?;
-        write::<u64>(CaveOffset::SavedTargetPointer.addr(), chr_ins_from_handle(handle).unwrap_or_default())?;
+        let handle = read::<u64>(CaveOffset::LookedUpHandle)?;
+        write::<u64>(CaveOffset::SavedTargetPointer, chr_ins_from_handle(handle).unwrap_or_default())?;
 
-        self.dlc = is_dlc_available()?;
+        self.dlc = is_dlc_available();
         Ok(())
     }
 
@@ -102,7 +104,7 @@ impl GameStateHandler {
     }
 
     fn on_unloaded(&self) {
-        write::<u64>(CaveOffset::LookedUpHandle.addr(), target_ins().handle().unwrap_or_default()).ok();
+        write::<u64>(CaveOffset::LookedUpHandle, target_ins().handle().unwrap_or_default()).ok();
     }
 
     fn on_new_game(&self) -> ProcResult {
@@ -117,7 +119,7 @@ impl StateFlags {
         Ok(flags)
     }
     pub fn update(&mut self) -> ProcResult {
-        let flags = read::<[u8; 0x100]>(CaveOffset::StateHandlerFlags.addr())?;
+        let flags = read::<[u8; 0x100]>(CaveOffset::StateHandlerFlags)?;
         self.player_no_damage = read_flag_from_slice(&flags, StateFlagOffset::PlayerNoDamage)?;
         self.rfbs = read_flag_from_slice(&flags, StateFlagOffset::Rfbs)?;
         self.title_cards = read_flag_from_slice(&flags, StateFlagOffset::TitleCards)?;
@@ -128,7 +130,7 @@ impl StateFlags {
         Ok(())
     }
     pub fn set(flag_offset: StateFlagOffset, state: bool) -> ProcResult {
-        write::<u8>(CaveOffset::StateHandlerFlags.addr() + flag_offset as u64, state as u8)
+        write::<u8>(CaveOffset::StateHandlerFlags.add_offset(flag_offset as u64), state as u8)
     }
     pub const fn const_default() -> Self {
         Self {
@@ -159,14 +161,14 @@ fn read_flag_from_slice(flags: &[u8; 0x100], flag_offset: StateFlagOffset) -> Re
 }
 
 pub fn is_loaded() -> bool {
-    read::<u64>(world_chr_man::base_ptr())
+    read::<u64>(BasePointer::WorldChrMan)
         .read_offset(world_chr_man::player_ins())
         .map(|val| val != 0)
         .unwrap_or_default()
 }
 
 fn is_faded_in() -> bool {
-    read::<u64>(menu_man::base_ptr())
+    read::<u64>(BasePointer::MenuMan)
         .add_offset(menu_man::is_fading())
         .read::<u8>()
         .map(|val| val == 0x0)
@@ -174,7 +176,7 @@ fn is_faded_in() -> bool {
 }
 
 fn is_new_game() -> bool {
-    read::<u64>(game_data_man::base_ptr())
+    read::<u64>(BasePointer::GameDataMan)
         .add_offset(game_data_man::IGT)
         .read::<u64>()
         .map(|val| val < 5000)

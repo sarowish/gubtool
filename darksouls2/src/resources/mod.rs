@@ -1,28 +1,36 @@
-pub mod map_ids;
+use gubtool_core::attached::is_32;
+use std::sync::LazyLock;
+use utils::object::{AsmFolder, AsmFunction};
+
 pub mod bonfires;
 pub mod bosses;
+pub mod chr_names;
 pub mod covenants;
 pub mod event_flags;
 pub mod items;
+pub mod map_ids;
 pub mod menus;
 pub mod scholar_patterns;
 pub mod vanilla_patterns;
-pub mod versions_module_offsets;
 
-pub(super) mod scholar {
-    use utils::object::AsmFolder;
-    use std::sync::LazyLock;
+static VANILLA_ASM_LIB_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/vanilla.bin"));
+static SCHOLAR_ASM_LIB_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/scholar.bin"));
 
-    static ASM_LIB_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/scholar.bin"));
-    pub static ASM: LazyLock<AsmFolder> =
-        LazyLock::new(|| bincode::deserialize(ASM_LIB_BYTES).unwrap());
+static SCHOLAR_ASM: LazyLock<AsmFolder> =
+    LazyLock::new(|| bincode::deserialize(SCHOLAR_ASM_LIB_BYTES).unwrap());
+static VANILLA_ASM: LazyLock<AsmFolder> =
+    LazyLock::new(|| bincode::deserialize(VANILLA_ASM_LIB_BYTES).unwrap());
+
+pub fn asm_function(name: &'static str) -> AsmFunction {
+    if is_32() {
+        VANILLA_ASM.get_function(name)
+    } else {
+        SCHOLAR_ASM.get_function(name)
+    }
 }
 
-pub(super) mod vanilla {
-    use utils::object::AsmFolder;
-    use std::sync::LazyLock;
-
-    static ASM_LIB_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/vanilla.bin"));
-    pub static ASM: LazyLock<AsmFolder> =
-        LazyLock::new(|| bincode::deserialize(ASM_LIB_BYTES).unwrap());
+pub fn print_asm_sizes() {
+    println!("Dark Souls II");
+    SCHOLAR_ASM.print_function_sizes();
+    println!("\n");
 }

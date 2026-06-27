@@ -1,7 +1,10 @@
 use crate::{
     event,
     mem::*,
-    offsets::{self, code_cave::CaveOffset, functions},
+    offsets::{
+        code_cave::CaveOffset,
+        module_offsets::{BasePointer, Function},
+    },
     resources::{
         ASM,
         aow::{AFFINITIES, Affinity, Aow, aow_array},
@@ -14,18 +17,17 @@ use crate::{
             talismans::TALISMANS, upgrade_materials::UPGRADE_MATERIALS, weapons::WEAPONS,
         },
     },
-    utils::{DlcError, VersionError, character_loaded_check, dlc_check, version_check},
+    utils::{DlcError, VersionError, dlc_check, player_loaded_check, version_check},
 };
-use gubtool_core::sys::error::ProcResult;
-use utils::slice_ops::*;
+use gubtool_core::{slice_ops::*, sys::error::ProcResult};
 
-fn itemspawn(item_id: i64, quantity: i64, aow_id: i64,
-    is_quantity_adjustable: bool, max_quantity: i64) -> ProcResult {
-    let location = CaveOffset::ItemSpawnAsm.addr();
-    let should_adjust_quantity = CaveOffset::ShouldCheckQuantity.addr();
-    let max_quantity_location = CaveOffset::MaxQuantity.addr();
-    let item_struct_location = CaveOffset::ItemSpawnStruct.addr();
-
+fn itemspawn(
+    item_id: i64,
+    quantity: i64,
+    aow_id: i64,
+    is_quantity_adjustable: bool,
+    max_quantity: i64,
+) -> ProcResult {
     let mut item_struct: [u8; 96] = [0x0; 96];
     write_to_slice::<i32>(&mut item_struct, 0x40, 1)?;
     write_to_slice::<u32>(&mut item_struct, 0x44, item_id)?;
@@ -33,21 +35,23 @@ fn itemspawn(item_id: i64, quantity: i64, aow_id: i64,
     write_to_slice::<i32>(&mut item_struct, 0x4C, -1)?;
     write_to_slice::<i32>(&mut item_struct, 0x50, aow_id)?;
 
-    let mut asm = ASM.get_function("item_spawn").get_bytes();
-    write_rel_i32(&mut asm, location, 7, item_struct_location, 4)?;
-    write_rel_i32(&mut asm, location, 13, should_adjust_quantity, 4)?;
-    write_rel_i32(&mut asm, location, 25, functions::get_player_item_quantity_by_id(), 4)?;
-    write_rel_i32(&mut asm, location, 31, max_quantity_location, 4)?;
-    write_rel_i32(&mut asm, location, 52, offsets::map_item_impl::base_ptr(), 4)?;
-    write_rel_i32(&mut asm, location, 71, functions::item_spawn(), 4)?;
+    let mut fun = ASM.get_function("item_spawn");
+    let mut asm = fun.take_bytes();
+
+    write_addr_to_slice(&mut asm, fun.reloc("item_struct"), CaveOffset::ItemSpawnStruct)?;
+    write_addr_to_slice(&mut asm, fun.reloc("check_quantity_flag"), CaveOffset::ShouldCheckQuantity)?;
+    write_addr_to_slice(&mut asm, fun.reloc("fn_get_item_quantity"), Function::GetPlayerItemQuantityById)?;
+    write_addr_to_slice(&mut asm, fun.reloc("max_quantity"), CaveOffset::MaxQuantity)?;
+    write_addr_to_slice(&mut asm, fun.reloc("map_item_man_impl"), BasePointer::MapItemManImpl)?;
+    write_addr_to_slice(&mut asm, fun.reloc("fn_item_spawn"), Function::ItemSpawn)?;
 
     let _handle = ITEM_SPAWN_MUTEX.lock().unwrap();
 
-    write::<u8>(should_adjust_quantity, is_quantity_adjustable as u8)?;
-    write::<i32>(max_quantity_location, max_quantity as i32)?;
-    write_bytes(item_struct_location, &item_struct)?;
+    write::<u8>(CaveOffset::ShouldCheckQuantity, is_quantity_adjustable as u8)?;
+    write::<i32>(CaveOffset::MaxQuantity, max_quantity as i32)?;
+    write_bytes(CaveOffset::ItemSpawnStruct, &item_struct)?;
 
-    spawn_thread_join(location, asm)
+    spawn_thread_join(CaveOffset::ItemSpawnAsm, asm)
 }
 
 pub fn mass_spawn(category: Categories) -> anyhow::Result<()> {
@@ -87,7 +91,7 @@ impl Item {
         aow: Aow,
         affinity: Affinity,
     ) -> anyhow::Result<()> {
-        character_loaded_check()?;
+        player_loaded_check()?;
         if self.dlc {
             if !self.requires_activated_dlc() {
                 version_check()?;

@@ -1,27 +1,26 @@
 pub mod chr_ctrl;
 pub mod code_cave;
-pub mod functions;
 pub mod game_manager_imp;
-pub mod hooks;
 pub mod module_offsets;
-pub mod patches;
 
 use crate::{
-    mem::{is_scholar, read, read_address, write},
-    offsets::module_offsets::module_offsets,
+    mem::{read, read_address, write},
 };
-use gubtool_core::{attached::module_base, sys::error::ProcResult};
+use gubtool_core::{
+    attached::is_32,
+    sys::error::ProcResult,
+};
 use pelite::Pod;
 
 pub struct Offset {
-    vanilla: u64,
-    scholar: u64,
+    pub vanilla: u64,
+    pub scholar: u64,
 }
 
 impl Offset {
     #[inline(always)]
     pub fn resolve(&self) -> u64 {
-        if is_scholar() { self.scholar } else { self.vanilla }
+        if is_32() { self.vanilla } else { self.scholar }
     }
 }
 
@@ -49,20 +48,4 @@ impl ChainReadExt for ProcResult<u64> {
         let addr = self?;
         write::<T>(addr, val)
     }
-}
-
-pub fn kernel32_create_thread() -> u64 {
-    module_base() + module_offsets().external_fn_ptrs.kernel32_create_thread
-}
-
-pub fn kernel32_close_handle() -> u64 {
-    module_base() + module_offsets().external_fn_ptrs.kernel32_close_handle
-}
-
-pub fn kernel32_sleep() -> u64 {
-    module_base() + module_offsets().external_fn_ptrs.kernel32_sleep
-}
-
-pub fn map_id() -> u64 {
-    module_base() + module_offsets().data.map_id
 }

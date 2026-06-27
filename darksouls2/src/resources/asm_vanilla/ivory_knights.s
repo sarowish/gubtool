@@ -7,4 +7,4 @@ jne original
 xor edx, edx
 original:
 mov BYTE PTR [eax+ecx*1+0x2A1], dl
-jmp 0x0
+jmp OFFSET hook_loc

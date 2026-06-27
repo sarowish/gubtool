@@ -1,8 +1,14 @@
 use crate::{
-    common::{stateful_list::StatefulList, tab_state::TabState, tabs_list}, darksouls2_screen::{GAME_STATE, GameState, target_tab::ActionsItems::KillTarget}, event::ResultExt, theme::theme
+    common::{stateful_list::StatefulList, tab_state::TabState, tabs_list},
+    darksouls2_screen::{GAME_STATE, GameState, target_tab::ActionsItems::KillTarget},
+    event::ResultExt,
+    theme::theme,
 };
 use crossterm::event::{KeyCode, KeyEvent};
-use darksouls2::{chr_ctrl::ChrCtrlExt, target::{self, target_ctrl}};
+use darksouls2::{
+    chr_ctrl::ChrCtrlExt,
+    target::{self, target_ctrl},
+};
 use num_format::{Locale, ToFormattedString};
 use ratatui::{
     Frame,

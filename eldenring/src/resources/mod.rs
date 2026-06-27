@@ -6,7 +6,6 @@ pub mod graces;
 pub mod items;
 pub(crate) mod scan_patterns;
 pub mod talk_commands;
-pub mod versions_module_offsets;
 
 use utils::object::AsmFolder;
 use std::{env, sync::LazyLock};

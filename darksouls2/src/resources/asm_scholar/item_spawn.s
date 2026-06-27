@@ -1,53 +1,64 @@
 main:
-cmp BYTE PTR [rip+0x0], 0x1
+movabs r8, OFFSET should_process_flag
+cmp BYTE PTR [r8], 0x1
 jne nothing_to_process
-movabs r14, 0x0
+movabs r14, OFFSET game_man_imp
 mov r14, QWORD PTR [r14]
 mov r13, r14
 mov r14, QWORD PTR [r14+0xa8]
 mov r14, QWORD PTR [r14+0x10]
 mov r14, QWORD PTR [r14+0x10]
-mov BYTE PTR [rip+0x0], 0x0
-cmp BYTE PTR [rip+0x0], 0x1
+mov BYTE PTR [r8], 0x0
+movabs r8, OFFSET adjust_quantity_flag
+cmp BYTE PTR [r8], 0x1
 jne skip_adjust
 mov rcx, QWORD PTR [r14+0x10]
-lea rdx, [rip+0x0]
-lea r8, [rip+0x0]
-mov r9d, DWORD PTR [rip+0x0]
-movabs r15, 0x0
+movabs r9, OFFSET item_id
+movabs r8, OFFSET stack_count
+movabs rdx, OFFSET current_quantity
+mov r9d, DWORD PTR [r9]
+movabs rax, OFFSET fn_current_item_quantity_check
 sub rsp, 0x30
-call r15
+call rax
 add rsp, 0x30
-movzx eax, WORD PTR [rip+0x0]
-add eax, DWORD PTR [rip+0x0]
-cmp eax, DWORD PTR [rip+0x0]
+movabs r9, OFFSET quantity
+movabs r10, OFFSET current_quantity
+movabs r11, OFFSET max_quantity
+movzx eax, WORD PTR [r9]
+add eax, DWORD PTR [r10]
+cmp eax, DWORD PTR [r11]
 jle skip_adjust
-mov eax, DWORD PTR [rip+0x0]
-sub eax, DWORD PTR [rip+0x0]
-mov WORD PTR [rip+0x0], ax
+mov eax, DWORD PTR [r11]
+sub eax, DWORD PTR [r10]
+mov WORD PTR [r9], ax
 skip_adjust:
 sub rsp, 0x208
 mov rcx, r14
-lea rdx, [rip+0x0]
-mov r8d, DWORD PTR [rip+0x0]
+movabs r14, OFFSET item_count
+movabs r15, OFFSET item_struct
+mov rdx, r15
+mov r8d, DWORD PTR [r14]
 xor r9d, r9d
-movabs r15, 0x0
-call r15
-lea rcx, [rip+0x0]
-lea rdx, [rip+0x0]
-mov r8d, DWORD PTR [rip+0x0]
+movabs rax, OFFSET fn_item_spawn
+call rax
+mov rdx, r15
+mov r8d, DWORD PTR [r14]
+movabs r15, OFFSET stack_loc
+mov rcx, r15
 mov r9d, 0x1
-movabs r15, 0x0
-call r15
+movabs rax, OFFSET fn_build_item_dialogue
+call rax
 mov rcx, QWORD PTR [r13+0x22e0]
-lea rdx, [rip+0x0]
-movabs r15, 0x0
-call r15
+mov rdx, r15
+movabs rax, OFFSET fn_show_item_dialogue
+call rax
 add rsp, 0x208
 nothing_to_process:
-movabs rax, 0x0
 mov rcx, 0x5
+movabs rax, OFFSET fn_sleep
+mov rax, QWORD PTR [rax]
 call rax
-cmp BYTE PTR [rip+0x0], 0x1
+movabs r8, OFFSET should_exit_flag
+cmp BYTE PTR [r8], 0x1
 jne main
 ret

@@ -1,5 +1,14 @@
 use crate::{
-    common::{block, blockless_list, controls::draw_controls, label_list, stateful_list::StatefulList, tab_state::TabState}, eldenring_screen::GameState, event::{AnyhowExt}, input::fuzzy_finder::{FuzzyFinder}, theme::theme
+    app::App,
+    common::{
+        block, blockless_list, controls::draw_controls, label_list, stateful_list::StatefulList,
+        tab_state::TabState,
+    },
+    eldenring_screen::GameState,
+    event::AnyhowExt,
+    input::request_search,
+    mutate_app, spawn_task,
+    theme::theme,
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use eldenring::{
@@ -15,7 +24,6 @@ use ratatui::{
     widgets::{List, ListItem},
 };
 use ratatui_themes::Style;
-use std::thread;
 
 const CONTROLS: &[(&str, &str)] = &[
     ("r", "Revive"),
@@ -27,7 +35,6 @@ const GRACES_IDX: usize = 1;
 
 pub struct TravelTab {
     tab: TabState,
-    fuzzy_finder: FuzzyFinder,
 }
 
 impl TravelTab {
@@ -37,7 +44,6 @@ impl TravelTab {
         list_states[GRACES_IDX] = StatefulList::new(0);
         TravelTab {
             tab: TabState::new(list_states),
-            fuzzy_finder: FuzzyFinder::default(),
         }
     }
 
@@ -99,31 +105,20 @@ impl TravelTab {
             grace_area,
             &mut self.tab.get_list_state(GRACES_IDX),
         );
-
-        self.fuzzy_finder.draw_checked(frame);
     }
 
     pub fn handle_keys(&mut self, key: KeyEvent) {
         self.tab.set_length(BOSSES_IDX, bosses_array(GameState::dlc()).len());
         self.tab.set_length(GRACES_IDX, graces_array(GameState::dlc()).len());
 
-        if self.fuzzy_finder.show {
-            self.fuzzy_finder.handle_keys(key);
-            if key.code == KeyCode::Enter {
-                if let Some(selected) = self.fuzzy_finder.selected_idx() {
-                    self.tab.set_list_selected(self.tab.current_list, selected);
-                }
-            }
-            return;
-        }
-
         self.tab.handle_keys(key);
+
         match key.code {
             KeyCode::Enter => {
                 self.handle_select()
             }
             KeyCode::Char('f') => {
-                let list = if self.tab.current_list == BOSSES_IDX {
+                let entries = if self.tab.current_list == BOSSES_IDX {
                     bosses_array(GameState::dlc()).iter()
                         .map(|boss| Utf32String::from(format!("{}|{}", boss.name, boss.main_area)))
                         .collect::<Vec<Utf32String>>()
@@ -132,15 +127,22 @@ impl TravelTab {
                         .map(|grace| Utf32String::from(format!("{}|{}", grace.name, grace.main_area)))
                         .collect::<Vec<Utf32String>>()
                 };
-                self.fuzzy_finder.show(list);
+                spawn_task! {
+                    if let Some(new_idx) = request_search(entries).await {
+                        mutate_app!(|app: &mut App| {
+                            let tab = &mut app.elden_ring.travel.tab;
+                            tab.set_list_selected(tab.current_list, new_idx);
+                        });
+                    }
+                }
             }
             KeyCode::Char('r') => {
                 if self.tab.current_list == BOSSES_IDX
                 && let Some(selected) = self.tab.get_list_selected(BOSSES_IDX) {
                     let first_encounter = key.modifiers == KeyModifiers::CONTROL;
-                    thread::spawn(move || {
-                        bosses_array(GameState::dlc())[selected].revive(first_encounter, false).send_error()
-                    });
+                    bosses_array(GameState::dlc())[selected]
+                        .revive(first_encounter)
+                        .send_error()
                 }
             }
             _ => ()
@@ -150,13 +152,16 @@ impl TravelTab {
     fn handle_select(&self) {
         let Some(selected_idx) = self.tab.get_list_selected(self.tab.current_list) else { return; };
         if self.tab.current_list == BOSSES_IDX {
-            thread::spawn(move || {
-                bosses_array(GameState::dlc())[selected_idx].warp().send_error()
-            });
+            spawn_task! {
+                bosses_array(GameState::dlc())[selected_idx]
+                    .warp()
+                    .await
+                    .send_error()
+            }
         } else if self.tab.current_list == GRACES_IDX {
-            thread::spawn(move || {
-                graces_array(GameState::dlc())[selected_idx].warp().send_error();
-            });
+            graces_array(GameState::dlc())[selected_idx]
+                .warp()
+                .send_error();
         }
     }
 

@@ -1,4 +1,5 @@
 movabs rcx, OFFSET world_chr_man
+mov rcx, QWORD PTR [rcx]
 sub rsp, 0x28
 lea rdx, [rsp+0x24]
 mov DWORD PTR [rdx], OFFSET entity_id

@@ -1,16 +1,12 @@
-use crate::offsets::module_offsets;
 use gubtool_core::{
-    attached::{module_base, version},
+    attached::version,
     game_version::EldenRingVersion::*,
 };
-
-pub fn base_ptr() -> u64 {
-    module_base() + module_offsets().base_ptrs.game_data_man
-}
 
 pub const PLAYER_GAME_DATA: u64 = 0x8;
 
 #[repr(u64)]
+#[derive(Clone, Copy)]
 pub enum PlayerGameDataOffset {
     Vigor = 0x3C,
     Mind = 0x40,

@@ -1,13 +1,18 @@
-use thiserror::Error;
-
-use crate::{attached, sys::{error::ProcessError, read_unsafe}};
+use crate::{
+    attached::{self, module_base, pid},
+    sys::{error::ProcessError, read_unsafe},
+};
 use std::{
+    fs,
+    os::unix::fs::FileExt,
+    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
     thread,
 };
+use thiserror::Error;
 
 const CHUNK_SIZE: usize = 0x5000;
 
@@ -47,19 +52,23 @@ pub enum ScanError {
 }
 
 pub fn scan(scan: AobScan) -> Result<u64, ScanError> {
-    let pattern_bytes = parse_ida(scan.pattern)?;
+let pattern_bytes = parse_ida(scan.pattern)?;
+    let mem_path = PathBuf::from(format!("/proc/{}/mem", pid()));
+    let arc_file = fs::File::open(&mem_path).unwrap();
     let arc_found = Arc::new(AtomicUsize::new(usize::MAX));
 
     thread::scope(|scope| {
-        let origin = attached::module_base() + scan.scan_origin;
+        let origin = module_base() + scan.scan_origin;
         let step = (CHUNK_SIZE - pattern_bytes.len()) as u64;
 
+        let file = &arc_file;
         let found = arc_found.clone();
         let pattern = pattern_bytes.clone();
         scope.spawn(move || {
+            let mut buffer = [0u8; CHUNK_SIZE];
             let mut offset = origin;
             while found.load(Ordering::Relaxed) == usize::MAX {
-                let Ok(buffer) = read_unsafe::<[u8; CHUNK_SIZE]>(offset) else { return; };
+                if file.read_at(&mut buffer, offset).is_err() { return; };
                 for i in 0..(buffer.len() - pattern.len()) {
                     if matches_pattern(&buffer[i..i + pattern.len()], &pattern) {
                         found.store(offset as usize + i, Ordering::Release);
@@ -70,13 +79,15 @@ pub fn scan(scan: AobScan) -> Result<u64, ScanError> {
             }
         });
 
+        let file = &arc_file;
         let found = arc_found.clone();
         let pattern = pattern_bytes.clone();
         scope.spawn(move || {
+            let mut buffer = [0u8; CHUNK_SIZE];
             let mut offset = origin;
             while found.load(Ordering::Relaxed) == usize::MAX {
                 let Some(next_offset) = offset.checked_sub(step) else { return; };
-                let Ok(buffer) = read_unsafe::<[u8; CHUNK_SIZE]>(offset) else { return; };
+                if file.read_at(&mut buffer, next_offset).is_err() { return; }
                 for i in (0 + pattern.len()..buffer.len()).rev() {
                     if matches_pattern(&buffer[i - pattern.len()..i], &pattern) {
                         found.store(offset as usize - (buffer.len() - i), Ordering::Release);

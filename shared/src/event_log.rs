@@ -1,7 +1,5 @@
-use gubtool_core::sys::error::ProcResult;
-use thiserror::Error;
-use utils::slice_ops::read_from_slice;
 use chrono::{DateTime, Local};
+use gubtool_core::{slice_ops::read_from_slice, sys::error::ProcResult};
 use std::{
     collections::HashMap,
     env,
@@ -9,6 +7,7 @@ use std::{
     io::{ErrorKind, Write},
     path::{Path, PathBuf},
 };
+use thiserror::Error;
 
 #[derive(Clone, Copy)]
 pub struct EventRecord {
