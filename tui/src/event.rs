@@ -1,7 +1,12 @@
 use crate::app::App;
 use config::attach::attach_config_error::AttachConfigError;
 use crossterm::event::{self, Event as CEvent, KeyEvent};
-use gubtool_core::{appdata::{AppDataError, log_error}, attached::AttachError, game_version::Game, sys::error::ProcessError};
+use gubtool_core::{
+    appdata::{AppDataError, log_error},
+    attached::AttachError,
+    game_version::Game,
+    sys::error::ProcessError,
+};
 use nucleo_matcher::Utf32String;
 use std::{
     sync::{OnceLock, mpsc},

@@ -1,9 +1,13 @@
 use crate::{
-    app::CurrentScreen, common::{StrExt, centered_rect, list, stateful_list::StatefulList, tabs_widget::TabsWidget}, event::{ResultExt}, input::request_input, mutate_app, spawn_task,
+    app::CurrentScreen,
+    common::{StrExt, centered_rect, list, stateful_list::StatefulList, tabs_widget::TabsWidget},
+    event::ResultExt,
+    input::request_input,
+    mutate_app, spawn_task,
 };
 use config::{
     Config,
-    attach::{AttachConfig, AttachEntries, AttachEntry, AttachConfigManager},
+    attach::{AttachConfig, AttachConfigManager, AttachEntries, AttachEntry},
 };
 use crossterm::event::{KeyCode, KeyEvent};
 use gubtool_core::game_version::Game;

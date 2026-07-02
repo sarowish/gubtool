@@ -1,5 +1,16 @@
 use crate::{
-    attach_options::AttachOptions, darksouls2_screen::{self, DarkSouls2}, eldenring_screen::{self, EldenRing}, event::{AnyhowExt, Event, InfoType, ResultExt, send_event, start_event_loop_thread}, game_screen_selector::GameScreenSelector, help, input::{fuzzy_finder::FuzzyFinder, input_prompt::InputPrompt}, memory_viewer_screen::MemoryViewerScreen, process_selector::ProcessSelector, spawn_task, theme::{THEME, ThemeSelector, theme}, ui_state::UiState
+    attach_options::AttachOptions,
+    darksouls2_screen::{self, DarkSouls2},
+    eldenring_screen::{self, EldenRing},
+    event::{AnyhowExt, Event, InfoType, ResultExt, send_event, start_event_loop_thread},
+    game_screen_selector::GameScreenSelector,
+    help,
+    input::{fuzzy_finder::FuzzyFinder, input_prompt::InputPrompt},
+    memory_viewer_screen::MemoryViewerScreen,
+    process_selector::ProcessSelector,
+    spawn_task,
+    theme::{THEME, ThemeSelector, theme},
+    ui_state::UiState,
 };
 use color_eyre::eyre::Result;
 use config::Config;

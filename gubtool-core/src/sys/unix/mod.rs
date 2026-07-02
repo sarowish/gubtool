@@ -145,9 +145,9 @@ pub fn spawn_thread_join(
     let running_flag = thread_start_address.addr().saturating_sub(1);
     write_unsafe::<u8>(running_flag, 0x1)?;
 
-    write_bytes_unsafe(thread_start_address, &thread_code)?;
     if attached::is_32() {
         append_32bit_flag_setter(thread_start_address.addr(), &mut thread_code)?;
+        write_bytes_unsafe(thread_start_address, &thread_code)?;
         run_win32_thread(
             spawn_code_address,
             thread_start_address,
@@ -156,6 +156,7 @@ pub fn spawn_thread_join(
         )?;
     } else {
         append_64bit_flag_setter(thread_start_address.addr(), &mut thread_code)?;
+        write_bytes_unsafe(thread_start_address, &thread_code)?;
         run_win64_thread(
             spawn_code_address,
             thread_start_address,
