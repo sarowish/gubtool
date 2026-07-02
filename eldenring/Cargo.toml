@@ -15,10 +15,10 @@ tokio = { workspace = true }
 
 gubtool-core = { version = "0.1.0", path = "../gubtool-core" }
 shared = { version = "0.1.0", path = "../shared" }
-utils = { version = "0.1.0", path = "../utils" }
+assemble = { version = "0.1.0", path = "../assemble" }
 
 [build-dependencies]
-utils = { version = "0.1.0", path = "../utils" }
+assemble = { version = "0.1.0", path = "../assemble" }
 
 [lints]
 workspace = true

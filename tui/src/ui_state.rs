@@ -1,10 +1,10 @@
 use crate::app::App;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use config::Config;
-use gubtool_core::game_version::Game;
+use gubtool_core::{appdata::{AppDataError, app_data_dir}, game_version::Game};
 use ratatui_themes::ThemeName;
 use serde::{Deserialize, Serialize};
-use std::{env, fs, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct UiState {
@@ -19,37 +19,28 @@ pub struct UiState {
 }
 
 impl Config for UiState {
-    fn get_path() -> Result<PathBuf> {
-        let Some(home_dir) = env::home_dir() else {
-            return Err(anyhow!("Home directory not found"));
-        };
-        Ok(home_dir
-            .join(".local")
-            .join("state")
-            .join("gubtool")
-            .join("ui_state.toml"))
+    fn get_path() -> Result<PathBuf, AppDataError> {
+        let appdata_dir = app_data_dir()?;
+        Ok(appdata_dir.join("ui_state.toml"))
     }
-    fn read() -> Result<Self> {
+
+    fn read() -> Result<Self, AppDataError> {
         let config_path = Self::get_path()?;
-        if !config_path.exists() {
-            return Err(anyhow!("Config file not found"));
-        }
         let contents = fs::read_to_string(config_path)?;
         let ui_state: UiState = toml::from_str(&contents)?;
         Ok(ui_state)
     }
-    fn write(&self) -> Result<()> {
+
+    fn write(&self) -> Result<(), AppDataError> {
         let path = Self::get_path()?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
         let toml = toml::to_string(self)?;
         fs::write(path, toml)?;
         Ok(())
     }
-    fn update<F>(modifier: F) -> Result<()>
+
+    fn update<F>(modifier: F) -> Result<(), AppDataError>
     where
-        F: FnOnce(&mut Self),
+        F: FnOnce(&mut UiState),
     {
         let mut toml = Self::read().unwrap_or_default();
         modifier(&mut toml);
@@ -90,7 +81,7 @@ pub struct GlobalState {
 impl Default for GlobalState {
     fn default() -> Self {
         Self {
-            theme: ThemeName::Dracula,
+            theme: ThemeName::TokyoNight,
             game_screen: Game::EldenRing,
         }
     }

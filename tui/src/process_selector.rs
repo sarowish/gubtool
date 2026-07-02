@@ -1,15 +1,11 @@
 use crate::{
     app::CurrentScreen,
     common::{ListExt, block, centered_rect, controls::draw_controls},
-    event::ResultExt,
+    event::{Event, ResultExt, send_event},
     theme::{self, theme},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use gubtool_core::attached::{self, GameProcess};
-use nix::{
-    sys::signal::{self, Signal},
-    unistd::Pid,
-};
+use gubtool_core::attached::{self, ProcessManager};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -20,27 +16,26 @@ use ratatui::{
 const CONTROLS: &[(&str, &str)] = &[
     ("ctrl-k", "Kill"),
     ("Enter", "Attach"),
-    ("q", "Exit"),
 ];
 
 pub struct ProcessSelector {
+    pub manager: ProcessManager,
     pub table: TableState,
-    available_processes: Vec<GameProcess>,
 }
 
 impl ProcessSelector {
     pub fn new() -> Self {
         Self {
+            manager: ProcessManager::new(),
             table: TableState::default().with_selected(0),
-            available_processes: Vec::new(),
         }
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
-        self.update_processes();
+        self.manager.refresh();
 
         let layout = centered_rect(75, 75, frame.area());
-        let block = block(Some("Valid Processes"), None);
+        let block = block(Some("Process Selector"), None);
         frame.render_widget(Clear, layout);
         frame.render_widget(&block, layout);
 
@@ -53,20 +48,21 @@ impl ProcessSelector {
             .areas(block.inner(layout));
 
         frame.render_stateful_widget(
-            Self::table(&self.available_processes),
+            self.table(),
             processes_area,
             &mut self.table
         );
         frame.render_widget(
-            Self::path_paragraph(&self.available_processes, self.table.selected()),
+            self.path_paragraph(),
             path_area
         );
         draw_controls(frame, layout, CONTROLS);
     }
 
-    fn path_paragraph(processes: &[GameProcess], selected: Option<usize>) -> Paragraph<'static> {
+    fn path_paragraph(&self) -> Paragraph<'static> {
         let text = {
-            if let Some(idx) = selected && idx < processes.len() {
+            let processes = self.manager.valid_processes();
+            if let Some(idx) = self.table.selected() && idx < processes.len() {
                 format!("{}", processes[idx].exe_path.display())
             } else {
                 "".to_string()
@@ -76,10 +72,10 @@ impl ProcessSelector {
             .block(Block::new().borders(Borders::TOP))
     }
 
-    fn table(processes: &[GameProcess]) -> Table<'static> {
+    fn table(&self) -> Table<'static> {
         let mut rows: Vec<Row> = Vec::new();
-        for process in processes {
-            let comm = if attached::pid() == process.pid {
+        for process in self.manager.valid_processes() {
+            let comm = if attached::pid() == Some(process.pid) {
                     format!("*{}", process.comm)
                 } else {
                     format!(" {}", process.comm)
@@ -97,7 +93,7 @@ impl ProcessSelector {
             Cell::from("Game Version"),
         ]).bold();
         let widths = [
-            Constraint::Max(20),
+            Constraint::Min(28),
             Constraint::Max(10),
             Constraint::Fill(1),
         ];
@@ -107,34 +103,25 @@ impl ProcessSelector {
             .row_highlight_style(Style::from(theme().accent).bold())
     }
 
-    pub fn handle_keys(&mut self, key: KeyEvent, current_screen: &mut CurrentScreen) -> Option<GameProcess> {
+    pub fn handle_keys(&mut self, key: KeyEvent, current_screen: &mut CurrentScreen) {
+        self.table.handle_keys(key);
+
         match (key.code, key.modifiers) {
             (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Main,
             (KeyCode::Enter, _) => {
-                if let Some(selected) = self.table.selected() {
-                    let mut processes = attached::get_processes();
-                    if selected < processes.len() {
-                        return Some(processes.remove(selected))
-                    }
+                let processes = self.manager.valid_processes();
+                if let Some(idx) = self.table.selected() && idx < processes.len() {
+                    processes[idx].attach().send_error();
+                    send_event(Event::Attach);
                 }
             }
             (KeyCode::Char('k'), KeyModifiers::CONTROL) => {
-                if let Some(selected) = self.table.selected() {
-                    Self::kill_process(self.available_processes[selected].pid).send_error();
-                    return None;
+                let processes = self.manager.valid_processes();
+                if let Some(idx) = self.table.selected() && idx < processes.len() {
+                    processes[idx].kill();
                 }
             }
             _ => (),
         }
-        self.table.handle_keys(key);
-        None
-    }
-
-    fn kill_process(pid: Pid) -> Result<(), std::io::Error> {
-        Ok(signal::kill(pid, Signal::SIGKILL)?)
-    }
-
-    pub fn update_processes(&mut self)  {
-        self.available_processes = attached::get_processes()
     }
 }

@@ -1,7 +1,7 @@
 pub mod address;
 pub mod aob_scanner;
+pub mod appdata;
 pub mod attached;
-pub mod error_log;
 pub mod game_version;
 pub mod memory_viewer;
 pub mod slice_ops;

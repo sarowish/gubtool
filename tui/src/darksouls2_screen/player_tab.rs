@@ -356,15 +356,15 @@ impl TogglesItems {
 impl StatsItems {
     fn to_list_item(&self, stats: &player::Stats) -> ListItem<'_> {
         let text = match self {
-            Self::Adaptability => format!("{:<2} Adaptability", stats.adaptability),
-            Self::Endurance => format!("{:<2} Endurance", stats.endurance),
-            Self::Vigor => format!("{:<2} Vigor", stats.vigor),
-            Self::Vitality => format!("{:<2} Vitality", stats.vitality),
-            Self::Attunement => format!("{:<2} Attunement", stats.attunement),
-            Self::Intelligence => format!("{:<2} Intelligence", stats.intelligence),
-            Self::Dexterity => format!("{:<2} Dexterity", stats.dexterity),
-            Self::Faith => format!("{:<2} Faith", stats.faith),
-            Self::Strength => format!("{:<2} Strength", stats.strength),
+            Self::Adaptability => format!("{:02} Adaptability", stats.adaptability),
+            Self::Endurance => format!("{:02} Endurance", stats.endurance),
+            Self::Vigor => format!("{:02} Vigor", stats.vigor),
+            Self::Vitality => format!("{:02} Vitality", stats.vitality),
+            Self::Attunement => format!("{:02} Attunement", stats.attunement),
+            Self::Intelligence => format!("{:02} Intelligence", stats.intelligence),
+            Self::Dexterity => format!("{:02} Dexterity", stats.dexterity),
+            Self::Faith => format!("{:02} Faith", stats.faith),
+            Self::Strength => format!("{:02} Strength", stats.strength),
         };
         ListItem::from(text)
     }

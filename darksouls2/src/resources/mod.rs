@@ -1,6 +1,6 @@
 use gubtool_core::attached::is_32;
 use std::sync::LazyLock;
-use utils::object::{AsmFolder, AsmFunction};
+use assemble::{AsmFolder, AsmFunction};
 
 pub mod bonfires;
 pub mod bosses;

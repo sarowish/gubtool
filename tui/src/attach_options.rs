@@ -1,13 +1,9 @@
 use crate::{
-    app::CurrentScreen,
-    common::{StrExt, centered_rect, list, stateful_list::StatefulList, tabs_widget::TabsWidget},
-    event::AnyhowExt,
-    input::request_input,
-    mutate_app, spawn_task,
+    app::CurrentScreen, common::{StrExt, centered_rect, list, stateful_list::StatefulList, tabs_widget::TabsWidget}, event::{ResultExt}, input::request_input, mutate_app, spawn_task,
 };
 use config::{
     Config,
-    attach::{AttachConfig, AttachEntries, AttachEntry, AttachManager},
+    attach::{AttachConfig, AttachEntries, AttachEntry, AttachConfigManager},
 };
 use crossterm::event::{KeyCode, KeyEvent};
 use gubtool_core::game_version::Game;
@@ -17,7 +13,7 @@ use ratatui::{
 };
 
 pub struct AttachOptions {
-    pub manager: AttachManager,
+    pub manager: AttachConfigManager,
     game_tabs: GameTabs,
     list_state: StatefulList,
     list_identifier: usize,
@@ -31,7 +27,7 @@ struct GameTabs {
 impl AttachOptions {
     pub fn new() -> Self {
         Self {
-            manager: AttachManager::new(),
+            manager: AttachConfigManager::new(),
             list_state: StatefulList::new(0),
             list_identifier: 0,
             game_tabs: GameTabs {

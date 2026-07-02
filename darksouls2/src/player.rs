@@ -105,8 +105,8 @@ pub fn set_stat(offset: StatOffset, val: u16) -> ProcResult {
     const CURRENT_LEVEL: u64 = 0xEC;
     const NEW_LEVEL: u64 = 0xF0;
     const CURRENT_SOULS: u64 = 0xF4;
-    const REQUIRED_SOULS: u64 = 0xFC;
     const SOULS_AFTER: u64 = 0xF8;
+    const REQUIRED_SOULS: u64 = 0xFC;
 
     let current_level = player_stats_entity
         .add_offset(stats_offsets::SOUL_LEVEL)
@@ -126,7 +126,7 @@ pub fn set_stat(offset: StatOffset, val: u16) -> ProcResult {
 
     write_to_slice::<[u8; 22]>(&mut buffer, 0, stat_bytes)?;
     write_to_slice::<i32>(&mut buffer, CURRENT_LEVEL, current_level)?;
-    write_to_slice::<u16>(&mut buffer, NUM_LEVELS_SHORT, num_levels as u16)?;
+    write_to_slice::<u16>(&mut buffer, NUM_LEVELS_SHORT, num_levels as u8)?;
     write_to_slice::<i32>(&mut buffer, NUM_LEVELS_INT, num_levels)?;
     write_to_slice::<i32>(&mut buffer, NEW_LEVEL, current_level + num_levels)?;
     write_to_slice::<i32>(&mut buffer, CURRENT_SOULS, current_souls)?;
@@ -161,13 +161,13 @@ pub fn set_stat(offset: StatOffset, val: u16) -> ProcResult {
     spawn_thread_join(location, asm)?;
 
     if is_negative {
-        write::<u8>(negative_patch_loc, 0x84)
-    } else {
-        let new_souls = player_stats_entity
-            .add_offset(stats_offsets::SOULS)
-            .read::<i32>()?;
-        give_souls(current_souls - new_souls)
+        write::<u8>(negative_patch_loc, 0x84)?;
     }
+
+    let new_souls = player_stats_entity
+        .add_offset(stats_offsets::SOULS)
+        .read::<i32>()?;
+    give_souls(current_souls - new_souls)
 }
 
 pub fn get_souls() -> ProcResult<i32> {

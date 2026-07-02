@@ -1,7 +1,7 @@
 use crate::app::App;
 use config::attach::attach_config_error::AttachConfigError;
 use crossterm::event::{self, Event as CEvent, KeyEvent};
-use gubtool_core::{attached::AttachError, error_log::log_error, sys::error::ProcessError};
+use gubtool_core::{appdata::{AppDataError, log_error}, attached::AttachError, game_version::Game, sys::error::ProcessError};
 use nucleo_matcher::Utf32String;
 use std::{
     sync::{OnceLock, mpsc},
@@ -15,10 +15,12 @@ pub enum Event {
     BackgroundTick,
     Info((String, InfoType)),
     BlockInputs(bool),
-    ApplyAttach,
     Input((&'static str, tokio::sync::oneshot::Sender<String>, std::any::TypeId)),
     Search((Vec<Utf32String>, tokio::sync::oneshot::Sender<Option<usize>>)),
-    State(Box<dyn FnOnce(&mut App) + Send>),
+    AppState(Box<dyn FnOnce(&mut App) + Send>),
+    Attach,
+    ApplyAttach,
+    Detach(Game),
 }
 
 pub enum InfoType {
@@ -107,10 +109,10 @@ fn handle_error(err: &(dyn std::error::Error + 'static)) -> (String, InfoType) {
             ProcessError::InvalidGame { .. } | ProcessError::InvalidPointer { .. } => (),
             _ => {
                 info_type = InfoType::SysError;
-                log_error(&proc_error);
+                let _ = log_error(&proc_error);
             }
         }
-    } else if err.is::<AttachError>() || err.is::<AttachConfigError>() {
+    } else if err.is::<AttachError>() || err.is::<AttachConfigError>() || err.is::<AppDataError>(){
         info_type = InfoType::SysError;
     }
 

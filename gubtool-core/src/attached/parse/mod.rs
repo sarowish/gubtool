@@ -1,124 +1,107 @@
-mod darksouls2_parse;
-mod eldenring_parse;
-
 use crate::{
-    attached::{
-        GameProcess,
-        error::{ParseError, ParsePeError},
-    },
-    game_version::Game,
+    attached::{AddressSize, ParseState},
+    game_version::{DarkSouls2Version, EldenRingVersion, Game, GameVersion},
 };
-use nix::unistd::Pid;
 use pelite::{
     FileMap,
     pe32::{self, Pe as Pe32},
     pe64::{self, Pe as Pe64},
     resources::FindError,
 };
-use std::{
-    fs::{self, DirEntry},
-    io::{BufRead, BufReader, Read},
-    path::PathBuf,
-};
+use std::{error::Error, fmt::Display, path::PathBuf};
 
-const DEFAULT_BASE_64: u64 = 0x140000000;
-const DEFAULT_BASE_32: u64 = 0x400000;
+
+#[cfg(unix)]
+mod unix;
+#[cfg(unix)]
+pub use unix::*;
+#[cfg(windows)]
+mod win;
+#[cfg(windows)]
+pub use win::*;
+
 // const SHADPS4_BASE: u64 = 0x800000000;
 
-const VALID_COMMS: &[(&str, Game); 4] = &[
+pub const VALID_COMMS: &[(&str, Game); 4] = &[
     ("eldenring.exe", Game::EldenRing),
     ("start_protected", Game::EldenRing),
     ("start_protected_game.exe", Game::EldenRing),
     ("DarkSoulsII.exe", Game::DarkSouls2),
 ];
 
-pub(crate) fn parse_process(process: DirEntry) -> Option<GameProcess> {
-    let pid = process.file_name().into_string().unwrap();
-    if !pid.chars().all(|c| c.is_numeric()) {
-        return None;
-    }
-    let comm_path = format!("/proc/{pid}/comm");
-    let Ok(comm) = fs::read_to_string(comm_path) else {
-        return None;
-    };
 
-    for (valid_comm, game) in VALID_COMMS {
-        if comm.trim() == *valid_comm {
-            let pid = Pid::from_raw(pid.parse::<i32>().unwrap());
-
-            let process = match game {
-                Game::EldenRing => eldenring_parse::parse(pid, valid_comm),
-                Game::DarkSouls2 => darksouls2_parse::parse(pid, valid_comm),
-            };
-            return Some(process);
-        }
-    }
-    None
+#[derive(Debug, Clone, Copy)]
+pub enum ParsePeError {
+    IoError(std::io::ErrorKind),
+    PeError(pelite::resources::FindError),
 }
 
-fn parse_environ_for_path(pid: Pid, game: Game) -> Result<PathBuf, ParseError> {
-    let path = format!("/proc/{pid}/environ");
-    let target_field = "PWD";
-    let mut file = fs::File::open(path).map_err(|err| {
-        ParseError::ExeNotFound { pid, error_kind: Some(err.kind()) }
-    })?;
+fn parse_file_for_version_and_address_size(
+    game: &Game,
+    exe_path: &PathBuf,
+    mut parse_errors: Vec<ParseError>,
+) -> (AddressSize, GameVersion, ParseState) {
+    let mut address_size = AddressSize::Bits64;
 
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).map_err(|err| {
-        ParseError::ExeNotFound { pid, error_kind: Some(err.kind()) }
-    })?;
-
-    for env_var_bytes in buffer.split(|&b| b == 0) {
-        if env_var_bytes.is_empty() {
-            continue;
-        }
-
-        let env_var_str = String::from_utf8_lossy(env_var_bytes);
-
-        if let Some((field, value)) = env_var_str.split_once('=') {
-            if field == target_field {
-                for name in valid_exe_names(game) {
-                    let exe_path = PathBuf::from(value).join(name);
-                    if exe_path.exists() {
-                        return Ok(exe_path);
-                    }
+    let version_info = match pe_version_64(&exe_path) {
+        Ok(v) => v,
+        Err(ParseError::ParsePe {
+            error: ParsePeError::PeError(pelite::resources::FindError::Pe(pelite::Error::PeMagic))
+        }) => {
+            address_size = AddressSize::Bits32;
+            match pe_version_32(&exe_path) {
+                Ok(v) => v,
+                Err(err) => {
+                    parse_errors.push(err);
+                    Default::default()
                 }
             }
         }
-    }
-    Err(ParseError::ExeNotFound { pid, error_kind: None })
-}
-
-fn scan_maps_for_path(pid: Pid, game: Game) -> Result<(PathBuf, u64), ParseError> {
-    let path = format!("/proc/{pid}/maps");
-    let file = fs::File::open(path).map_err(|err| {
-        return ParseError::ScanMaps { pid, error_kind: Some(err.kind()) }
-    })?;
-    let reader = BufReader::new(file);
-    let valid_exe_names = valid_exe_names(game);
-
-    for line in reader.lines() {
-        let line = line.unwrap();
-        for name in valid_exe_names {
-            if line.contains(name) {
-                let base = line.split_once('-')
-                    .map(|(handle, _)| u64::from_str_radix(handle, 16))
-                    .unwrap();
-
-                let pos = line.find('/').unwrap();
-                let exe_path = PathBuf::from(&line[pos..]);
-                return Ok((exe_path, base.unwrap()))
-            }
+        Err(err) => {
+            parse_errors.push(err);
+            Default::default()
         }
-    }
-    Err(ParseError::ScanMaps { pid, error_kind: None })
-}
+    };
 
-fn valid_exe_names(game: Game) -> &'static [&'static str] {
-    match game {
-        Game::EldenRing => &["eldenring.exe", "start_protected_game.exe"],
-        Game::DarkSouls2 => &["DarkSoulsII.exe"],
-    }
+    let game_version = match game {
+        Game::DarkSouls2 => {
+            let version = match address_size {
+                AddressSize::Bits32 => match match_vanilla(version_info) {
+                    Ok(v) => v,
+                    Err(err) => {
+                        parse_errors.push(err);
+                        DarkSouls2Version::VanillaUnknown
+                    }
+                }
+                AddressSize::Bits64 => match match_scholar(version_info) {
+                    Ok(v) => v,
+                    Err(err) => {
+                        parse_errors.push(err);
+                        DarkSouls2Version::ScholarUnknown
+                    }
+                }
+            };
+            GameVersion::DarkSouls2(version)
+        }
+        Game::EldenRing => {
+            let version = match match_eldenring(version_info) {
+                Ok(v) => v,
+                Err(err) => {
+                    parse_errors.push(err);
+                    EldenRingVersion::VersionUnknown
+                }
+            };
+            GameVersion::EldenRing(version)
+        }
+    };
+
+    let parse_state = if parse_errors.is_empty() {
+        ParseState::Valid
+    } else {
+        ParseState::Invalid(parse_errors)
+    };
+
+    (address_size, game_version, parse_state)
 }
 
 fn pe_version_64(path: &PathBuf) -> Result<(u16, u16, u16), ParseError> {
@@ -156,3 +139,89 @@ fn pe_version_32(path: &PathBuf) -> Result<(u16, u16, u16), ParseError> {
         product_version.Patch,
     ))
 }
+
+fn match_vanilla(
+    (major, minor, patch): (u16, u16, u16),
+) -> Result<DarkSouls2Version, ParseError> {
+    Ok(match (major, minor, patch) {
+        (1, 0, 3) => DarkSouls2Version::Vanilla1_0_3,
+        (1, 0, 4) => DarkSouls2Version::Vanilla1_0_4,
+        (1, 0, 5) => DarkSouls2Version::Vanilla1_0_5,
+        (1, 0, 6) => DarkSouls2Version::Vanilla1_0_5,
+        (1, 0, 7) => DarkSouls2Version::Vanilla1_0_7,
+        (1, 0, 10) => DarkSouls2Version::Vanilla1_0_10,
+        (1, 0, 11) => DarkSouls2Version::Vanilla1_0_11,
+        (1, 0, 12) => DarkSouls2Version::Vanilla1_0_12,
+        _ => {
+            return Err(ParseError::MatchProductVersion {
+                product_version: (major, minor, patch),
+            });
+        }
+    })
+}
+
+fn match_scholar(
+    (major, minor, patch): (u16, u16, u16),
+) -> Result<DarkSouls2Version, ParseError> {
+    Ok(match (major, minor, patch) {
+        (1, 0, 1) => DarkSouls2Version::Scholar1_0_1,
+        (1, 0, 2) => DarkSouls2Version::Scholar1_0_2,
+        (1, 0, 3) => DarkSouls2Version::Scholar1_0_3,
+        _ => {
+            return Err(ParseError::MatchProductVersion {
+                product_version: (major, minor, patch),
+            });
+        }
+    })
+}
+
+fn match_eldenring((major, minor, patch): (u16, u16, u16)) -> Result<EldenRingVersion, ParseError> {
+    Ok(match (major, minor, patch) {
+        (1, 2, 0) => EldenRingVersion::Version1_2_0,
+        (1, 2, 1) => EldenRingVersion::Version1_2_1,
+        (1, 2, 2) => EldenRingVersion::Version1_2_2,
+        (1, 2, 3) => EldenRingVersion::Version1_2_3,
+        (1, 3, 0) => EldenRingVersion::Version1_3_0,
+        (1, 3, 1) => EldenRingVersion::Version1_3_1,
+        (1, 3, 2) => EldenRingVersion::Version1_3_2,
+        (1, 4, 0) => EldenRingVersion::Version1_4_0,
+        (1, 4, 1) => EldenRingVersion::Version1_4_1,
+        (1, 5, 0) => EldenRingVersion::Version1_5_0,
+        (1, 6, 0) => EldenRingVersion::Version1_6_0,
+        (1, 7, 0) => EldenRingVersion::Version1_7_0,
+        (1, 8, 0) => EldenRingVersion::Version1_8_0,
+        (1, 8, 1) => EldenRingVersion::Version1_8_1,
+        (1, 9, 0) => EldenRingVersion::Version1_9_0,
+        (1, 9, 1) => EldenRingVersion::Version1_9_1,
+        (2, 0, 0) => EldenRingVersion::Version2_0_0,
+        (2, 0, 1) => EldenRingVersion::Version2_0_1,
+        (2, 2, 0) => EldenRingVersion::Version2_2_0,
+        (2, 2, 3) => EldenRingVersion::Version2_2_3,
+        (2, 3, 0) => EldenRingVersion::Version2_3_0,
+        (2, 4, 0) => EldenRingVersion::Version2_4_0,
+        (2, 5, 0) => EldenRingVersion::Version2_5_0,
+        (2, 6, 0) => EldenRingVersion::Version2_6_0,
+        (2, 6, 1) => EldenRingVersion::Version2_6_1,
+        (2, 6, 2) => EldenRingVersion::Version2_6_2,
+        _ => {
+            return Err(ParseError::MatchProductVersion {
+                product_version: (major, minor, patch),
+            });
+        }
+    })
+}
+
+impl Display for ParsePeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::IoError(kind) => {
+                write!(f, "Couldn't open filemap: {kind}")
+            }
+            Self::PeError(err) => {
+                write!(f, "Error while parsing PE file: {err}")
+            }
+        }
+    }
+}
+
+impl Error for ParsePeError {}

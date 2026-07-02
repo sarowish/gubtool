@@ -1,23 +1,12 @@
 use crate::{
-    attach_options::AttachOptions,
-    darksouls2_screen::{self, DarkSouls2},
-    eldenring_screen::{self, EldenRing},
-    event::{AnyhowExt, Event, InfoType, ResultExt, send_event, start_event_loop_thread},
-    game_screen_selector::GameScreenSelector,
-    help,
-    input::{fuzzy_finder::FuzzyFinder, input_prompt::InputPrompt},
-    memory_viewer_screen::MemoryViewerScreen,
-    process_selector::ProcessSelector,
-    theme::{THEME, ThemeSelector, theme},
-    ui_state::UiState,
+    attach_options::AttachOptions, darksouls2_screen::{self, DarkSouls2}, eldenring_screen::{self, EldenRing}, event::{AnyhowExt, Event, InfoType, ResultExt, send_event, start_event_loop_thread}, game_screen_selector::GameScreenSelector, help, input::{fuzzy_finder::FuzzyFinder, input_prompt::InputPrompt}, memory_viewer_screen::MemoryViewerScreen, process_selector::ProcessSelector, spawn_task, theme::{THEME, ThemeSelector, theme}, ui_state::UiState
 };
 use color_eyre::eyre::Result;
 use config::Config;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use gubtool_core::{
-    attached::{self, GameProcess, game},
+    attached::{self, is_attached},
     game_version::Game,
-    sys,
 };
 use ratatui::{
     DefaultTerminal, Frame,
@@ -27,13 +16,12 @@ use ratatui::{
     widgets::{Block, Clear, Paragraph},
 };
 use ratatui_themes::ThemeName;
-use std::{sync::RwLock, thread, time::Duration};
+use std::{sync::RwLock, time::Duration};
 
 pub struct App {
     running: bool,
     current_screen: CurrentScreen,
     pub game_screen: Game,
-    attached: bool,
     show_info: bool,
     info_message: String,
     info_type: InfoType,
@@ -58,7 +46,6 @@ impl App {
             running: true,
             game_screen: Game::EldenRing,
             current_screen: CurrentScreen::Main,
-            attached: false,
             show_info: false,
             info_message: "".to_string(),
             info_type: InfoType::SysError,
@@ -66,7 +53,7 @@ impl App {
             input: InputPrompt::default(),
             fuzzy_finder: FuzzyFinder::default(),
 
-            theme: ThemeName::Dracula,
+            theme: ThemeName::TokyoNight,
             theme_selector: ThemeSelector::new(),
             process_selector: ProcessSelector::new(),
             game_screen_selector: GameScreenSelector::new(),
@@ -83,7 +70,7 @@ impl App {
         THEME.set(RwLock::new(self.theme.palette())).unwrap();
         let rx = start_event_loop_thread();
 
-        self.try_attach(None);
+        self.try_auto_attach();
 
         while self.running {
             terminal.draw(|frame| Self::draw(&mut self, frame))?;
@@ -98,12 +85,13 @@ impl App {
                     self.show_info = true;
                 }
                 Event::BackgroundTick => {
-                    if !self.attached {
-                        self.try_attach(None);
-                    } else if !attached::is_pid_valid() {
-                        self.detach()
-                    }
-                    if self.attached && game() == Some(self.game_screen) {
+                    if !is_attached() {
+                        self.try_auto_attach();
+                    } else {
+                        if let Some(detached_game) = self.process_selector.manager.detach_if_invalid() {
+                            send_event(Event::Detach(detached_game));
+                            continue;
+                        }
                         match self.game_screen {
                             Game::EldenRing => self.elden_ring.background_tick(),
                             Game::DarkSouls2 => self.dark_souls_2.background_tick(),
@@ -111,15 +99,30 @@ impl App {
                     }
                 }
                 Event::RenderTick => {
-                    if self.attached && game() == Some(self.game_screen) {
+                    if is_attached() {
                         match self.game_screen {
                             Game::EldenRing => self.elden_ring.render_tick(),
                             Game::DarkSouls2 => self.dark_souls_2.render_tick(),
                         }
                     }
                 }
+                Event::Attach => {
+                    if let Some(game) = attached::game() {
+                        self.game_screen = game;
+                        let _ = UiState::update(|c| c.global.game_screen = game );
+
+                        let time_to_wait = 5.0 - attached::uptime();
+
+                        spawn_task! {
+                            if time_to_wait > 0.1 {
+                                tokio::time::sleep(Duration::from_secs_f64(time_to_wait)).await;
+                            }
+                            send_event(Event::ApplyAttach);
+                        }
+                    }
+                }
                 Event::ApplyAttach => {
-                    match game() {
+                    match attached::game() {
                         Some(Game::EldenRing) => {
                             self.attach_options.manager.attach(Game::EldenRing).send_error();
                             self.elden_ring.on_attach()
@@ -129,7 +132,14 @@ impl App {
                             self.dark_souls_2.on_attach()
                         }
                         None => Ok(()),
-                    }.send_error()
+                    }
+                    .send_error()
+                }
+                Event::Detach(game) => {
+                    match game {
+                        Game::EldenRing => self.elden_ring.on_unattach(),
+                        Game::DarkSouls2 => self.dark_souls_2.on_unattach(),
+                    }
                 }
                 Event::BlockInputs(state) => {
                     self.block_inputs = state;
@@ -140,7 +150,7 @@ impl App {
                 Event::Search((entries, sender)) => {
                     self.fuzzy_finder.show(entries, sender)
                 }
-                Event::State(closure) => {
+                Event::AppState(closure) => {
                     closure(&mut self)
                 }
             }
@@ -244,9 +254,7 @@ impl App {
 
         match self.current_screen {
             CurrentScreen::ProcessSelection => {
-                if let Some(process) = self.process_selector.handle_keys(key, &mut self.current_screen) {
-                    self.try_attach(Some(process))
-                }
+                self.process_selector.handle_keys(key, &mut self.current_screen)
             },
             CurrentScreen::GameScreenSelection => {
                 self.game_screen_selector.handle_keys(key, &mut self.game_screen, &mut self.current_screen)
@@ -275,63 +283,31 @@ impl App {
                     (KeyCode::Char('a'), _) => self.current_screen = CurrentScreen::AttachOptions,
                     (KeyCode::F(1), _) => self.current_screen = CurrentScreen::Help,
                     (KeyCode::Char('p'), _) => self.current_screen = {
-                        self.process_selector.update_processes();
+                        self.process_selector.manager.refresh();
                         self.process_selector.table.select(Some(0));
                         CurrentScreen::ProcessSelection
                     },
                     (KeyCode::Char('o'), _) => self.current_screen = CurrentScreen::GameScreenSelection,
-                    (KeyCode::F(5), KeyModifiers::CONTROL) => self.current_screen = CurrentScreen::Debug,
                     (KeyCode::F(12), KeyModifiers::CONTROL) => self.current_screen = CurrentScreen::MemoryViewer,
                     (KeyCode::F(12), _) => self.current_screen = CurrentScreen::ThemeSelection,
+                    #[cfg(debug_assertions)]
+                    (KeyCode::F(5), KeyModifiers::CONTROL) => self.current_screen = CurrentScreen::Debug,
                     _ => ()
                 }
             }
         }
     }
 
-    fn try_attach(&mut self, process: Option<GameProcess>) {
-        if let Some(process) = process {
-            attached::attach_to_process(process).send_error();
-        } else {
-            match attached::auto_attach() {
-                Some(result) => {
-                    result.send_error();
-                },
-                None => return,
-            }
+    fn try_auto_attach(&mut self) {
+        if let Some(result) = self.process_selector.manager.try_auto_attach() {
+            result.send_error();
+            send_event(Event::Attach);
         }
-
-        self.attached = true;
-        if let Some(game) = attached::game() {
-            self.game_screen = game;
-            let _ = UiState::update(|c| c.global.game_screen = game );
-        }
-
-        let time_to_wait = 5.0 - sys::get_process_uptime(attached::pid()).unwrap_or_default();
-        if time_to_wait > 0.0 {
-            thread::spawn(move || {
-                thread::sleep(Duration::from_secs_f64(time_to_wait));
-                send_event(Event::ApplyAttach);
-            });
-        } else {
-            send_event(Event::ApplyAttach);
-        }
-    }
-
-    fn detach(&mut self) {
-        match game() {
-            Some(Game::EldenRing) => self.elden_ring.on_unattach(),
-            Some(Game::DarkSouls2) => self.dark_souls_2.on_unattach(),
-            None => (),
-        }
-
-        attached::detach();
-        self.attached = false;
     }
 
     fn pid_paragraph(&self) -> Paragraph<'static> {
-        if self.attached {
-            Paragraph::new(format!("Process ID: {}", attached::pid()))
+        if is_attached() {
+            Paragraph::new(format!("Process ID: {}", attached::pid().unwrap()))
         } else {
             Paragraph::new("Scanning for game...")
         }.style(theme().fg)
@@ -351,7 +327,7 @@ impl App {
             format!("exe_path: {}", attached::path().display()),
             format!("module_base: {:#X}", attached::module_base()),
             format!("is 32 bit: {}", attached::is_32()),
-            format!("process uptime: {:.1}", sys::get_process_uptime(attached::pid()).unwrap_or_default()),
+            format!("process uptime: {:.1}", attached::uptime()),
             format!("\n"),
         ];
 

@@ -381,16 +381,16 @@ impl TogglesItems {
 impl Stats {
     fn to_list_item(&self, stats: &PlayerGameData) -> ListItem<'_> {
         let text = match self {
-            Self::Vigor => format!("{:<2} Vigor", stats.vigor),
-            Self::Mind => format!("{:<2} Mind", stats.mind),
-            Self::Endurance => format!("{:<2} Endurance", stats.endurance),
-            Self::Strength => format!("{:<2} Strength", stats.strength),
-            Self::Dexterity => format!("{:<2} Dexterity", stats.dexterity),
-            Self::Intelligence => format!("{:<2} Intelligence", stats.intelligence),
-            Self::Faith => format!("{:<2} Faith", stats.faith),
-            Self::Arcane => format!("{:<2} Arcane", stats.arcane),
-            Self::Scadutree => format!("{:<2} Scadutree", stats.scadutree_blessing),
-            Self::SpiritAsh => format!("{:<2} Spirit Ash", stats.reversed_spirit_ash),
+            Self::Vigor => format!("{:02} Vigor", stats.vigor),
+            Self::Mind => format!("{:02} Mind", stats.mind),
+            Self::Endurance => format!("{:02} Endurance", stats.endurance),
+            Self::Strength => format!("{:02} Strength", stats.strength),
+            Self::Dexterity => format!("{:02} Dexterity", stats.dexterity),
+            Self::Intelligence => format!("{:02} Intelligence", stats.intelligence),
+            Self::Faith => format!("{:02} Faith", stats.faith),
+            Self::Arcane => format!("{:02} Arcane", stats.arcane),
+            Self::Scadutree => format!("{:02} Scadutree", stats.scadutree_blessing),
+            Self::SpiritAsh => format!("{:02} Spirit Ash", stats.reversed_spirit_ash),
         };
         ListItem::from(text)
     }

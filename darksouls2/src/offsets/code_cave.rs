@@ -21,7 +21,7 @@ pub enum CaveOffset {
     NpcPos = 0x410,                                     // 0x20
 
     LevelUpBuffer = 0x440,                              // 0x100
-    NegativeFlag = 0x540,                               // u8
+    NegativeFlag = 0x550,                               // u8
 
     StateHandlerFlags = 0xF00,                          // 0x100
     // Hooks

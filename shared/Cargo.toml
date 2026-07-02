@@ -9,7 +9,7 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 
 gubtool-core = { version = "0.1.0", path = "../gubtool-core" }
-utils = { version = "0.1.0", path = "../utils" }
+assemble = { version = "0.1.0", path = "../assemble" }
 
 [lints]
 workspace = true

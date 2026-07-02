@@ -17,7 +17,7 @@ const ENTRIES: &[(&str, &str)] = &[
     ("tab", "Select next tab"),
     ("backtab", "Select previous tab"),
     ("a", "Attach options"),
-    ("p", "Show valid processes"),
+    ("p", "Process Selector"),
     ("o", "Pick game screen"),
     ("g", "Jump to first entry"),
     ("G", "Jump to last entry"),

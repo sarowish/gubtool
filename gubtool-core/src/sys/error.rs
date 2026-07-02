@@ -18,20 +18,23 @@ pub enum ProcessError {
         address: u64,
         location: &'static Location<'static>,
     },
+    RemoteThreadCreate {
+        os_error: i32,
+    },
+    RemoteThreadReturn {
+        timeout: std::time::Duration,
+    },
+    NotAttached,
+    InvalidPointer { pointer_type: PointerType },
+    Slice { slice_error: SliceError },
+    InvalidGame { expected: Game },
+
+    #[cfg(unix)]
     Ptrace {
         ptrace_action: PtraceAction,
         error_kind: std::io::ErrorKind,
         os_error: Option<i32>,
     },
-    RemoteThreadCreate {
-        os_error: Option<i32>,
-    },
-    RemoteThreadReturn {
-        timeout: std::time::Duration,
-    },
-    InvalidPointer { pointer_type: PointerType },
-    Slice { slice_error: SliceError },
-    InvalidGame { expected: Game }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -59,6 +62,7 @@ impl ProcessError {
     pub fn error_kind(self) -> Option<std::io::ErrorKind> {
         match self {
             Self::Io { error_kind, .. } => Some(error_kind),
+            #[cfg(unix)]
             Self::Ptrace { error_kind, .. } => Some(error_kind),
             _ => None,
         }
@@ -67,8 +71,9 @@ impl ProcessError {
     pub fn os_code(self) -> Option<i32> {
         match self {
             Self::Io { os_error, .. } => os_error,
+            #[cfg(unix)]
             Self::Ptrace { os_error, .. } => os_error,
-            Self::RemoteThreadCreate { os_error, .. } => os_error,
+            Self::RemoteThreadCreate { os_error, .. } => Some(os_error),
             _ => None,
         }
     }
@@ -108,6 +113,7 @@ impl ProcessError {
         }
     }
 
+    #[cfg(unix)]
     pub fn ptrace(ptrace_action: PtraceAction, e: nix::errno::Errno) -> Self {
         let error = std::io::Error::from(e);
         Self::Ptrace {
@@ -122,6 +128,7 @@ impl Display for ProcessError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.error_kind() == Some(ErrorKind::PermissionDenied) {
             return match self {
+                #[cfg(unix)]
                 Self::Ptrace { .. } => write!(f, "Permission denied. Is another debugger attached?"),
                 _ => write!(f, "Permission denied. Consult the README for more information"),
             };
@@ -155,6 +162,7 @@ impl Display for ProcessError {
                     location.line(),
                 )
             }
+            #[cfg(unix)]
             Self::Ptrace { ptrace_action, .. } => {
                 write!(f, "Ptrace {ptrace_action} failed ({})", self.format_os_error())
             }
@@ -175,6 +183,9 @@ impl Display for ProcessError {
             }
             Self::InvalidGame { expected } => {
                 write!(f, "Not attached to {expected}")
+            }
+            Self::NotAttached => {
+                write!(f, "No attached process")
             }
         }
     }

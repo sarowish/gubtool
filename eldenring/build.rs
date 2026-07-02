@@ -3,5 +3,5 @@ const FOLDERS: &[(&'static str, &'static str, bool); 1] = &[
 ];
 
 fn main() {
-    utils::object::build(FOLDERS)
+    assemble::object::build(FOLDERS)
 }

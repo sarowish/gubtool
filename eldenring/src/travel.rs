@@ -11,7 +11,7 @@ use crate::{
     utils::{dlc_check, player_loaded_check},
 };
 use gubtool_core::{address::Address, slice_ops::*, sys::error::ProcResult};
-use std::{thread, time::Duration};
+use std::{time::Duration};
 
 pub fn warp_to_grace(grace_id: i64) -> ProcResult {
     let mut fun = ASM.get_function("warp_to_grace");
@@ -81,11 +81,11 @@ async fn wait_to_unhook_warp(is_night: bool) -> ProcResult {
         .add_offset(menu_man::is_fading())?;
 
     while !is_bit_set(is_faded_ptr, menu_man::fade_bit_flags::IS_FADE_SCREEN)? {
-        thread::sleep(Duration::from_millis(20));
+        tokio::time::sleep(Duration::from_millis(20)).await;
     }
 
     while is_bit_set(is_faded_ptr, menu_man::fade_bit_flags::IS_FADE_SCREEN)? {
-        thread::sleep(Duration::from_millis(20));
+        tokio::time::sleep(Duration::from_millis(20)).await;
     }
     if is_night {
         emevd::set_night()?;

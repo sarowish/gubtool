@@ -1,4 +1,3 @@
-use crate::offsets::{code_cave::CaveOffset, module_offsets::ExternalFunctionPointer};
 use gubtool_core::{
     address::Address,
     attached::game,
@@ -35,13 +34,20 @@ pub fn write_bytes(address: impl Address, data: &[u8]) -> ProcResult {
 
 pub fn spawn_thread_join(thread_start_address: impl Address, thread_code: Vec<u8>) -> ProcResult {
     ensure_eldenring()?;
+    #[cfg(unix)]
     gubtool_core::sys::spawn_thread_join(
-        CaveOffset::RunThreadAsm.addr(),
+        crate::offsets::code_cave::CaveOffset::RunThreadAsm.addr(),
         thread_start_address,
         thread_code,
-        ExternalFunctionPointer::Kernel32CreateThread,
-        ExternalFunctionPointer::Kernel32CloseHandle,
-    )
+        crate::offsets::module_offsets::ExternalFunctionPointer::Kernel32CreateThread,
+        crate::offsets::module_offsets::ExternalFunctionPointer::Kernel32CloseHandle,
+    )?;
+    #[cfg(windows)]
+    gubtool_core::sys::spawn_thread_join(
+        thread_start_address,
+        thread_code,
+    )?;
+    Ok(())
 }
 
 pub fn is_bit_set(address: impl Address, mask: u8) -> ProcResult<bool> {

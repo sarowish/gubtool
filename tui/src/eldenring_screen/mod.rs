@@ -147,6 +147,7 @@ impl EldenRing {
         unsafe {
             GAME_STATE.dlc = true;
             GAME_STATE.loaded = false;
+            GAME_STATE.state_flags = StateFlags::const_default();
         }
     }
 
@@ -164,8 +165,5 @@ pub fn dbg_lines() -> Vec<String> {
         format!("target pointer: {:#X}", GameState::target_ins().unwrap_or_default()),
         format!("target chr id: {}", GameState::target_ins().chr_id().unwrap_or_default()),
         format!("target entity id: {}", GameState::target_ins().entity_id().unwrap_or_default()),
-        format!("target lua timers: {:?}", GameState::target_ins().get_lua_timers().unwrap_or_default()),
-        format!("has speffect 15500: {}", GameState::target_ins().has_speffect(15500).unwrap_or_default()),
-        format!("has speffect 15507: {}", GameState::target_ins().has_speffect(15507).unwrap_or_default()),
     ]
 }

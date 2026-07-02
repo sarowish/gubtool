@@ -6,7 +6,7 @@ movabs r9, OFFSET write_index
 mov edi, DWORD PTR [r9]
 mov eax, edi
 imul eax, eax, 0x5
-lea rbx, [rip+OFFSET buffer]
+movabs rbx, OFFSET buffer
 add rbx, rax
 mov DWORD PTR [rbx], edx
 mov BYTE PTR [rbx+0x4], r8b

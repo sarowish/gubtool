@@ -10,12 +10,11 @@ use crate::{
         er_attach::{ErAttachConfig, ErEntries},
     },
 };
-use anyhow::{Result, anyhow};
-use gubtool_core::{error_log::log_error, game_version::Game};
+use gubtool_core::{appdata::{AppDataError, app_data_dir, log_error}, game_version::Game};
 use serde::{Deserialize, Serialize};
-use std::{env, fmt::Display, fs, path::PathBuf};
+use std::{fmt::Display, fs, path::PathBuf};
 
-pub struct AttachManager {
+pub struct AttachConfigManager {
     pub config: AttachConfig,
     pub entries: AttachEntries,
 }
@@ -25,7 +24,7 @@ pub struct AttachEntries {
     pub er: ErEntries,
 }
 
-impl AttachManager {
+impl AttachConfigManager {
     pub fn new() -> Self {
         Self {
             config: AttachConfig::read().unwrap_or_default(),
@@ -53,7 +52,7 @@ impl AttachManager {
         }
         let len = errors.len();
         for err in errors {
-            log_error(&err)
+            let _ = log_error(&err);
         }
         if len > 0 {
             return Err(AttachConfigError { error_count: len });
@@ -72,43 +71,26 @@ pub struct AttachConfig {
 }
 
 impl Config for AttachConfig {
-    fn get_path() -> Result<PathBuf> {
-        let Some(home_dir) = env::home_dir() else {
-            return Err(anyhow!("Home directory not found"));
-        };
-        Ok(home_dir
-            .join(".local")
-            .join("state")
-            .join("gubtool")
-            .join("attach_config.toml"))
+    fn get_path() -> Result<PathBuf, AppDataError> {
+        let appdata_dir = app_data_dir()?;
+        Ok(appdata_dir.join("attach_config.toml"))
     }
 
-    fn read() -> Result<Self> {
+    fn read() -> Result<Self, AppDataError> {
         let config_path = Self::get_path()?;
-        if !config_path.exists() {
-            return Err(anyhow!("Config file not found"));
-        }
-        let contents = fs::read_to_string(config_path).map_err(|_| {
-            anyhow!("Error while reading attach_config.toml. Preferences not initialized.")
-        })?;
-
-        let preferences: AttachConfig = toml::from_str(&contents).map_err(|_| {
-            anyhow!("Error while parsing attach_config.toml. Preferences not initialized.")
-        })?;
+        let contents = fs::read_to_string(config_path)?;
+        let preferences: AttachConfig = toml::from_str(&contents)?;
         Ok(preferences)
     }
 
-    fn write(&self) -> Result<()> {
+    fn write(&self) -> Result<(), AppDataError> {
         let path = Self::get_path()?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
         let toml = toml::to_string(self)?;
         fs::write(path, toml)?;
         Ok(())
     }
 
-    fn update<F>(modifier: F) -> Result<()>
+    fn update<F>(modifier: F) -> Result<(), AppDataError>
     where
         F: FnOnce(&mut AttachConfig),
     {

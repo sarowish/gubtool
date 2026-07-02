@@ -1,11 +1,9 @@
 use chrono::{DateTime, Local};
-use gubtool_core::{slice_ops::read_from_slice, sys::error::ProcResult};
+use gubtool_core::{appdata::{AppDataError, app_data_dir}, slice_ops::read_from_slice, sys::error::ProcResult};
 use std::{
     collections::HashMap,
-    env,
-    fs::{OpenOptions, create_dir_all},
-    io::{ErrorKind, Write},
-    path::{Path, PathBuf},
+    fs::{OpenOptions},
+    io::{Write},
 };
 use thiserror::Error;
 
@@ -68,29 +66,17 @@ impl EventLog {
         if self.records.is_empty() {
             return Err(ExportError::Empty)
         }
-        let Some(home_dir) = env::home_dir() else {
-            return Err(ExportError::HomeDir)
-        };
 
+        let appdata_dir = app_data_dir()?;
         let time = Local::now().format("%H:%M:%S");
-
-        let from_home = PathBuf::new()
-            .join(".local")
-            .join("state")
-            .join("gubtool")
+        let log_path = appdata_dir
             .join("event_logs")
             .join(format!("{file_prefix}_event_{time}.log"));
-        let log_path = home_dir.join(&from_home);
-
-        let parent = Path::new(&log_path).parent().expect("Invalid path");
-
-        create_dir_all(parent).map_err(|e| ExportError::Create { error_kind: e.kind() })?;
 
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(&log_path)
-            .map_err(|e| ExportError::Open { error_kind: e.kind() })?;
+            .open(&log_path)?;
 
         for record in &self.records {
             let time_stamp = record.time_stamp.format("%H:%M:%S");
@@ -100,10 +86,9 @@ impl EventLog {
                 time_stamp,
                 record.event_id,
                 record.state.to_string().to_uppercase(),
-            )
-            .map_err(|e| ExportError::Write { error_kind: e.kind() })?;
+            )?;
         }
-        Ok(format!("~/{}", from_home.display().to_string()))
+        Ok(format!("~/{}", log_path.display().to_string()))
     }
 }
 
@@ -158,18 +143,22 @@ pub trait EventLogger {
 pub enum ExportError {
     #[error("Log is empty")]
     Empty,
-    #[error("Home directory not found")]
-    HomeDir,
-    #[error("Failed to create log file: {error_kind}")]
-    Create {
-        error_kind: ErrorKind,
-    },
-    #[error("Failed to open log file: {error_kind}")]
-    Open {
-        error_kind: ErrorKind,
-    },
-    #[error("Failed to write to log file: {error_kind}")]
-    Write {
-        error_kind: ErrorKind,
-    },
+    #[error("{err}")]
+    AppData {
+        err: AppDataError
+    }
+}
+
+impl From<AppDataError> for ExportError {
+    fn from(err: AppDataError) -> Self {
+        Self::AppData { err }
+    }
+}
+
+impl From<std::io::Error> for ExportError {
+    fn from(err: std::io::Error) -> Self {
+        Self::AppData {
+            err: AppDataError::Io(err)
+        }
+    }
 }

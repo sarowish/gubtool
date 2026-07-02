@@ -12,7 +12,6 @@ ratatui-themes = { workspace = true }
 nucleo-matcher = { workspace = true }
 unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }
-nix = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
 tokio = { workspace = true }

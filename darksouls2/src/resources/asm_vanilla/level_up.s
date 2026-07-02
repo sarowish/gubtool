@@ -29,8 +29,8 @@ mov edx, DWORD PTR ds:OFFSET required_souls
 enough_souls:
 sub ecx, edx
 mov DWORD PTR ds:OFFSET souls_after, ecx
-sub esp, 0xe0
 mov ecx, OFFSET stats_entity
+sub esp, 0xe0
 lea eax, ds:OFFSET buffer
 push eax
 mov eax, OFFSET fn_level_up

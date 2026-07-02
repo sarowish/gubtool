@@ -7,7 +7,7 @@ pub mod items;
 pub(crate) mod scan_patterns;
 pub mod talk_commands;
 
-use utils::object::AsmFolder;
+use assemble::AsmFolder;
 use std::{env, sync::LazyLock};
 
 static ASM_LIB_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/eldenring.bin"));

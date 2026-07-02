@@ -1,4 +1,3 @@
-use crate::offsets::{code_cave::CaveOffset, module_offsets::ExternalFunctionPointer};
 use gubtool_core::{
     address::Address,
     attached::{game, version},
@@ -45,24 +44,38 @@ pub fn install_hook(code: &[u8], code_location: impl Address, hook_location: imp
 
 pub fn spawn_thread_join(thread_start_address: impl Address, thread_code: Vec<u8>) -> ProcResult {
     ensure_ds2()?;
+    #[cfg(unix)]
     gubtool_core::sys::spawn_thread_join(
-        CaveOffset::RunThreadAsm.addr(),
+        crate::offsets::code_cave::CaveOffset::RunThreadAsm.addr(),
         thread_start_address,
         thread_code,
-        ExternalFunctionPointer::Kernel32CreateThread,
-        ExternalFunctionPointer::Kernel32CloseHandle,
-    )
+        crate::offsets::module_offsets::ExternalFunctionPointer::Kernel32CreateThread,
+        crate::offsets::module_offsets::ExternalFunctionPointer::Kernel32CloseHandle,
+    )?;
+    #[cfg(windows)]
+    gubtool_core::sys::spawn_thread_join(
+        thread_start_address,
+        thread_code,
+    )?;
+    Ok(())
 }
 
 pub fn spawn_thread_release(thread_start_address: impl Address, thread_code: Vec<u8>) -> ProcResult {
     ensure_ds2()?;
+    #[cfg(unix)]
     gubtool_core::sys::spawn_thread_release(
-        CaveOffset::RunThreadAsm.addr(),
+        crate::offsets::code_cave::CaveOffset::RunThreadAsm.addr(),
         thread_start_address,
         thread_code,
-        ExternalFunctionPointer::Kernel32CreateThread,
-        ExternalFunctionPointer::Kernel32CloseHandle,
-    )
+        crate::offsets::module_offsets::ExternalFunctionPointer::Kernel32CreateThread,
+        crate::offsets::module_offsets::ExternalFunctionPointer::Kernel32CloseHandle,
+    )?;
+    #[cfg(windows)]
+    gubtool_core::sys::spawn_thread_release(
+        thread_start_address,
+        thread_code,
+    )?;
+    Ok(())
 }
 
 pub fn read_address(address: impl Address) -> ProcResult<u64> {

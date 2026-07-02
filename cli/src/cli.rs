@@ -2,7 +2,7 @@ use anyhow::{Ok, ensure};
 use clap::{Parser, Subcommand, ValueEnum};
 use eldenring::{self, chr_ins::ChrInsExt};
 use gubtool_core::{
-    attached::{self, game},
+    attached::{self, game, process_manager::ProcessManager},
     game_version::Game,
 };
 use std::{thread, time::Duration};
@@ -22,8 +22,12 @@ pub enum Commands {
     Quitout,
     KillTarget,
     NextPhase,
+
+    #[cfg(debug_assertions)]
     AobScan,
+    #[cfg(debug_assertions)]
     AsmSizes,
+    #[cfg(debug_assertions)]
     Test,
 }
 
@@ -37,16 +41,21 @@ pub fn run() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    #[cfg(debug_assertions)]
     match cli.command.unwrap() {
         Commands::AsmSizes => {
             gubtool_core::sys::print_asm_sizes();
             darksouls2::utils::print_asm_sizes();
             eldenring::utils::print_asm_sizes();
         },
+        Commands::Test => {
+        },
         _ => (),
     }
 
-    ensure!(attached::auto_attach().is_some(), "Game not found");
+    let _proc_manager = ProcessManager::new().try_auto_attach();
+
+    ensure!(attached::is_attached(), "Game not found");
     let game = game().unwrap();
 
     match cli.command.unwrap() {
@@ -74,11 +83,10 @@ pub fn run() -> anyhow::Result<()> {
             Game::EldenRing => eldenring::target::target_ins().next_phase()?,
             Game::DarkSouls2 => (),
         },
+        #[cfg(debug_assertions)]
         Commands::AobScan => match game {
             Game::EldenRing => eldenring::utils::scan_and_print_base_offsets()?,
             Game::DarkSouls2 => darksouls2::utils::scan_and_print_base_offsets()?,
-        },
-        Commands::Test => {
         },
         _ => (),
     }
