@@ -30,7 +30,7 @@ pub struct GameProcess {
     pub handle: HANDLE,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AddressSize {
     Bits32,
     Bits64,
@@ -140,3 +140,6 @@ impl GameProcess {
         }
     }
 }
+
+#[cfg(windows)]
+unsafe impl Send for GameProcess {}

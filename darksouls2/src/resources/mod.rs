@@ -1,12 +1,10 @@
+use assemble::{AsmFolder, AsmFunction};
 use gubtool_core::attached::is_32;
 use std::sync::LazyLock;
-use assemble::{AsmFolder, AsmFunction};
 
 pub mod bonfires;
 pub mod bosses;
 pub mod chr_names;
-pub mod covenants;
-pub mod event_flags;
 pub mod items;
 pub mod map_ids;
 pub mod menus;

@@ -1,6 +1,8 @@
 pub use crate::resources::print_asm_sizes;
+pub use crate::offsets::module_offsets::scan::*;
 
-use crate::{game_state::is_loaded, offsets};
+use crate::is_player_loaded;
+use gubtool_core::attached::is_32;
 use thiserror::Error;
 
 #[derive(Error, std::fmt::Debug)]
@@ -11,16 +13,21 @@ pub struct ScholarError;
 #[error("Player not loaded")]
 pub struct LoadedError;
 
-pub fn player_loaded_check() -> Result<(), LoadedError> {
-    if is_loaded() {
+pub fn player_loaded_check() -> anyhow::Result<()> {
+    crate::mem::ensure_ds2()?;
+    if is_player_loaded() {
         Ok(())
     } else {
         Err(LoadedError)
-    }
+    }?;
+    Ok(())
 }
 
-pub fn scan_and_print_base_offsets() -> anyhow::Result<()> {
-    let base_offsets = offsets::module_offsets::scan()?;
-    println!("{:#X?}", base_offsets);
+pub fn scholar_check() -> anyhow::Result<()> {
+    if is_32() {
+        Err(ScholarError)
+    } else {
+        Ok(())
+    }?;
     Ok(())
 }

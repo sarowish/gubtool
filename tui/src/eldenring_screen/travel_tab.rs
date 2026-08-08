@@ -1,211 +1,180 @@
 use crate::{
-    app::App,
-    common::{
-        block, blockless_list, controls::draw_controls, label_list, stateful_list::StatefulList,
-        tab_state::TabState,
-    },
-    eldenring_screen::GameState,
-    event::AnyhowExt,
-    input::request_search,
-    mutate_app, spawn_task,
+    common::controls::Control,
+    event::{AnyhowExt, KeyContext, request_search},
+    input::fuzzy_finder::SearchRequest,
+    panes::{PaneManager, TableController, TablePane, TableView},
+    screen::Screen,
+    spawn_task,
     theme::theme,
 };
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyModifiers};
 use eldenring::{
     event,
-    resources::{bosses::bosses_array, graces::graces_array},
+    resources::{
+        bosses::{self, BOSSES},
+        graces::{self, GRACES},
+    },
 };
 use nucleo_matcher::Utf32String;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Offset, Rect},
     style::Stylize,
-    text::Line,
-    widgets::{List, ListItem},
+    text::Span,
+    widgets::{Cell, Row},
 };
 use ratatui_themes::Style;
 
-const CONTROLS: &[(&str, &str)] = &[
-    ("r", "Revive"),
-    ("ctrl-r", "Revive FE"),
-];
-
-const BOSSES_IDX: usize = 0;
-const GRACES_IDX: usize = 1;
-
-pub struct TravelTab {
-    tab: TabState,
+pub(super) struct TravelTab {
+    pub pane_manager: PaneManager,
 }
 
 impl TravelTab {
     pub fn new() -> Self {
-        let mut list_states = vec![StatefulList::new(0); 2];
-        list_states[BOSSES_IDX] = StatefulList::new(0);
-        list_states[GRACES_IDX] = StatefulList::new(0);
         TravelTab {
-            tab: TabState::new(list_states),
+            pane_manager: PaneManager::new(vec![
+                TablePane::new_static(&BossTable)
+                    .with_title("Bosses")
+                    .with_controls(&CONTROLS)
+                    .freeze()
+                    .boxed(),
+                TablePane::new_static(&BonfireTable)
+                    .with_title("Graces")
+                    .freeze()
+                    .boxed(),
+            ])
         }
     }
+}
 
-    pub fn draw(&mut self, frame: &mut Frame, layout: Rect) {
+impl Screen for TravelTab {
+    fn draw(&mut self, frame: &mut Frame, rect: Rect) {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![
                 Constraint::Percentage(50),
                 Constraint::Percentage(50),
             ])
-            .split(layout);
+            .split(rect);
 
-        let bosses_block = block(Some("Bosses"), Some(self.tab.block_style(BOSSES_IDX)))
-            .title(self.revive_status_line().right_aligned());
-        let bosses_inner = bosses_block.inner(layout[BOSSES_IDX]);
-        frame.render_widget(&bosses_block, layout[BOSSES_IDX]);
+        self.pane_manager.draw(frame, &layout);
 
-        let [boss_name, boss_area] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![
-                Constraint::Min(44),
-                Constraint::Max(33),
-            ])
-            .areas(bosses_inner);
-
-        let (boss_names, boss_areas) = self.bosses_list();
-        frame.render_stateful_widget(
-            boss_names,
-            boss_name,
-            &mut self.tab.get_list_state(BOSSES_IDX),
-        );
-        frame.render_stateful_widget(
-            boss_areas,
-            boss_area,
-            &mut self.tab.get_list_state(BOSSES_IDX),
-        );
-        draw_controls(frame, layout[BOSSES_IDX], CONTROLS);
-
-        let graces_block = block(Some("Graces"), Some(self.tab.block_style(GRACES_IDX)));
-        let graces_inner = graces_block.inner(layout[GRACES_IDX]);
-        frame.render_widget(&graces_block, layout[GRACES_IDX]);
-
-        let [grace_name, grace_area] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![
-                Constraint::Min(42),
-                Constraint::Max(33),
-            ])
-            .areas(graces_inner);
-
-        let (grace_names, grace_areas) = self.graces_list();
-        frame.render_stateful_widget(
-            grace_names,
-            grace_name,
-            &mut self.tab.get_list_state(GRACES_IDX),
-        );
-        frame.render_stateful_widget(
-            grace_areas,
-            grace_area,
-            &mut self.tab.get_list_state(GRACES_IDX),
-        );
+        let text = self.revive_status_line();
+        let width = layout[0].width;
+        let len = text.width();
+        frame.render_widget(text, layout[0] + Offset::new(width as i32 - len as i32 - 1, 0));
     }
 
-    pub fn handle_keys(&mut self, key: KeyEvent) {
-        self.tab.set_length(BOSSES_IDX, bosses_array(GameState::dlc()).len());
-        self.tab.set_length(GRACES_IDX, graces_array(GameState::dlc()).len());
-
-        self.tab.handle_keys(key);
-
-        match key.code {
-            KeyCode::Enter => {
-                self.handle_select()
-            }
-            KeyCode::Char('f') => {
-                let entries = if self.tab.current_list == BOSSES_IDX {
-                    bosses_array(GameState::dlc()).iter()
-                        .map(|boss| Utf32String::from(format!("{}|{}", boss.name, boss.main_area)))
-                        .collect::<Vec<Utf32String>>()
-                } else {
-                    graces_array(GameState::dlc()).iter()
-                        .map(|grace| Utf32String::from(format!("{}|{}", grace.name, grace.main_area)))
-                        .collect::<Vec<Utf32String>>()
-                };
-                spawn_task! {
-                    if let Some(new_idx) = request_search(entries).await {
-                        mutate_app!(|app: &mut App| {
-                            let tab = &mut app.elden_ring.travel.tab;
-                            tab.set_list_selected(tab.current_list, new_idx);
-                        });
-                    }
-                }
-            }
-            KeyCode::Char('r') => {
-                if self.tab.current_list == BOSSES_IDX
-                && let Some(selected) = self.tab.get_list_selected(BOSSES_IDX) {
-                    let first_encounter = key.modifiers == KeyModifiers::CONTROL;
-                    bosses_array(GameState::dlc())[selected]
-                        .revive(first_encounter)
-                        .send_error()
-                }
-            }
-            _ => ()
-        }
+    fn handle_keys(&mut self, ctx: &mut KeyContext) {
+        self.pane_manager.handle_keys(ctx);
     }
+}
 
-    fn handle_select(&self) {
-        let Some(selected_idx) = self.tab.get_list_selected(self.tab.current_list) else { return; };
-        if self.tab.current_list == BOSSES_IDX {
+struct BossTable;
+impl TableController for BossTable {
+    fn make_table_view(&self) -> TableView {
+        let rows: Vec<Row> = BOSSES.iter().map(|boss| {
+            Row::new([
+                Cell::from(boss.name),
+                Cell::from(boss.main_area).fg(theme().muted),
+            ])
+        })
+        .collect();
+
+        TableView::new(rows).with_widths(&[
+            Constraint::Min(44),
+            Constraint::Max(33),
+        ])
+    }
+    fn handle_keys_selected(&self, selected: usize, ctx: &mut KeyContext) {
+        if ctx.key_enter() {
             spawn_task! {
-                bosses_array(GameState::dlc())[selected_idx]
-                    .warp()
-                    .await
-                    .send_error()
+                BOSSES[selected].warp().await.send_error()
             }
-        } else if self.tab.current_list == GRACES_IDX {
-            graces_array(GameState::dlc())[selected_idx]
-                .warp()
-                .send_error();
+        }
+
+        if ctx.key_with_modifiers(KeyCode::Char('r'), KeyModifiers::CONTROL) {
+            BOSSES[selected].revive(true).send_error()
+        }
+
+        if ctx.key_char('r') {
+            BOSSES[selected].revive(false).send_error()
+        }
+
+        if ctx.key_char('f') {
+            request_search(&BossesSearch);
         }
     }
+}
 
-    fn bosses_list(&self) -> (List<'static>, List<'static>) {
-        let items: (Vec<ListItem>, Vec<ListItem>) = bosses_array(GameState::dlc()).iter()
-            .map(|boss| (
-                    ListItem::from(boss.name),
-                    ListItem::from(Line::raw(boss.main_area)).fg(theme().muted)
-            ))
-            .collect();
-        (
-            blockless_list(items.0, &self.tab, BOSSES_IDX),
-            label_list(items.1, &self.tab, BOSSES_IDX)
-        )
+struct BonfireTable;
+impl TableController for BonfireTable {
+    fn make_table_view(&self) -> TableView {
+        let rows: Vec<Row> = GRACES.iter().map(|bonfire| {
+            Row::new([
+                Cell::from(bonfire.name),
+                Cell::from(bonfire.main_area).fg(theme().muted),
+            ])
+        })
+        .collect();
+
+        TableView::new(rows).with_widths(&[
+            Constraint::Min(42),
+            Constraint::Max(33),
+        ])
     }
+    fn handle_keys_selected(&self, selected: usize, ctx: &mut KeyContext) {
+        if ctx.key_enter() {
+            GRACES[selected].warp().send_error();
+        }
 
-    fn graces_list(&self) -> (List<'static>, List<'static>) {
-        let items: (Vec<ListItem>, Vec<ListItem>) = graces_array(GameState::dlc()).iter()
-            .map(|grace| (
-                    ListItem::from(grace.name),
-                    ListItem::from(Line::raw(grace.main_area)).fg(theme().muted)
-            ))
-            .collect();
-        (
-            blockless_list(items.0, &self.tab, GRACES_IDX),
-            label_list(items.1, &self.tab, GRACES_IDX)
-        )
+        if ctx.key_char('f') {
+            request_search(&BonfireSearch);
+        }
     }
+}
 
-    fn revive_status_line(&self) -> Line<'static> {
-        let selected_idx = self.tab.lists_states[BOSSES_IDX].selected().unwrap_or_default();
-        let boss = bosses_array(GameState::dlc())[selected_idx];
-        let mut style = Style::from(theme().success);
-        let text = if !GameState::loaded() {
+struct BossesSearch;
+impl SearchRequest for BossesSearch {
+    fn items(&self) -> Vec<Utf32String> {
+        bosses::BOSSES.iter()
+            .map(|boss| Utf32String::from(format!("{}|{}", boss.name, boss.main_area)))
+            .collect()
+    }
+}
+
+struct BonfireSearch;
+impl SearchRequest for BonfireSearch {
+    fn items(&self) -> Vec<Utf32String> {
+        graces::GRACES.iter()
+            .map(|grace| Utf32String::from(format!("{}|{}", grace.name, grace.main_area)))
+            .collect()
+    }
+}
+
+const CONTROLS: [Control; 2] = [
+    Control::new("r", "Revive"),
+    Control::new("ctrl-r", "Revive FE"),
+];
+
+impl TravelTab {
+    fn revive_status_line(&self) -> Span<'static> {
+        let selected_idx = self.pane_manager.get_list_selected(0).unwrap_or_default();
+        let boss = BOSSES[selected_idx];
+        let revive_status = boss.revive_status();
+
+        let style = match revive_status {
+            event::AliveStatus::Dead => Style::from(theme().error),
+            _ => Style::from(theme().success),
+        };
+
+        let text = if !eldenring::is_player_loaded() {
             "".to_string()
         } else {
-            boss.revive_status().to_string()
+            revive_status.to_string()
         };
-        if self.tab.current_list != BOSSES_IDX {
-            style = Style::from(theme().fg)
-        } else if text == event::DEAD {
-            style = Style::from(theme().error)
-        }
-        Line::from(text)
+
+        Span::from(text)
             .style(style)
     }
 }

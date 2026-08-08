@@ -1,10 +1,11 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crate::event::KeyContext;
+use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::{Frame, layout::Rect};
 use std::{fmt::Display, ops::RangeBounds};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-struct Input {
+pub struct Input {
     pub text: String,
     idx: usize,
     offset: usize,
@@ -144,7 +145,7 @@ impl Input {
         self.check_lower_bound();
     }
 
-    fn clear_line(&mut self) {
+    pub fn clear_line(&mut self) {
         if !self.text.is_empty() {
             self.text.clear();
             self.idx = 0;
@@ -157,28 +158,56 @@ impl Input {
         self.clear_range(self.idx..);
     }
 
-    pub fn handle_keys(&mut self, key: KeyEvent) {
-        match (key.code, key.modifiers) {
-            (KeyCode::Left, KeyModifiers::CONTROL) => self.move_cursor_one_word_left(),
-            (KeyCode::Right, KeyModifiers::CONTROL) => self.move_cursor_one_word_right(),
-            (KeyCode::Left, _) | (KeyCode::Char('b'), KeyModifiers::CONTROL) => {
-                self.move_cursor_left();
-            }
-            (KeyCode::Right, _) | (KeyCode::Char('f'), KeyModifiers::CONTROL) => {
-                self.move_cursor_right();
-            }
-            (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
-                self.move_cursor_to_beginning_of_line();
-            }
-            (KeyCode::Char('e'), KeyModifiers::CONTROL) => self.move_cursor_to_end_of_line(),
-            (KeyCode::Char('w'), KeyModifiers::CONTROL) => self.delete_word_before_cursor(),
-            (KeyCode::Char('u'), KeyModifiers::CONTROL) => self.clear_line(),
-            (KeyCode::Char('k'), KeyModifiers::CONTROL) => self.clear_to_right(),
-            (KeyCode::Backspace, _) | (KeyCode::Char('h'), KeyModifiers::CONTROL) => {
-                self.pop_key();
-            }
-            (KeyCode::Char(c), _) => self.insert_key(c),
-            _ => (),
+    pub fn handle_keys(&mut self, ctx: &mut KeyContext) {
+        if ctx.key_with_modifiers(KeyCode::Left, KeyModifiers::CONTROL) {
+            self.move_cursor_one_word_left();
+        }
+
+        if ctx.key_with_modifiers(KeyCode::Right, KeyModifiers::CONTROL) {
+            self.move_cursor_one_word_right();
+        }
+
+        if ctx.key_with_modifiers(KeyCode::Char('b'), KeyModifiers::CONTROL)
+            || ctx.key_with_modifiers(KeyCode::Left, KeyModifiers::NONE)
+        {
+            self.move_cursor_left();
+        }
+
+        if ctx.key_with_modifiers(KeyCode::Char('f'), KeyModifiers::CONTROL)
+            || ctx.key_with_modifiers(KeyCode::Right, KeyModifiers::NONE)
+        {
+            self.move_cursor_right();
+        }
+
+        if ctx.key_with_modifiers(KeyCode::Char('a'), KeyModifiers::CONTROL) {
+            self.move_cursor_to_beginning_of_line();
+        }
+
+        if ctx.key_with_modifiers(KeyCode::Char('e'), KeyModifiers::CONTROL) {
+            self.move_cursor_to_end_of_line();
+        }
+
+        if ctx.key_with_modifiers(KeyCode::Char('w'), KeyModifiers::CONTROL) {
+            self.delete_word_before_cursor();
+        }
+
+        if ctx.key_with_modifiers(KeyCode::Char('u'), KeyModifiers::CONTROL) {
+            self.clear_line();
+        }
+
+        if ctx.key_with_modifiers(KeyCode::Char('k'), KeyModifiers::CONTROL) {
+            self.clear_to_right();
+        }
+
+        if ctx.key_with_modifiers(KeyCode::Char('h'), KeyModifiers::CONTROL)
+            || ctx.key_with_modifiers(KeyCode::Backspace, KeyModifiers::NONE)
+        {
+            self.pop_key();
+        }
+
+        if let Some(KeyCode::Char(c)) = ctx.peek_code() {
+            ctx.consume();
+            self.insert_key(c);
         }
     }
 

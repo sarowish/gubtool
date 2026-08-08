@@ -1,5 +1,3 @@
-use once_cell::sync::Lazy;
-
 #[derive(Clone, Copy)]
 pub struct Boss {
     pub name: &'static str,
@@ -16,15 +14,7 @@ pub struct Boss {
     pub dlc: bool,
 }
 
-pub fn bosses_array(dlc_available: bool) -> &'static [Boss] {
-    if dlc_available { &BOSSES } else { &BOSSES_NO_DLC }
-}
-
-static BOSSES_NO_DLC: Lazy<Vec<Boss>> = Lazy::new(|| {
-    BOSSES.iter().filter(|boss| !boss.dlc).cloned().collect()
-});
-
-static BOSSES: [Boss; 207] = [
+pub static BOSSES: [Boss; 207] = [
     Boss {
         name: "Beastman of Farum Azula",
         main_area: "Limgrave",

@@ -20,6 +20,11 @@ pub const STATS_PTR: Offset = Offset {
     scholar: 0x490,
 };
 
+pub const HANDLE: Offset = Offset {
+    vanilla: 0,
+    scholar: 0x270,
+};
+
 pub const PARAMS_PTR: Offset = Offset {
     vanilla: 0x20,
     scholar: 0x38,
@@ -101,5 +106,26 @@ pub mod stats_offsets {
     pub const COVENANT: Offset = Offset {
         vanilla: 0x1A9,
         scholar: 0x1AD,
+    };
+}
+
+pub const BOSS_OPERATOR: Offset = Offset {
+    vanilla: 0xAC,
+    scholar: 0xE8,
+};
+
+pub mod boss_operator_offsets {
+    use crate::offsets::Offset;
+    pub const CHR_AI_MANIPULATOR: Offset = Offset {
+        vanilla: 0xC,
+        scholar: 0x18,
+    };
+}
+
+pub mod chr_ai_manipulator_offsets {
+    use crate::offsets::Offset;
+    pub const CHR_AI: Offset = Offset {
+        vanilla: 0x10,
+        scholar: 0x20,
     };
 }

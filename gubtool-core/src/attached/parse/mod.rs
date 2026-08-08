@@ -1,14 +1,9 @@
 use crate::{
     attached::{AddressSize, ParseState},
     game_version::{DarkSouls2Version, EldenRingVersion, Game, GameVersion},
+    pe::PeParser,
 };
-use pelite::{
-    FileMap,
-    pe32::{self, Pe as Pe32},
-    pe64::{self, Pe as Pe64},
-    resources::FindError,
-};
-use std::{error::Error, fmt::Display, path::PathBuf};
+use std::path::PathBuf;
 
 
 #[cfg(unix)]
@@ -20,8 +15,6 @@ mod win;
 #[cfg(windows)]
 pub use win::*;
 
-// const SHADPS4_BASE: u64 = 0x800000000;
-
 pub const VALID_COMMS: &[(&str, Game); 4] = &[
     ("eldenring.exe", Game::EldenRing),
     ("start_protected", Game::EldenRing),
@@ -29,39 +22,28 @@ pub const VALID_COMMS: &[(&str, Game); 4] = &[
     ("DarkSoulsII.exe", Game::DarkSouls2),
 ];
 
-
-#[derive(Debug, Clone, Copy)]
-pub enum ParsePeError {
-    IoError(std::io::ErrorKind),
-    PeError(pelite::resources::FindError),
-}
-
-fn parse_file_for_version_and_address_size(
+fn parse_pe_for_version_and_address_size(
     game: &Game,
     exe_path: &PathBuf,
     mut parse_errors: Vec<ParseError>,
 ) -> (AddressSize, GameVersion, ParseState) {
-    let mut address_size = AddressSize::Bits64;
 
-    let version_info = match pe_version_64(&exe_path) {
-        Ok(v) => v,
-        Err(ParseError::ParsePe {
-            error: ParsePeError::PeError(pelite::resources::FindError::Pe(pelite::Error::PeMagic))
-        }) => {
-            address_size = AddressSize::Bits32;
-            match pe_version_32(&exe_path) {
-                Ok(v) => v,
-                Err(err) => {
-                    parse_errors.push(err);
-                    Default::default()
-                }
+    let mut address_size = AddressSize::Bits64;
+    let mut version_info = (0, 0, 0);
+
+    match PeParser::new(exe_path) {
+        Ok(pe_image) => {
+            match pe_image.address_size() {
+                Ok(size) => address_size = size,
+                Err(err) => parse_errors.push(err.into()),
             }
-        }
-        Err(err) => {
-            parse_errors.push(err);
-            Default::default()
-        }
-    };
+            match pe_image.version_info() {
+                Ok(info) => version_info = info,
+                Err(err) => parse_errors.push(err.into()),
+            }
+        },
+        Err(err) => parse_errors.push(err.into()),
+    }
 
     let game_version = match game {
         Game::DarkSouls2 => {
@@ -104,51 +86,15 @@ fn parse_file_for_version_and_address_size(
     (address_size, game_version, parse_state)
 }
 
-fn pe_version_64(path: &PathBuf) -> Result<(u16, u16, u16), ParseError> {
-    let file_map = FileMap::open(path).map_err(|err| {
-        ParseError::ParsePe { error: ParsePeError::IoError(err.kind()) }
-    })?;
-    let version_info = pe64::PeFile::from_bytes(&file_map)
-        .and_then(|pe| pe.resources()) .map_err(|err| { FindError::from(err) })
-        .and_then(|resources| resources.version_info())
-        .map_err(|err| {
-            ParseError::ParsePe { error: ParsePeError::PeError(FindError::from(err)) }
-        })?;
-    let product_version = version_info.fixed().unwrap().dwProductVersion;
-    Ok((
-        product_version.Major,
-        product_version.Minor,
-        product_version.Patch,
-    ))
-}
-
-fn pe_version_32(path: &PathBuf) -> Result<(u16, u16, u16), ParseError> {
-    let file_map = FileMap::open(path).map_err(|err| {
-        ParseError::ParsePe { error: ParsePeError::IoError(err.kind()) }
-    })?;
-    let version_info = pe32::PeFile::from_bytes(&file_map)
-        .and_then(|pe| pe.resources()) .map_err(|err| { FindError::from(err) })
-        .and_then(|resources| resources.version_info())
-        .map_err(|err| {
-            ParseError::ParsePe { error: ParsePeError::PeError(FindError::from(err)) }
-        })?;
-    let product_version = version_info.fixed().unwrap().dwProductVersion;
-    Ok((
-        product_version.Major,
-        product_version.Minor,
-        product_version.Patch,
-    ))
-}
-
 fn match_vanilla(
     (major, minor, patch): (u16, u16, u16),
 ) -> Result<DarkSouls2Version, ParseError> {
     Ok(match (major, minor, patch) {
-        (1, 0, 3) => DarkSouls2Version::Vanilla1_0_3,
-        (1, 0, 4) => DarkSouls2Version::Vanilla1_0_4,
-        (1, 0, 5) => DarkSouls2Version::Vanilla1_0_5,
-        (1, 0, 6) => DarkSouls2Version::Vanilla1_0_5,
-        (1, 0, 7) => DarkSouls2Version::Vanilla1_0_7,
+        // (1, 0, 3) => DarkSouls2Version::Vanilla1_0_3,
+        // (1, 0, 4) => DarkSouls2Version::Vanilla1_0_4,
+        // (1, 0, 5) => DarkSouls2Version::Vanilla1_0_5,
+        // (1, 0, 6) => DarkSouls2Version::Vanilla1_0_5,
+        // (1, 0, 7) => DarkSouls2Version::Vanilla1_0_7,
         (1, 0, 10) => DarkSouls2Version::Vanilla1_0_10,
         (1, 0, 11) => DarkSouls2Version::Vanilla1_0_11,
         (1, 0, 12) => DarkSouls2Version::Vanilla1_0_12,
@@ -210,18 +156,3 @@ fn match_eldenring((major, minor, patch): (u16, u16, u16)) -> Result<EldenRingVe
         }
     })
 }
-
-impl Display for ParsePeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::IoError(kind) => {
-                write!(f, "Couldn't open filemap: {kind}")
-            }
-            Self::PeError(err) => {
-                write!(f, "Error while parsing PE file: {err}")
-            }
-        }
-    }
-}
-
-impl Error for ParsePeError {}

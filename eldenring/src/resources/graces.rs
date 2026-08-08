@@ -1,5 +1,3 @@
-use once_cell::sync::Lazy;
-
 #[derive(Clone, Copy)]
 pub struct Grace {
     pub main_area: &'static str,
@@ -9,15 +7,7 @@ pub struct Grace {
     pub dlc: bool,
 }
 
-pub fn graces_array(dlc_available: bool) -> &'static [Grace] {
-    if dlc_available { &GRACES } else { &GRACES_NO_DLC }
-}
-
-static GRACES_NO_DLC: Lazy<Vec<Grace>> = Lazy::new(|| {
-    GRACES.iter().filter(|grace| !grace.dlc).cloned().collect()
-});
-
-static GRACES: [Grace; 419] = [
+pub static GRACES: [Grace; 419] = [
     Grace {
         main_area: "Roundtable Hold",
         name: "Table of Lost Grace",

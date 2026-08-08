@@ -1,20 +1,26 @@
 use crate::{
     attach_options::AttachOptions,
-    darksouls2_screen::{self, DarkSouls2},
-    eldenring_screen::{self, EldenRing},
-    event::{AnyhowExt, Event, InfoType, ResultExt, send_event, start_event_loop_thread},
+    common::controls::{Control, HelpPopup},
+    darksouls2_screen::DarkSouls2Screen,
+    debug_screen::DebugPopup,
+    eldenring_screen::EldenRingScreen,
+    event::{
+        AnyhowExt, Event, InfoType, KeyContext, ResultExt, send_event, start_event_loop_thread,
+    },
     game_screen_selector::GameScreenSelector,
-    help,
+    impl_game_screen,
     input::{fuzzy_finder::FuzzyFinder, input_prompt::InputPrompt},
     memory_viewer_screen::MemoryViewerScreen,
+    popup::Popup,
     process_selector::ProcessSelector,
+    screen::GameScreen,
     spawn_task,
-    theme::{THEME, ThemeSelector, theme},
+    theme::{ThemeSelector, theme},
     ui_state::UiState,
 };
 use color_eyre::eyre::Result;
 use config::Config;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyModifiers};
 use gubtool_core::{
     attached::{self, is_attached},
     game_version::Game,
@@ -23,146 +29,122 @@ use ratatui::{
     DefaultTerminal, Frame,
     layout::{Alignment, Constraint, Direction, Layout},
     style::Stylize,
-    text::{Line, Text},
-    widgets::{Block, Clear, Paragraph},
+    widgets::{Block, Paragraph},
 };
-use ratatui_themes::ThemeName;
-use std::{sync::RwLock, time::Duration};
+use std::{
+    cell::{LazyCell, RefCell},
+    rc::Rc,
+};
 
 pub struct App {
     running: bool,
-    current_screen: CurrentScreen,
-    pub game_screen: Game,
+    pub game_screen: Rc<RefCell<Game>>,
+    help: HelpPopup,
+    debug: DebugPopup,
     show_info: bool,
     info_message: String,
     info_type: InfoType,
-    block_inputs: bool,
     input: InputPrompt,
     fuzzy_finder: FuzzyFinder,
+    pub has_pressed_f1: bool,
 
-    pub theme: ThemeName,
     theme_selector: ThemeSelector,
     process_selector: ProcessSelector,
     game_screen_selector: GameScreenSelector,
     pub attach_options: AttachOptions,
     pub memory_viewer_screen: MemoryViewerScreen,
 
-    pub elden_ring: EldenRing,
-    pub dark_souls_2: DarkSouls2,
+    elden_ring: LazyCell<EldenRingScreen>,
+    dark_souls_2: LazyCell<DarkSouls2Screen>,
 }
 
 impl App {
-    pub fn new() -> App {
+    pub fn new() -> Self {
+        let game_screen = Rc::new(RefCell::new(Game::EldenRing));
         App {
             running: true,
-            game_screen: Game::EldenRing,
-            current_screen: CurrentScreen::Main,
+            game_screen: Rc::clone(&game_screen),
+            help: HelpPopup::new(&HELP_ENTRIES),
+            debug: DebugPopup::default(),
             show_info: false,
+            has_pressed_f1: false,
             info_message: "".to_string(),
             info_type: InfoType::SysError,
-            block_inputs: false,
             input: InputPrompt::default(),
             fuzzy_finder: FuzzyFinder::default(),
 
-            theme: ThemeName::TokyoNight,
             theme_selector: ThemeSelector::new(),
             process_selector: ProcessSelector::new(),
             game_screen_selector: GameScreenSelector::new(),
-            attach_options: AttachOptions::new(),
+            attach_options: AttachOptions::new(Rc::clone(&game_screen)),
             memory_viewer_screen: MemoryViewerScreen::new(),
 
-            elden_ring: EldenRing::new(),
-            dark_souls_2: DarkSouls2::new(),
+            elden_ring: LazyCell::new(|| {
+                EldenRingScreen::new()
+            }),
+            dark_souls_2: LazyCell::new(|| {
+                DarkSouls2Screen::new()
+            }),
         }
     }
 
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        UiState::apply(&mut self);
-        THEME.set(RwLock::new(self.theme.palette())).unwrap();
         let rx = start_event_loop_thread();
+        config::start_watcher_thread();
+        UiState::apply(&mut self);
 
-        self.try_auto_attach();
+        try_auto_attach();
 
         while self.running {
-            terminal.draw(|frame| Self::draw(&mut self, frame))?;
+            terminal.draw(|frame| self.draw(frame))?;
 
             match rx.recv()? {
-                Event::Key(key) => {
-                    Self::handle_keys(&mut self, key)
+                Event::Key(mut ctx) => {
+                    self.handle_keys(&mut ctx)
                 }
                 Event::Info((text, info_type)) => {
                     self.info_message = text;
                     self.info_type = info_type;
                     self.show_info = true;
                 }
-                Event::BackgroundTick => {
-                    if !is_attached() {
-                        self.try_auto_attach();
-                    } else {
-                        if let Some(detached_game) = self.process_selector.manager.detach_if_invalid() {
-                            send_event(Event::Detach(detached_game));
-                            continue;
-                        }
-                        match self.game_screen {
-                            Game::EldenRing => self.elden_ring.background_tick(),
-                            Game::DarkSouls2 => self.dark_souls_2.background_tick(),
-                        }
-                    }
-                }
                 Event::RenderTick => {
                     if is_attached() {
-                        match self.game_screen {
-                            Game::EldenRing => self.elden_ring.render_tick(),
-                            Game::DarkSouls2 => self.dark_souls_2.render_tick(),
+                        match attached::detach_if_invalid() {
+                            Some(Game::EldenRing) => eldenring::reset(),
+                            Some(Game::DarkSouls2) => darksouls2::reset(),
+                            None => (),
                         }
                     }
-                }
-                Event::Attach => {
-                    if let Some(game) = attached::game() {
-                        self.game_screen = game;
-                        let _ = UiState::update(|c| c.global.game_screen = game );
-
-                        let time_to_wait = 5.0 - attached::uptime();
-
-                        spawn_task! {
-                            if time_to_wait > 0.1 {
-                                tokio::time::sleep(Duration::from_secs_f64(time_to_wait)).await;
-                            }
-                            send_event(Event::ApplyAttach);
-                        }
-                    }
-                }
-                Event::ApplyAttach => {
                     match attached::game() {
-                        Some(Game::EldenRing) => {
-                            self.attach_options.manager.attach(Game::EldenRing).send_error();
-                            self.elden_ring.on_attach()
-                        }
-                        Some(Game::DarkSouls2) => {
-                            self.attach_options.manager.attach(Game::DarkSouls2).send_error();
-                            self.dark_souls_2.on_attach()
-                        }
-                        None => Ok(()),
+                        Some(Game::EldenRing) => eldenring::update(),
+                        Some(Game::DarkSouls2) => darksouls2::update(),
+                        None => try_auto_attach(),
                     }
-                    .send_error()
-                }
-                Event::Detach(game) => {
-                    match game {
-                        Game::EldenRing => self.elden_ring.on_unattach(),
-                        Game::DarkSouls2 => self.dark_souls_2.on_unattach(),
-                    }
-                }
-                Event::BlockInputs(state) => {
-                    self.block_inputs = state;
                 }
                 Event::Input((prompt, sender, type_id)) => {
                     self.input.show(prompt, sender, type_id)
                 }
-                Event::Search((entries, sender)) => {
-                    self.fuzzy_finder.show(entries, sender)
+                Event::SearchRequest(request) => {
+                    self.fuzzy_finder.show(request);
                 }
-                Event::AppState(closure) => {
-                    closure(&mut self)
+                Event::SearchResult(selected) => {
+                    self.fuzzy_finder.request.unwrap().jump(&mut self, selected);
+                }
+                Event::GameScreen(game) => {
+                    *self.game_screen.borrow_mut() = game;
+                    let _ = UiState::update(|c| c.global.game_screen = game );
+                }
+                Event::Attach => {
+                    if let Some(game) = attached::game() {
+                        send_event(Event::GameScreen(game));
+                        spawn_task! {
+                            match game {
+                                Game::DarkSouls2 => darksouls2::attach().await,
+                                Game::EldenRing => eldenring::attach().await,
+                            }
+                            .send_error()
+                        }
+                    }
                 }
             }
         }
@@ -173,7 +155,7 @@ impl App {
         let background = Block::default().bg(theme().bg);
         frame.render_widget(background, frame.area());
 
-        let constraints = if self.show_info {
+        let constraints = if self.show_info || !self.has_pressed_f1 {
             vec![
                 Constraint::Length(1),
                 Constraint::Fill(1),
@@ -193,16 +175,19 @@ impl App {
 
         let [pid_area, version_area] = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(vec![
+            .constraints([
                 Constraint::Max(25),
                 Constraint::Fill(1)
             ])
             .areas(layout[0]);
 
-        frame.render_widget(self.pid_paragraph(), pid_area);
-        frame.render_widget(self.version_paragraph(), version_area);
+        frame.render_widget(pid_paragraph(), pid_area);
+        frame.render_widget(version_paragraph(), version_area);
 
-        if self.show_info {
+        if !self.has_pressed_f1 {
+            let info_paragraph = Paragraph::new("Press F1 to show controls").style(theme().warning);
+            frame.render_widget(info_paragraph, layout[2]);
+        } else if self.show_info {
             let style = match self.info_type {
                 InfoType::SysError => theme().error,
                 InfoType::GameError => theme().warning,
@@ -212,153 +197,135 @@ impl App {
             frame.render_widget(info_paragraph, layout[2]);
         }
 
-        match self.game_screen {
-            Game::EldenRing => self.elden_ring.draw(frame, layout[1]),
-            Game::DarkSouls2 => self.dark_souls_2.draw(frame, layout[1]),
-        }
+        self.current_screen().draw(frame, layout[1]);
 
-        match self.current_screen {
-            CurrentScreen::ProcessSelection => {
-                self.process_selector.draw(frame)
-            }
-            CurrentScreen::ThemeSelection => {
-                self.theme_selector.draw(frame, &self.theme)
-            }
-            CurrentScreen::GameScreenSelection => {
-                self.game_screen_selector.draw(frame)
-            }
-            CurrentScreen::AttachOptions => {
-                self.attach_options.draw(frame, &self.game_screen)
-            }
-            CurrentScreen::MemoryViewer => {
-                self.memory_viewer_screen.draw(frame, layout[1]);
-            },
-            CurrentScreen::Help => {
-                help::draw(frame)
-            }
-            CurrentScreen::Debug => {
-                frame.render_widget(Clear, frame.area());
-                frame.render_widget(self.dbg_paragraph(), frame.area());
-            }
-            _ => (),
-        }
-        self.input.draw_popup_checked(frame);
-        self.fuzzy_finder.draw_checked(frame);
+        self.fuzzy_finder.draw_if_open(frame);
+        self.attach_options.draw_if_open(frame);
+        self.help.draw_if_open(frame);
+        self.theme_selector.draw_if_open(frame);
+        self.game_screen_selector.draw_if_open(frame);
+        self.process_selector.draw_if_open(frame);
+        self.debug.draw_if_open(frame);
+        self.memory_viewer_screen.draw_if_open(frame);
+        self.input.draw_if_open(frame);
     }
 
-    fn handle_keys(&mut self, key: KeyEvent) {
-        if key.code == KeyCode::Char('c') &&
-        key.modifiers == KeyModifiers::CONTROL {
+    fn handle_keys(&mut self, ctx: &mut KeyContext) {
+        if ctx.key_with_modifiers(KeyCode::Char('c'), KeyModifiers::CONTROL) {
             self.running = false
         }
+
         if self.show_info {
             self.show_info = false;
         }
-        if self.input.show {
-            self.input.handle_keys(key);
-            return;
-        }
-        if self.fuzzy_finder.show {
-            self.fuzzy_finder.handle_keys(key);
-            return;
-        }
 
-        match self.current_screen {
-            CurrentScreen::ProcessSelection => {
-                self.process_selector.handle_keys(key, &mut self.current_screen)
-            },
-            CurrentScreen::GameScreenSelection => {
-                self.game_screen_selector.handle_keys(key, &mut self.game_screen, &mut self.current_screen)
-            },
-            CurrentScreen::ThemeSelection => {
-                self.theme_selector.handle_keys(key, &mut self.theme, &mut self.current_screen)
-            },
-            CurrentScreen::AttachOptions => {
-                self.attach_options.handle_keys(key, &self.game_screen, &mut self.current_screen)
-            },
-            CurrentScreen::MemoryViewer => {
-                self.memory_viewer_screen.handle_keys(key, &mut self.current_screen)
-            },
-            CurrentScreen::Help | CurrentScreen::Debug => {
-                self.current_screen = CurrentScreen::Main
-            },
-            CurrentScreen::Main => {
-                match self.game_screen {
-                    Game::EldenRing => self.elden_ring.handle_keys(key, self.block_inputs),
-                    Game::DarkSouls2 => self.dark_souls_2.handle_keys(key, self.block_inputs),
-                }
-                if self.block_inputs {
-                    return;
-                }
-                match (key.code, key.modifiers) {
-                    (KeyCode::Char('a'), _) => self.current_screen = CurrentScreen::AttachOptions,
-                    (KeyCode::F(1), _) => self.current_screen = CurrentScreen::Help,
-                    (KeyCode::Char('p'), _) => self.current_screen = {
-                        self.process_selector.manager.refresh();
-                        self.process_selector.table.select(Some(0));
-                        CurrentScreen::ProcessSelection
-                    },
-                    (KeyCode::Char('o'), _) => self.current_screen = CurrentScreen::GameScreenSelection,
-                    (KeyCode::F(12), KeyModifiers::CONTROL) => self.current_screen = CurrentScreen::MemoryViewer,
-                    (KeyCode::F(12), _) => self.current_screen = CurrentScreen::ThemeSelection,
-                    #[cfg(debug_assertions)]
-                    (KeyCode::F(5), KeyModifiers::CONTROL) => self.current_screen = CurrentScreen::Debug,
-                    _ => ()
-                }
-            }
-        }
-    }
-
-    fn try_auto_attach(&mut self) {
-        if let Some(result) = self.process_selector.manager.try_auto_attach() {
-            result.send_error();
-            send_event(Event::Attach);
-        }
-    }
-
-    fn pid_paragraph(&self) -> Paragraph<'static> {
-        if is_attached() {
-            Paragraph::new(format!("Process ID: {}", attached::pid().unwrap()))
-        } else {
-            Paragraph::new("Scanning for game...")
-        }.style(theme().fg)
-    }
-    fn version_paragraph(&self) -> Paragraph<'static> {
-        if let Some(game_version)  = attached::game_version() {
-            Paragraph::new(format!("{}", game_version))
-        } else {
-            Paragraph::new("")
-        }.style(theme().fg)
-            .alignment(Alignment::Right)
-    }
-
-    fn dbg_paragraph(&self) -> Paragraph<'static> {
-        let mut debug_info = vec![
-            format!("comm: {}", attached::comm()),
-            format!("exe_path: {}", attached::path().display()),
-            format!("module_base: {:#X}", attached::module_base()),
-            format!("is 32 bit: {}", attached::is_32()),
-            format!("process uptime: {:.1}", attached::uptime()),
-            format!("\n"),
+        let popups: [&mut dyn Popup; 9] = [
+            &mut self.help,
+            &mut self.fuzzy_finder,
+            &mut self.input,
+            &mut self.theme_selector,
+            &mut self.game_screen_selector,
+            &mut self.process_selector,
+            &mut self.debug,
+            &mut self.memory_viewer_screen,
+            &mut self.attach_options,
         ];
 
-        match self.game_screen {
-            Game::DarkSouls2 => debug_info.append(&mut darksouls2_screen::dbg_lines()),
-            Game::EldenRing => debug_info.append(&mut eldenring_screen::dbg_lines()),
+        for popup in popups {
+            if popup.handle_keys_if_open(ctx) {
+                return;
+            }
         }
-        let lines: Vec<Line> = debug_info.iter().map(|f| Line::raw(f.to_string())).collect();
-        Paragraph::new(Text::from(lines))
+
+        self.current_screen().handle_keys(ctx);
+
+        if ctx.key_char('a') {
+            self.attach_options.show();
+        }
+
+        if ctx.key_char('p') {
+            self.process_selector.show();
+        }
+
+        if ctx.key_char('o') {
+            self.game_screen_selector.show();
+        }
+
+        if ctx.key_f(1) {
+            self.help.show();
+            if !self.has_pressed_f1 {
+                self.has_pressed_f1 = true;
+                let _ = UiState::update(|c| c.global.has_pressed_f1 = true );
+            }
+        }
+
+        if ctx.key_with_modifiers(KeyCode::F(12), KeyModifiers::CONTROL) {
+            self.memory_viewer_screen.show();
+        }
+
+        if ctx.key_f(12) {
+            self.theme_selector.show();
+        }
+
+        #[cfg(debug_assertions)]
+        if ctx.key_with_modifiers(KeyCode::F(5), KeyModifiers::CONTROL) {
+            self.debug.show();
+        }
+    }
+
+    pub fn current_screen(&mut self) -> &mut dyn GameScreen {
+        match *self.game_screen.borrow() {
+            Game::EldenRing => &mut *self.elden_ring,
+            Game::DarkSouls2 => &mut *self.dark_souls_2,
+        }
     }
 }
 
-#[derive(PartialEq)]
-pub enum CurrentScreen {
-    Main,
-    Help,
-    ProcessSelection,
-    ThemeSelection,
-    GameScreenSelection,
-    AttachOptions,
-    MemoryViewer,
-    Debug,
+fn try_auto_attach() {
+    if let Some(result) = attached::try_auto_attach() {
+        result.send_error();
+        send_event(Event::Attach);
+    }
 }
+
+fn pid_paragraph() -> Paragraph<'static> {
+    if is_attached() {
+        Paragraph::new(format!("Process ID: {}", attached::pid().unwrap()))
+    } else {
+        Paragraph::new("Scanning for game...")
+    }.style(theme().fg)
+}
+
+fn version_paragraph() -> Paragraph<'static> {
+    if let Some(game_version)  = attached::game_version() {
+        Paragraph::new(format!("{}", game_version))
+    } else {
+        Paragraph::new("")
+    }.style(theme().fg)
+        .alignment(Alignment::Right)
+}
+
+impl_game_screen!(
+    DarkSouls2Screen,
+    EldenRingScreen
+);
+
+const HELP_ENTRIES: [Control; 17] = [
+    Control::new("hjkl, ← ↑ ↓ → ", "Navigate list"),
+    Control::new("ctrl-hjkl, ← ↑ ↓ → ", "Switch list"),
+    Control::new("Enter", "Select"),
+    Control::new("f", "Search"),
+    Control::new("o", "Select game screen"),
+    Control::new("a", "Attach options"),
+    Control::new("p", "Process selector"),
+    Control::new("1-6", "Switch tab"),
+    Control::new("tab", "Select next tab"),
+    Control::new("backtab", "Select previous tab"),
+    Control::new("ctrl-u", "Scroll up"),
+    Control::new("ctrl-d", "Scroll down"),
+    Control::new("g", "Jump to first entry"),
+    Control::new("G", "Jump to last entry"),
+    Control::new("f12", "Change theme"),
+    Control::new("ctrl-f12", "Memory editor"),
+    Control::new("f1", "Help"),
+];

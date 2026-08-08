@@ -1,7 +1,4 @@
-use gubtool_core::{
-    attached::version,
-    game_version::EldenRingVersion::*,
-};
+use gubtool_core::{attached::version, game_version::EldenRingVersion::*};
 
 pub fn chr_set_pool() -> u64 {
     match version() {

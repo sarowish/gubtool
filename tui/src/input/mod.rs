@@ -1,9 +1,9 @@
-include!("input.rs");
 pub mod fuzzy_finder;
+mod input;
 pub mod input_prompt;
 
 use crate::event::{Event, send_event};
-use nucleo_matcher::Utf32String;
+use input::Input;
 
 pub async fn request_input<T: shared::parse_input::ParseInput + 'static>(
     prompt: Option<&'static str>,
@@ -13,10 +13,4 @@ pub async fn request_input<T: shared::parse_input::ParseInput + 'static>(
     send_event(Event::Input((prompt, tx, std::any::TypeId::of::<T>())));
     let reply = rx.await.ok()?;
     T::parse_input(&reply)
-}
-
-pub async fn request_search(entries: Vec<Utf32String>) -> Option<usize> {
-    let (tx, rx) = tokio::sync::oneshot::channel::<Option<usize>>();
-    send_event(Event::Search((entries, tx)));
-    rx.await.ok()?
 }

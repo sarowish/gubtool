@@ -1,5 +1,6 @@
 use crate::{game_version::Game, slice_ops::SliceError};
 use std::{fmt::Display, io::ErrorKind, panic::Location};
+use strum::Display;
 
 pub type ProcResult<T = ()> = Result<T, ProcessError>;
 
@@ -25,7 +26,7 @@ pub enum ProcessError {
         timeout: std::time::Duration,
     },
     NotAttached,
-    InvalidPointer { pointer_type: PointerType },
+    NullPointer { pointer_type: PointerType },
     Slice { slice_error: SliceError },
     InvalidGame { expected: Game },
 
@@ -49,10 +50,12 @@ pub enum WriteType {
     Bytes(usize),
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Display)]
+#[strum(serialize_all = "title_case")]
 pub enum PointerType {
-    PlayerIns,
-    TargetIns,
+    Player,
+    Target,
+    Torrent,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -111,6 +114,10 @@ impl ProcessError {
             bytes_accessed,
             location: std::panic::Location::caller(),
         }
+    }
+
+    pub fn null_pointer(pointer_type: PointerType) -> Self {
+        Self::NullPointer { pointer_type }
     }
 
     #[cfg(unix)]
@@ -172,11 +179,8 @@ impl Display for ProcessError {
             Self::RemoteThreadReturn { timeout } => {
                 write!(f, "Remote thread did not return within {:#?}", timeout)
             }
-            Self::InvalidPointer { pointer_type } => {
-                match pointer_type {
-                    PointerType::PlayerIns => write!(f, "Player not loaded"),
-                    PointerType::TargetIns => write!(f, "Target not found"),
-                }
+            Self::NullPointer { pointer_type } => {
+                write!(f, "{pointer_type} not found")
             }
             Self::Slice { slice_error } => {
                 write!(f, "{slice_error}")

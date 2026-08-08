@@ -1,7 +1,7 @@
 pub mod aow;
+pub mod bosses;
 pub mod chr_names;
 pub(crate) mod entity_ids;
-pub mod bosses;
 pub mod graces;
 pub mod items;
 pub(crate) mod scan_patterns;

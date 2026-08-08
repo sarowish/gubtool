@@ -1,110 +1,113 @@
 use crate::{
-    chr_ctrl::ChrCtrlExt,
+    POINTER_CACHE,
     mem::*,
-    offsets::{ChainReadExt, code_cave::CaveOffset, game_manager_imp, module_offsets::BasePointer},
-    player, utility,
+    offsets::{
+        ChainReadExt, code_cave::CaveAddress, game_manager_imp, module_offsets::BasePointer,
+    },
+    player::{self, player},
+    target::{act_logger, target},
+    utility,
 };
-use gubtool_core::{address::Address, sys::error::ProcResult};
-use gubtool_core::slice_ops::*;
+use gubtool_core::{address::Address, slice_ops::*, sys::error::ProcResult};
+use std::sync::{
+    LazyLock, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
-pub struct GameStateHandler {
-    pub loaded: bool,
-    has_invoked_loaded: bool,
-    has_invoked_load_delayed: bool,
+pub(crate) static GAME_STATE: LazyLock<GameState> = LazyLock::new(|| {
+    GameState::default()
+});
+
+pub(crate) static STATE_FLAGS: LazyLock<StateFlags> = LazyLock::new(|| {
+    StateFlags::default()
+});
+
+#[derive(Default)]
+pub struct GameState {
+    pub loaded: AtomicBool,
 }
 
-#[derive(Default, Clone, Copy)]
-pub struct StateFlags {
-    pub player_no_death: bool,
-    pub fast_quitout: bool,
-}
-
-impl GameStateHandler {
-    pub fn new() -> Self {
-        Self {
-            loaded: true,
-            has_invoked_loaded: true,
-            has_invoked_load_delayed: true,
-        }
+impl GameState {
+    pub fn init(&self) {
+        self.loaded.store(is_loaded(), Ordering::Relaxed);
     }
-    pub fn poll(&mut self) -> ProcResult {
+    pub fn update(&self) {
         if is_loaded() {
-            if !self.has_invoked_load_delayed && !is_loading_screen() {
-                self.on_load_delayed()?;
-                self.has_invoked_load_delayed = true;
+            if !self.loaded.load(Ordering::Relaxed) {
+                self.loaded.store(true, Ordering::Relaxed);
+                self.on_loaded();
             }
-            if !self.loaded {
-                self.loaded = true;
-                self.on_loaded()?;
-                self.has_invoked_loaded = true;
-            }
-        } else if self.loaded {
-            self.on_unloaded()?;
-            self.has_invoked_load_delayed = false;
-            self.has_invoked_loaded = false;
-            self.loaded = false;
+        } else if self.loaded.load(Ordering::Relaxed) {
+            self.on_unloaded();
+            self.loaded.store(false, Ordering::Relaxed);
         }
-        Ok(())
     }
-    fn on_loaded(&self) -> ProcResult {
-        let flags = StateFlags::new()?;
-
-        if flags.player_no_death {
-            player::player_ctrl().set_no_death(true)?
-        }
-
-        Ok(())
+    fn on_loaded(&self) {
+        POINTER_CACHE.reset_pointers();
+        player().update();
+        STATE_FLAGS.on_loaded();
     }
-    fn on_load_delayed(&self) -> ProcResult {
-        Ok(())
+    fn on_unloaded(&self) {
+        POINTER_CACHE.reset_pointers();
+        player().update();
+        target().clear();
+        act_logger().clear();
+        STATE_FLAGS.on_unloaded();
     }
-    fn on_unloaded(&self) -> ProcResult {
-        let flags = StateFlags::new()?;
+}
 
-        if flags.fast_quitout {
-            utility::set_faster_menu(true)?
-        } else if utility::is_faster_menu() {
-            utility::set_faster_menu(false)?
-        }
-
-        Ok(())
-    }
+#[derive(Default)]
+pub struct StateFlags {
+    buffer: Mutex<[u8; 0x20]>,
 }
 
 impl StateFlags {
-    pub fn new() -> ProcResult<Self> {
-        let mut flags = Self::default();
-        flags.update()?;
-        Ok(flags)
+    pub fn update(&self) {
+        let mut buffer = self.buffer.lock().unwrap();
+        *buffer = read::<[u8; 0x20]>(CaveAddress::StateHandlerFlags)
+            .unwrap_or_default();
     }
-    pub fn update(&mut self) -> ProcResult {
-        let flags = read::<[u8; 0x100]>(CaveOffset::StateHandlerFlags)?;
-        self.player_no_death = read_flag_from_slice(&flags, StateFlagOffset::PlayerNoDeath)?;
-        self.fast_quitout = read_flag_from_slice(&flags, StateFlagOffset::FastQuitout)?;
-        Ok(())
+
+    pub fn is_flag(&self, flag_offset: StateFlag) -> bool {
+        read_from_slice::<u8>(&*self.buffer.lock().unwrap(), flag_offset as u64)
+            .unwrap_or_default() != 0x0
     }
-    pub fn set(flag_offset: StateFlagOffset, state: bool) -> ProcResult {
-        write::<u8>(CaveOffset::StateHandlerFlags.add_offset(flag_offset as u64), state as u8)
-    }
-    pub const fn const_default() -> Self {
-        Self {
-            player_no_death: false,
-            fast_quitout: false,
+
+    pub fn on_loaded(&self) {
+        if self.is_flag(StateFlag::PlayerNoDeath) {
+            let _ = player::player().chr_ctrl().and_then(|chr| chr.set_no_death(true));
         }
+    }
+
+    pub fn on_unloaded(&self) {
+        if self.is_flag(StateFlag::FastQuitout) {
+            let _ = utility::FastQuitout.set_hook(true);
+        } else if utility::FastQuitout.is_hook().unwrap_or(false) {
+            let _ = utility::FastQuitout.set_hook(false);
+        }
+    }
+
+    pub fn reset(&self) {
+        let mut buffer = self.buffer.lock().unwrap();
+        *buffer = [0x0; 0x20];
     }
 }
 
+pub fn is_flag(flag_offset: StateFlag) -> bool {
+    STATE_FLAGS.is_flag(flag_offset)
+}
+
+pub fn set_flag(flag_offset: StateFlag, state: bool) -> ProcResult {
+    write::<u8>(CaveAddress::StateHandlerFlags.add_offset(flag_offset as u64), state as u8)
+}
+
 #[repr(u64)]
-pub enum StateFlagOffset {
+pub enum StateFlag {
     PlayerNoDeath = 0x0,
     FastQuitout = 0x1,
 }
 
-fn read_flag_from_slice(flags: &[u8; 0x100], flag_offset: StateFlagOffset) -> Result<bool, SliceError> {
-    read_from_slice::<u8>(flags, flag_offset as u64).map(|val| val != 0x0)
-}
-
-pub fn is_loading_screen() -> bool {
+fn is_loading_screen() -> bool {
     read_address(BasePointer::GameManagerImp)
         .add_offset(game_manager_imp::LOADING_FLAG)
         .read::<u8>()
@@ -112,7 +115,7 @@ pub fn is_loading_screen() -> bool {
         .unwrap_or_default()
 }
 
-pub fn is_loaded() -> bool {
+fn is_loaded() -> bool {
     read_address(BasePointer::GameManagerImp)
         .read_offset(game_manager_imp::PLAYER_CTRL)
         .map(|val| val != 0x0)

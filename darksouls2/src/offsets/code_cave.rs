@@ -10,10 +10,9 @@ pub const BASE: Offset = Offset {
 
 #[repr(u64)]
 #[derive(Clone, Copy)]
-pub enum CaveOffset {
+pub enum CaveAddress {
     ItemArgs = 0x0,                                     // 0x23
     ItemSpawnStack = 0x30,                              // 0x300
-    SavedTargetPointer = 0x340,                         // u64
     WarpRequestStruct = 0x350,                          // 0x40
     CreditsModifyOnceFlag = 0x3A0,                      // u8
     OpenMenuArgs = 0x3B0,                               // 0x30
@@ -23,16 +22,23 @@ pub enum CaveOffset {
     LevelUpBuffer = 0x440,                              // 0x100
     NegativeFlag = 0x550,                               // u8
 
+    SavedTargetPointer = 0x600,                         // u64
+    ForceActChrAi = 0x608,                         // u64
+    ForceActId = 0x610,                                 // i32
+    ForceActFlag = 0x614,                               // u8
+    SavedActBuffer = 0x615,                             // 0x50
+
     StateHandlerFlags = 0xF00,                          // 0x100
     // Hooks
     PlayerNoDamageHook = 0x1000,                        // 0x2C
     InfinitePoiseHook = 0x1030,                         // 0x2C
-    SaveTargetHook = 0x1060,                            // 0x1B
-    CreditsSkipHook = 0x1080,                           // 0x2A
-    FasterMenuHook = 0x10B0,                            // 0x1A
-    EventLogHook = 0x10D0,                              // 0x41
-    IvorySkipHook = 0x1120,                             // 0xC1
-    IvoryKnightsHook = 0x1200,                          // 0x24
+    SaveTargetHook = 0x1060,                            // 0x2D
+    CreditsSkipHook = 0x1090,                           // 0x2A
+    FasterMenuHook = 0x10C0,                            // 0x1A
+    EventLogHook = 0x10E0,                              // 0x41
+    IvorySkipHook = 0x1130,                             // 0xC1
+    IvoryKnightsHook = 0x1210,                          // 0x24
+    TargetActHook = 0x1240,                             // 0x98
     // Shellcode
     RunThreadAsm = 0x2001,                              // 0x60
     // Keep at least 16 bytes of buffer
@@ -53,7 +59,7 @@ pub enum CaveOffset {
     EventLogBuffer = 0x4000,                            // 0x1000
 }
 
-impl Address for CaveOffset {
+impl Address for CaveAddress {
     fn addr(&self) -> u64 {
         module_base()
             .saturating_add(BASE.resolve())

@@ -1,127 +1,127 @@
 use crate::{
-    app::CurrentScreen,
-    common::{ListExt, block, centered_rect, controls::draw_controls},
-    event::{Event, ResultExt, send_event},
-    theme::{self, theme},
+    common::controls::Control,
+    event::{Event, KeyContext, ResultExt, send_event},
+    panes::{Pane, TableController, TablePane, TableView},
+    popup::{Popup, PopupState, centered_popup},
+    screen::Screen,
 };
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use gubtool_core::attached::{self, ProcessManager};
+use crossterm::event::{KeyCode, KeyModifiers};
+use gubtool_core::attached;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
-    style::{Style, Stylize},
-    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState, Wrap},
+    layout::{Constraint, Direction, Layout, Margin, Rect},
+    style::Stylize,
+    widgets::{Block, Borders, Paragraph, Row, Wrap},
 };
 
-const CONTROLS: &[(&str, &str)] = &[
-    ("ctrl-k", "Kill"),
-    ("Enter", "Attach"),
+const CONTROLS: [Control; 2] = [
+    Control::new("Enter", "Attach"),
+    Control::new("ctrl-k", "Kill"),
 ];
 
 pub struct ProcessSelector {
-    pub manager: ProcessManager,
-    pub table: TableState,
+    table: TablePane,
+    popup_state: PopupState,
 }
 
-impl ProcessSelector {
-    pub fn new() -> Self {
-        Self {
-            manager: ProcessManager::new(),
-            table: TableState::default().with_selected(0),
+struct ProcessTable;
+impl TableController for ProcessTable {
+    fn make_table_view(&self) -> TableView {
+        attached::refresh_processes();
+
+        let processes = attached::game_processes();
+        let rows: Vec<Row> = processes.iter().map(|process| {
+            let comm = if attached::pid() == Some(process.pid) {
+                    format!("*{}", process.comm)
+                } else {
+                    format!(" {}", process.comm)
+                };
+            Row::new([
+                comm,
+                process.pid.to_string(),
+                format!("{}", process.game_version),
+            ])
+        })
+        .collect::<Vec<Row>>();
+
+        let header = Row::new([
+            "Name",
+            "PID",
+            "Game Version",
+        ])
+        .bold();
+
+        TableView::new(rows).with_header(header).with_widths(&[
+            Constraint::Min(28),
+            Constraint::Min(10),
+            Constraint::Min(28),
+        ])
+    }
+    fn handle_keys_selected(&self, selected: usize, ctx: &mut KeyContext) {
+        if ctx.key_enter() {
+            let processes = attached::game_processes();
+            if selected < processes.len() {
+                processes[selected].attach().send_error();
+                send_event(Event::Attach);
+            }
+        }
+
+        if ctx.key_with_modifiers(KeyCode::Char('k'), KeyModifiers::CONTROL) {
+            let processes = attached::game_processes();
+            if selected < processes.len() {
+                processes[selected].kill();
+            }
+
         }
     }
+}
 
-    pub fn draw(&mut self, frame: &mut Frame) {
-        self.manager.refresh();
+impl Popup for ProcessSelector {
+    fn popup_state(&mut self) -> &mut PopupState {
+        &mut self.popup_state
+    }
+    fn screen(&mut self) -> &mut dyn Screen {
+        &mut self.table
+    }
+    fn popup_rect(&self, frame: &mut Frame) -> Rect {
+        centered_popup(75, 75, frame.area())
+    }
+    fn draw(&mut self, frame: &mut Frame, rect: Rect) {
+        if self.table.selected().is_none() {
+            self.table.select(0);
+        }
+        self.table.draw(frame, rect);
 
-        let layout = centered_rect(75, 75, frame.area());
-        let block = block(Some("Process Selector"), None);
-        frame.render_widget(Clear, layout);
-        frame.render_widget(&block, layout);
-
-        let [processes_area, path_area] = Layout::default()
+        let [_processes_area, path_area] = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![
                 Constraint::Fill(1),
                 Constraint::Length(4),
             ])
-            .areas(block.inner(layout));
+            .areas(rect.inner(Margin::new(1, 1)));
 
-        frame.render_stateful_widget(
-            self.table(),
-            processes_area,
-            &mut self.table
-        );
-        frame.render_widget(
-            self.path_paragraph(),
-            path_area
-        );
-        draw_controls(frame, layout, CONTROLS);
-    }
-
-    fn path_paragraph(&self) -> Paragraph<'static> {
         let text = {
-            let processes = self.manager.valid_processes();
+            let processes = attached::game_processes();
             if let Some(idx) = self.table.selected() && idx < processes.len() {
                 format!("{}", processes[idx].exe_path.display())
             } else {
                 "".to_string()
             }
         };
-        Paragraph::new(text).wrap(Wrap { trim: true })
-            .block(Block::new().borders(Borders::TOP))
+        let path = Paragraph::new(text).wrap(Wrap { trim: true })
+            .block(Block::new().borders(Borders::TOP));
+
+        frame.render_widget(path, path_area);
     }
+}
 
-    fn table(&self) -> Table<'static> {
-        let mut rows: Vec<Row> = Vec::new();
-        for process in self.manager.valid_processes() {
-            let comm = if attached::pid() == Some(process.pid) {
-                    format!("*{}", process.comm)
-                } else {
-                    format!(" {}", process.comm)
-                };
-            let row = Row::new(vec![
-                Cell::from(comm),
-                Cell::from(process.pid.to_string()),
-                Cell::from(format!("{}", process.game_version)),
-            ]);
-            rows.push(row);
-        }
-        let header = Row::new(vec![
-            Cell::from("Name"),
-            Cell::from("PID"),
-            Cell::from("Game Version"),
-        ]).bold();
-        let widths = [
-            Constraint::Min(28),
-            Constraint::Max(10),
-            Constraint::Fill(1),
-        ];
-        Table::new(rows, widths)
-            .header(header)
-            .highlight_symbol(theme::HIGHLIGHT_SYMBOL)
-            .row_highlight_style(Style::from(theme().accent).bold())
-    }
-
-    pub fn handle_keys(&mut self, key: KeyEvent, current_screen: &mut CurrentScreen) {
-        self.table.handle_keys(key);
-
-        match (key.code, key.modifiers) {
-            (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Main,
-            (KeyCode::Enter, _) => {
-                let processes = self.manager.valid_processes();
-                if let Some(idx) = self.table.selected() && idx < processes.len() {
-                    processes[idx].attach().send_error();
-                    send_event(Event::Attach);
-                }
-            }
-            (KeyCode::Char('k'), KeyModifiers::CONTROL) => {
-                let processes = self.manager.valid_processes();
-                if let Some(idx) = self.table.selected() && idx < processes.len() {
-                    processes[idx].kill();
-                }
-            }
-            _ => (),
+impl ProcessSelector {
+    pub fn new() -> Self {
+        Self {
+            table: TablePane::new_static(&ProcessTable)
+                .with_title("Process Selection")
+                .with_controls(&CONTROLS),
+            popup_state: PopupState::default(),
         }
     }
 }

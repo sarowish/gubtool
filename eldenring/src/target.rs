@@ -1,14 +1,9 @@
 use crate::{
-    chr_ins::ChrIns,
+    chr_ins::{ChrIns, ResolvedChrPtr},
     mem::*,
-    offsets::{
-        code_cave::CaveOffset,
-        field_area,
-        module_offsets::{BasePointer, Hook},
-    },
+    offsets::{code_cave::CaveAddress, module_offsets::Hook},
     resources::ASM,
 };
-use anyhow::bail;
 use gubtool_core::{
     address::Address,
     attached::version,
@@ -16,40 +11,152 @@ use gubtool_core::{
     slice_ops::*,
     sys::error::{PointerType, ProcResult, ProcessError},
 };
-use shared::act_array::ActArray;
+use shared::{
+    act_array::ActArray,
+    command::{ToggleCommand, UnitCommand, ValueCommand},
+    declare_command,
+};
+use std::sync::{LazyLock, Mutex, MutexGuard};
 
-pub fn target_ins() -> ChrIns {
-    match read::<u64>(CaveOffset::SavedTargetPointer) {
-        Ok(ptr) if ptr != 0x0 => Ok(ptr),
-        Ok(_) | Err(_) => Err(ProcessError::InvalidPointer {
-            pointer_type: PointerType::TargetIns,
-        }),
+static TARGET: LazyLock<Mutex<Target>> = LazyLock::new(|| {
+    Mutex::new(Target::new())
+});
+
+pub fn target() -> MutexGuard<'static, Target> {
+    TARGET.lock().unwrap()
+}
+
+pub struct Target {
+    chr_ins: Option<ChrIns>,
+}
+
+impl Target {
+    fn new() -> Self {
+        let mut target = Self { chr_ins: None };
+        target.update();
+        target
+    }
+
+    pub fn update(&mut self) {
+        match read::<u64>(CaveAddress::SavedTargetPointer) {
+            Ok(new_target) => {
+                if let Some(chr_ins) = &self.chr_ins {
+                    let ptr = chr_ins.resolved_pointers.get(&ResolvedChrPtr::ChrIns).unwrap();
+
+                    if *ptr == new_target {
+                        return;
+                    }
+                }
+                if new_target != 0x0 {
+                    self.chr_ins = Some(ChrIns::new(new_target))
+                } else {
+                    self.chr_ins = None;
+                }
+            }
+            Err(_) => {
+                self.chr_ins = None;
+            }
+        }
+    }
+
+    pub fn chr_ins(&mut self) -> ProcResult<&mut ChrIns> {
+        self.chr_ins.as_mut().ok_or(ProcessError::null_pointer(PointerType::Target))
+    }
+
+    pub fn set(&mut self, chr_ins: ChrIns) {
+        self.chr_ins = Some(chr_ins)
+    }
+
+    pub fn pointers(&self) -> Vec<(String, u64)> {
+        self.chr_ins.as_ref().map(|c| c.pointers()).unwrap_or(Vec::default())
     }
 }
 
-pub fn install_target_hook() -> ProcResult {
-    let mut fun = ASM.get_function("save_target_hook");
-    let mut asm = fun.take_bytes();
-
-    write_addr_to_slice(&mut asm, fun.reloc("saved_pointer_loc"), CaveOffset::SavedTargetPointer)?;
-    write_rel_i32(
-        &mut asm,
-        CaveOffset::SaveTargetHook,
-        fun.reloc("hook_loc"),
-        Hook::LockedTargetPointer.add_offset(7),
-        4,
-    )?;
-    install_hook(&asm, CaveOffset::SaveTargetHook, Hook::LockedTargetPointer, 7)
-}
+declare_command!(
+    SaveTargetHook,
+    Health,
+    HealthPercentage => "Health %",
+    Kill,
+    NextPhase,
+    RepeatAction,
+    ForceActSequence,
+    ResetPosition,
+    NoDamage,
+    NoStagger,
+    DisableAi,
+    RepeatLastAction,
+);
 
 const TARGET_HOOK_BYTES_ORIGINAL: [u8; 7] = [0x48, 0x8B, 0x8F, 0x88, 0x00, 0x00, 0x00];
-pub fn uninstall_target_hook() -> ProcResult {
-    write_bytes(Hook::LockedTargetPointer, &TARGET_HOOK_BYTES_ORIGINAL)
+impl ToggleCommand for SaveTargetHook {
+    fn is(&self) -> ProcResult<bool> {
+        read::<[u8; 7]>(Hook::LockedTargetPointer)
+            .map(|val| val != TARGET_HOOK_BYTES_ORIGINAL)
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        if state {
+            let mut fun = ASM.get_function("save_target_hook");
+            let mut asm = fun.take_bytes();
+
+            write_addr_to_slice(&mut asm, fun.reloc("saved_pointer_loc"), CaveAddress::SavedTargetPointer)?;
+            write_rel_i32(
+                &mut asm,
+                CaveAddress::SaveTargetHook,
+                fun.reloc("hook_loc"),
+                Hook::LockedTargetPointer.add_offset(7),
+                4,
+            )?;
+            install_hook(&asm, CaveAddress::SaveTargetHook, Hook::LockedTargetPointer, 7)?;
+        } else {
+            write_bytes(Hook::LockedTargetPointer, &TARGET_HOOK_BYTES_ORIGINAL)?;
+        }
+        Ok(())
+    }
 }
 
-pub fn is_target_hook_active() -> ProcResult<bool> {
-    read::<[u8; 7]>(Hook::LockedTargetPointer)
-        .map(|val| val != TARGET_HOOK_BYTES_ORIGINAL)
+impl ValueCommand::<i32> for Health {
+    fn get(&self) -> ProcResult<i32> {
+        target().chr_ins()?.get_current_hp()
+    }
+    fn set(&self, val: i32) -> anyhow::Result<()> {
+        target().chr_ins()?.set_hp(val)?;
+        Ok(())
+    }
+}
+
+impl ValueCommand::<f32> for HealthPercentage {
+    fn get(&self) -> ProcResult<f32> {
+        target().chr_ins()?.get_hp_pct()
+    }
+    fn set(&self, val: f32) -> anyhow::Result<()> {
+        target().chr_ins()?.set_hp_pct(val)
+    }
+}
+
+impl UnitCommand for Kill {
+    fn execute(&self) -> anyhow::Result<()> {
+        target().chr_ins()?.set_hp(0)?;
+        Ok(())
+    }
+}
+
+impl UnitCommand for NextPhase {
+    fn execute(&self) -> anyhow::Result<()> {
+        target().chr_ins()?.next_phase()
+    }
+}
+
+impl ValueCommand::<u8> for RepeatAction {
+    fn set(&self, val: u8) -> anyhow::Result<()> {
+        target().chr_ins()?.repeat_act(val)?;
+        Ok(())
+    }
+    fn can_get(&self) -> bool {
+        false
+    }
+    fn get(&self) -> ProcResult<u8> {
+        unreachable!("no getter for RepeatAction")
+    }
 }
 
 fn force_act_orig_instr_off() -> i32 {
@@ -61,82 +168,95 @@ fn force_act_orig_instr_off() -> i32 {
         _ => 0xE9C1,
     }
 }
+impl ValueCommand::<ActArray> for ForceActSequence {
+    fn set(&self, mut val: ActArray) -> anyhow::Result<()> {
+        let location = CaveAddress::ForceActSequenceHook;
+        let npc_think_param_id = target().chr_ins()?.npc_think_param_id()?;
 
-pub fn force_act_sequence(mut act_sequence: ActArray, npc_think_param_id: i32) -> ProcResult {
-    let location = CaveOffset::ForceActSequenceHook;
+        let mut fun = ASM.get_function("force_act_sequence_hook");
+        let mut asm = fun.take_bytes();
 
-    let mut fun = ASM.get_function("force_act_sequence_hook");
-    let mut asm = fun.take_bytes();
+        write_addr_to_slice(&mut asm, fun.reloc("should_run_flag"), CaveAddress::ActSeqeunceShouldRun)?;
+        write_to_slice::<i32>(&mut asm, fun.reloc("npc_think_param_id"), npc_think_param_id)?;
+        write_addr_to_slice(&mut asm, fun.reloc("current_idx"), CaveAddress::CurrentActIdx)?;
+        write_addr_to_slice(&mut asm, fun.reloc("act_array"), CaveAddress::ActArray)?;
+        write_to_slice::<i32>(&mut asm, fun.reloc("orig_instr_off"), force_act_orig_instr_off())?;
+        write_rel_i32(&mut asm, location, fun.reloc("hook_loc"), Hook::GetForceActIdx.add_offset(7), 4)?;
 
-    write_addr_to_slice(&mut asm, fun.reloc("should_run_flag"), CaveOffset::ActSeqeunceShouldRun)?;
-    write_to_slice::<i32>(&mut asm, fun.reloc("npc_think_param_id"), npc_think_param_id)?;
-    write_addr_to_slice(&mut asm, fun.reloc("current_idx"), CaveOffset::CurrentActIdx)?;
-    write_addr_to_slice(&mut asm, fun.reloc("act_array"), CaveOffset::ActArray)?;
-    write_to_slice::<i32>(&mut asm, fun.reloc("orig_instr_off"), force_act_orig_instr_off())?;
-    write_rel_i32(&mut asm, location, fun.reloc("hook_loc"), Hook::GetForceActIdx.add_offset(7), 4)?;
-
-    act_sequence.zero_fill();
-    write_bytes(CaveOffset::ActArray, &act_sequence.as_qword_le_bytes())?;
-    write::<i32>(CaveOffset::CurrentActIdx, 0x0)?;
-    write::<u8>(CaveOffset::ActSeqeunceShouldRun, 0x1)?;
-    install_hook(&asm, location, Hook::GetForceActIdx, 7)
+        val.zero_fill();
+        write_bytes(CaveAddress::ActArray, &val.as_qword_le_bytes())?;
+        write::<i32>(CaveAddress::CurrentActIdx, 0x0)?;
+        write::<u8>(CaveAddress::ActSeqeunceShouldRun, 0x1)?;
+        install_hook(&asm, location, Hook::GetForceActIdx, 7)?;
+        Ok(())
+    }
+    fn can_get(&self) -> bool {
+        false
+    }
+     fn get(&self) -> ProcResult<ActArray> {
+        unreachable!("no getter for ForceActSequence")
+    }
 }
 
-pub fn install_stagger_hook() -> ProcResult {
-    let mut fun = ASM.get_function("target_stagger_hook");
-    let mut asm = fun.take_bytes();
+impl UnitCommand for ResetPosition {
+    fn execute(&self) -> anyhow::Result<()> {
+        target().chr_ins()?.reset_position()
+    }
+}
 
-    write_addr_to_slice(&mut asm, fun.reloc("target_ptr_loc"), CaveOffset::SavedTargetPointer)?;
-    write_rel_i32(
-        &mut asm,
-        CaveOffset::TargetNoStaggerHook,
-        fun.reloc("hook_loc"),
-        Hook::TargetNoStagger.add_offset(8),
-        4,
-    )?;
-    install_hook(&asm, CaveOffset::TargetNoStaggerHook, Hook::TargetNoStagger, 8)
+impl ToggleCommand for NoDamage {
+    fn is(&self) -> ProcResult<bool> {
+        target().chr_ins()?.is_no_damage()
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        target().chr_ins()?.set_no_damage(state)?;
+        Ok(())
+    }
 }
 
 const TARGET_STAGGER_HOOK_BYTES_ORIGINAL: [u8; 8] = [0x48, 0x8B, 0x41, 0x08, 0x83, 0x48, 0x2C, 0x08];
-pub fn uninstall_stagger_hook() -> ProcResult {
-    write_bytes(Hook::TargetNoStagger, &TARGET_STAGGER_HOOK_BYTES_ORIGINAL)
-}
-
-pub fn is_stagger_hook_active() -> ProcResult<bool> {
-    read::<[u8; 8]>(Hook::TargetNoStagger)
-        .map(|val| val != TARGET_STAGGER_HOOK_BYTES_ORIGINAL)
-}
-
-pub fn toggle_stagger_hook() -> ProcResult {
-    match is_stagger_hook_active()? {
-        true => uninstall_stagger_hook(),
-        false => install_stagger_hook(),
+impl ToggleCommand for NoStagger {
+    fn is(&self) -> ProcResult<bool> {
+        read::<[u8; 8]>(Hook::TargetNoStagger)
+            .map(|val| val != TARGET_STAGGER_HOOK_BYTES_ORIGINAL)
     }
-}
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        if state {
+            let mut fun = ASM.get_function("target_stagger_hook");
+            let mut asm = fun.take_bytes();
 
-pub fn world_block_info_from_block_id(block_id: u32) -> anyhow::Result<u64> {
-    let target_area = (block_id >> 24) & 0xFF;
-    let world_info_owner = read::<u64>(BasePointer::FieldArea)
-        .and_then(|addr| read::<u64>(addr + field_area::WORLD_INFO_OWNER))?;
-    let area_count = read::<i32>(world_info_owner + field_area::world_info_owner_offsets::AREA_COUNT)?;
-
-    for i in 0..area_count as u64 {
-        let area_ptr = read::<u64>(world_info_owner + field_area::world_info_owner_offsets::AREA_ARRAY_BASE + (i * 8))?;
-        let area_id = read::<u32>(area_ptr + 0xC)?;
-
-        if area_id == target_area {
-            let block_count = read::<i32>(area_ptr + 0x40)?;
-            let blocks_ptr = read::<u64>(area_ptr + 0x48)?;
-
-            for j in 0..block_count as u64 {
-                let block_info_ptr = blocks_ptr + (j * 0xE0);
-                let stored_block_id = read::<u32>(block_info_ptr + 0x8)?;
-
-                if stored_block_id == block_id {
-                    return Ok(block_info_ptr);
-                }
-            }
+            write_addr_to_slice(&mut asm, fun.reloc("target_ptr_loc"), CaveAddress::SavedTargetPointer)?;
+            write_rel_i32(
+                &mut asm,
+                CaveAddress::TargetNoStaggerHook,
+                fun.reloc("hook_loc"),
+                Hook::TargetNoStagger.add_offset(8),
+                4,
+            )?;
+            install_hook(&asm, CaveAddress::TargetNoStaggerHook, Hook::TargetNoStagger, 8)?;
+        } else {
+            write_bytes(Hook::TargetNoStagger, &TARGET_STAGGER_HOOK_BYTES_ORIGINAL)?;
         }
+        Ok(())
     }
-    bail!("Could not find world block info")
+}
+
+impl ToggleCommand for DisableAi {
+    fn is(&self) -> ProcResult<bool> {
+        target().chr_ins()?.is_disable_ai()
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        target().chr_ins()?.set_disable_ai(state)?;
+        Ok(())
+    }
+}
+
+impl ToggleCommand for RepeatLastAction {
+    fn is(&self) -> ProcResult<bool> {
+        target().chr_ins()?.is_repeat_act()
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        target().chr_ins()?.set_repeat_last_act(state)?;
+        Ok(())
+    }
 }

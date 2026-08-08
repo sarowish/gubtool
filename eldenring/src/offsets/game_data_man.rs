@@ -1,7 +1,4 @@
-use gubtool_core::{
-    attached::version,
-    game_version::EldenRingVersion::*,
-};
+use gubtool_core::{attached::version, game_version::EldenRingVersion::*};
 
 pub const PLAYER_GAME_DATA: u64 = 0x8;
 

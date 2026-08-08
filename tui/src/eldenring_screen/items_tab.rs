@@ -1,70 +1,66 @@
 use crate::{
     app::App,
-    common::{
-        block, blockless_list, label_list, stateful_list::StatefulList, tab_state::TabState,
-        tabs_list,
-    },
-    eldenring_screen::GameState,
-    event::AnyhowExt,
-    input::{request_input, request_search},
-    mutate_app, spawn_task,
+    common::helpers::item_options_style,
+    event::{AnyhowExt, KeyContext, request_search},
+    input::{fuzzy_finder::SearchRequest, request_input},
+    panes::{PaneManager, TableController, TablePane, TableView},
+    screen::Screen,
+    spawn_task,
     theme::theme,
 };
-use crossterm::event::{KeyCode, KeyEvent};
 use eldenring::{
-    item,
-    resources::{
-        aow::{AFFINITIES, Affinity, Aow, aow_array},
-        items::{Categories, Item, items_array},
-    },
+    item::{self, ItemSpawnRequest},
+    resources::items::{Categories, ITEMS},
 };
 use nucleo_matcher::Utf32String;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style, Stylize},
-    text::Line,
-    widgets::{List, ListItem},
+    style::Stylize,
+    widgets::{Cell, Row},
 };
-use std::thread;
+use std::{
+    sync::{LazyLock, Mutex},
+    thread,
+};
 
-enum OptionsItems {
-    Quantity,
-    Upgrade,
-    AshOfWar,
-    Affinity,
+static SPAWN_REQUEST: LazyLock<Mutex<ItemSpawnRequest>> = LazyLock::new(|| {
+    Mutex::new(ItemSpawnRequest::new(ITEMS[0]))
+});
+
+pub(super) struct ItemTab {
+    pub pane_manager: PaneManager,
 }
-
-pub struct ItemTab {
-    tab: TabState,
-    item: Item,
-    quantity: u64,
-    upgrade: u64,
-    aow: Aow,
-    affinity: Affinity,
-}
-
-const ITEMS_IDX: usize = 0;
-const OPTIONS_IDX: usize = 1;
-const MASS_SPAWN_IDX: usize = 2;
 
 impl ItemTab {
     pub fn new() -> Self {
-        let mut list_states = vec![StatefulList::new(0); 3];
-        list_states[ITEMS_IDX] = StatefulList::new(0);
-        list_states[OPTIONS_IDX] = StatefulList::new(OptionsItems::ARRAY.len());
-        list_states[MASS_SPAWN_IDX] = StatefulList::new(Categories::ARRAY.len());
         ItemTab {
-            tab: TabState::new(list_states),
-            item: items_array(false)[0],
-            quantity: 1,
-            upgrade: 0,
-            aow: aow_array()[0],
-            affinity: AFFINITIES[0],
+            pane_manager: PaneManager::new(vec![
+                TablePane::new_static(&ItemsTable)
+                    .freeze()
+                    .boxed(),
+                TablePane::new_static(&OptionsItems)
+                    .boxed(),
+                TablePane::new_static(&MassSpawnList)
+                    .freeze()
+                    .with_title("Mass Spawn")
+                    .boxed(),
+            ]),
         }
     }
+}
 
-    pub fn draw(&mut self, frame: &mut Frame, layout: Rect) {
+impl Screen for ItemTab {
+    fn draw(&mut self, frame: &mut Frame, layout: Rect) {
+        {
+            let mut item = SPAWN_REQUEST.lock().unwrap();
+            let item_list_idx = self.pane_manager.get_list_selected(0);
+            if let Some(idx) = item_list_idx {
+                item.item = ITEMS[idx];
+            }
+            item.clamp_values();
+        }
+
         let [item_area, right_area] = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![
@@ -73,17 +69,6 @@ impl ItemTab {
             ])
             .areas(layout);
 
-        let items_block = block(Some("Items"), Some(self.tab.block_style(ITEMS_IDX)));
-        frame.render_widget(&items_block, item_area);
-        let inner = items_block.inner(item_area);
-
-        let [item_name, item_category] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![
-                Constraint::Min(40),
-                Constraint::Max(25)])
-            .areas(inner);
-
         let [options, mass_spawn] = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![
@@ -91,244 +76,159 @@ impl ItemTab {
                 Constraint::Fill(1)
             ])
             .areas(right_area);
+        let layout = [item_area, options, mass_spawn];
 
-        let (item_names, item_labels) = self.items_list();
-        frame.render_stateful_widget(
-            item_names,
-            item_name,
-            &mut self.tab.get_list_state(ITEMS_IDX),
-        );
-        frame.render_stateful_widget(
-            item_labels,
-            item_category,
-            &mut self.tab.get_list_state(ITEMS_IDX),
-        );
-        frame.render_stateful_widget(
-            OptionsItems::list(&self),
-            options,
-            &mut self.tab.get_list_state(OPTIONS_IDX),
-        );
-        frame.render_stateful_widget(
-            self.mass_spawn_list(),
-            mass_spawn,
-            &mut self.tab.get_list_state(MASS_SPAWN_IDX),
-        );
+        self.pane_manager.draw(frame, &layout);
     }
 
-    pub fn handle_keys(&mut self, key: KeyEvent) {
-        self.handle_item_switch();
+    fn handle_keys(&mut self, ctx: &mut KeyContext) {
+        self.pane_manager.handle_keys(ctx);
+    }
+}
 
-        if self.tab.current_list == ITEMS_IDX {
-            self.tab.set_length(ITEMS_IDX, items_array(GameState::dlc()).len());
+struct ItemsTable;
+impl TableController for ItemsTable {
+    fn make_table_view(&self) -> TableView {
+        let rows: Vec<Row> = ITEMS.iter().map(|item| {
+            Row::new([
+                Cell::from(item.name),
+                Cell::from(format!("{}", item.category)).fg(theme().muted),
+            ])
+        })
+        .collect();
+
+        TableView::new(rows).with_widths(&[
+            Constraint::Min(40),
+            Constraint::Max(25),
+        ])
+    }
+    fn handle_keys_selected(&self, _selected: usize, ctx: &mut KeyContext) {
+        if ctx.key_enter() {
+            SPAWN_REQUEST.lock().unwrap().spawn().send_error();
         }
 
-        self.tab.handle_keys(key);
+        if ctx.key_char('f') {
+            request_search(&ItemSearch);
+        }
+    }
+}
 
-        match key.code {
-            KeyCode::Enter => {
-                self.handle_enter()
-            }
-            KeyCode::Char('f') => {
-                spawn_task! {
-                    let entries = items_array(GameState::dlc()).iter()
-                        .map(|item| Utf32String::from(format!("{}|{}", item.name, item.category)))
-                        .collect();
-                    if let Some(new_idx) = request_search(entries).await {
-                        mutate_app!(|app: &mut App| {
-                            let items_tab = &mut app.elden_ring.items;
-                            items_tab.tab.set_list_selected(ITEMS_IDX, new_idx);
-                            items_tab.handle_item_switch();
-                        });
+struct OptionsItems;
+impl TableController for OptionsItems {
+    fn make_table_view(&self) -> TableView {
+        let item = SPAWN_REQUEST.lock().unwrap();
+
+        let items = vec![
+            Row::new([format!("Quantity: {}", item.quantity)])
+                .style(item_options_style(item.can_quantity())),
+            Row::new([format!("Upgrade: {}", item.upgrade)])
+                .style(item_options_style(item.can_upgrade())),
+            Row::new([format!("Ash Of War: {}", item.aow.name)])
+                .style(item_options_style(item.can_aow())),
+            Row::new([format!("Affinity: {}", item.affinity.name)])
+                .style(item_options_style(item.can_aow())),
+        ];
+        TableView::new(items)
+    }
+    fn handle_keys_selected(&self, selected: usize, ctx: &mut KeyContext) {
+        if !ctx.key_enter() {
+            return;
+        }
+
+        let item = SPAWN_REQUEST.lock().unwrap();
+        match selected {
+            0 => {
+                if item.can_quantity() {
+                    drop(item);
+                    spawn_task! {
+                        if let Some(val) = request_input::<i64>(None).await {
+                            let mut item = SPAWN_REQUEST.lock().unwrap();
+                            item.quantity = val;
+                        }
                     }
                 }
             }
-            _ => ()
-        }
-        self.handle_item_switch();
-    }
-
-    fn handle_enter(&mut self) {
-        let Some(selected) = self.tab.current_list_selected() else { return };
-
-        match self.tab.current_list {
-            ITEMS_IDX => {
-                self.item.spawn(
-                    self.quantity as i64,
-                    self.upgrade as i64,
-                    self.aow,
-                    self.affinity,
-                ).send_error();
+            1 => {
+                if item.can_upgrade() {
+                    drop(item);
+                    spawn_task! {
+                        if let Some(val) = request_input::<i64>(None).await {
+                            let mut item = SPAWN_REQUEST.lock().unwrap();
+                            item.upgrade = val;
+                        }
+                    }
+                }
             }
-            OPTIONS_IDX => {
-                OptionsItems::ARRAY[selected].execute(self);
+            2 => {
+                if item.can_aow() {
+                    request_search(&AowSearch);
+                }
             }
-            MASS_SPAWN_IDX => {
-                thread::spawn(move || {
-                    item::mass_spawn(Categories::ARRAY[selected]).send_error();
-                });
+            3 => {
+                if item.can_aow() {
+                    request_search(&AffinitySearch);
+                }
             }
             _ => (),
         }
     }
+}
 
-    fn items_list(&self) -> (List<'static>, List<'static>) {
-        let items: (Vec<ListItem>, Vec<ListItem>) = items_array(GameState::dlc()).iter()
-            .map(|item| (
-                    ListItem::from(item.name),
-                    ListItem::from(Line::raw(format!("{}", item.category)).fg(theme().muted))
-            ))
-            .collect();
-        (
-            blockless_list(items.0, &self.tab, ITEMS_IDX),
-            label_list(items.1, &self.tab, ITEMS_IDX)
-        )
-    }
-
-    fn mass_spawn_list(&self) -> List<'static> {
-        let items: Vec<ListItem> = Categories::ARRAY.iter().map(|item| ListItem::from(Line::raw(item.to_string()))).collect();
-        tabs_list(items, Some("Mass Spawn"), &self.tab, MASS_SPAWN_IDX)
-    }
-
-    pub fn handle_item_switch(&mut self) {
-        let Some(new_idx) = self.tab.get_list_selected(ITEMS_IDX) else { return };
-        let new_item = items_array(GameState::dlc())[new_idx];
-        self.item = new_item;
-
-        if let Some(new_quantity) = new_item.clamp_quantity(self.quantity as i64) {
-            self.quantity = new_quantity as u64;
-        }
-
-        if let Some(new_upgrade) = new_item.clamp_upgrade(self.upgrade as i64) {
-            self.upgrade = new_upgrade as u64;
-        }
-
-        if !self.aow.supports_item(new_item) {
-            self.aow = aow_array()[0];
-        }
-        if !self.aow.supports_affinity(self.affinity.flag) {
-            self.affinity = AFFINITIES[0];
-        }
-    }
-
-    fn can_aow(&self) -> bool {
-        self.item.weapon_type.is_some() && (self.item.gem_mount_type != Some(0))
-    }
-
-    fn can_upgrade(&self) -> bool {
-        matches!(self.item.category, Categories::Weapons | Categories::SpiritAshes)
-    }
-
-    fn can_quantity(&self) -> bool {
-        self.item.stack_size > 1
+struct ItemSearch;
+impl SearchRequest for ItemSearch {
+    fn items(&self) -> Vec<Utf32String> {
+        ITEMS.iter()
+            .map(|item| Utf32String::from(format!("{}|{}", item.name, item.category)))
+            .collect()
     }
 }
 
-impl OptionsItems {
-    fn execute(&self, item_tab: &mut ItemTab) {
-        match self {
-            Self::Quantity => {
-                if item_tab.can_quantity() {
-                    spawn_task! {
-                        if let Some(val) = request_input::<u64>(None).await {
-                            mutate_app!(|app: &mut App| {
-                                let items_tab = &mut app.elden_ring.items;
-                                items_tab.quantity = val;
-                                items_tab.handle_item_switch()
-                            });
-                        }
-                    }
-                }
-            },
-            Self::Upgrade => {
-                if item_tab.can_upgrade() {
-                    spawn_task! {
-                        if let Some(val) = request_input::<u64>(None).await {
-                            mutate_app!(|app: &mut App| {
-                                let items_tab = &mut app.elden_ring.items;
-                                items_tab.upgrade = val;
-                                items_tab.handle_item_switch()
-                            });
-                        }
-                    }
-                }
-            },
-            Self::AshOfWar => {
-                if item_tab.can_aow() {
-                    let entries = aow_array().iter()
-                        .filter(|aow| aow.supports_item(item_tab.item))
-                        .map(|aow| Utf32String::from(aow.name))
-                        .collect();
-                    spawn_task! {
-                        if let Some(selected) = request_search(entries).await {
-                            mutate_app!(|app: &mut App| {
-                                let items_tab = &mut app.elden_ring.items;
-                                let entries: Vec<Aow> = aow_array().iter()
-                                    .filter(|aow| aow.supports_item(items_tab.item))
-                                    .cloned().collect();
-                                items_tab.aow = entries[selected];
-                            });
-                        }
-                    }
-                }
-            },
-            Self::Affinity => {
-                if item_tab.can_aow() {
-                    let entries = AFFINITIES.iter()
-                        .filter(|affinity| item_tab.aow.supports_affinity(affinity.flag))
-                        .map(|affinity| Utf32String::from(affinity.name))
-                        .collect();
-                    spawn_task! {
-                        if let Some(selected) = request_search(entries).await {
-                            mutate_app!(|app: &mut App| {
-                                let items_tab = &mut app.elden_ring.items;
-                                let entries: Vec<Affinity> = AFFINITIES.iter()
-                                    .filter(|affinity| items_tab.aow.supports_affinity(affinity.flag))
-                                    .cloned().collect();
-                                items_tab.affinity = entries[selected];
-                            });
-                        }
-                    }
-                }
-            },
-        }
+struct AowSearch;
+impl SearchRequest for AowSearch {
+    fn items(&self) -> Vec<Utf32String> {
+        SPAWN_REQUEST.lock().unwrap().item.valid_aows().iter()
+            .map(|aow| Utf32String::from(aow.name))
+            .collect()
     }
-    fn to_list_item(&self, item_tab: &ItemTab) -> ListItem<'static> {
-        match self {
-            Self::Quantity => {
-                ListItem::new(format!("Quantity: {}", item_tab.quantity))
-                    .style(options_style(item_tab.can_quantity()))
-            }
-            Self::Upgrade => {
-                ListItem::new(format!("Upgrade: {}", item_tab.upgrade))
-                    .style(options_style(item_tab.can_upgrade()))
-            }
-            Self::AshOfWar => {
-                ListItem::new(format!("Ash of War: {}", item_tab.aow.name))
-                    .style(options_style(item_tab.can_aow()))
-            }
-            Self::Affinity => {
-                ListItem::new(format!("Affinity: {}", item_tab.affinity.name))
-                    .style(options_style(item_tab.can_aow()))
-            }
-        }
-    }
-    const ARRAY: &[OptionsItems] = &[
-        Self::Quantity,
-        Self::Upgrade,
-        Self::AshOfWar,
-        Self::Affinity,
-    ];
-    fn list(item_tab: &ItemTab) -> List<'static> {
-        let items: Vec<ListItem> = Self::ARRAY.iter().map(|i| i.to_list_item(item_tab)).collect();
-        tabs_list(items, None, &item_tab.tab, OPTIONS_IDX)
+    fn jump(&self, _app: &mut App, selected: usize) {
+        let mut spawn_request = SPAWN_REQUEST.lock().unwrap();
+        spawn_request.aow = spawn_request.item.valid_aows()[selected];
     }
 }
 
-fn options_style(show: bool) -> Style {
-    if show {
-        Style::default()
-    } else {
-        Style::new()
-            .add_modifier(Modifier::CROSSED_OUT)
+struct AffinitySearch;
+impl SearchRequest for AffinitySearch {
+    fn items(&self) -> Vec<Utf32String> {
+        SPAWN_REQUEST.lock().unwrap().aow.valid_affinities().iter()
+            .map(|affinity| Utf32String::from(affinity.name))
+            .collect()
+    }
+    fn jump(&self, _app: &mut App, selected: usize) {
+        let mut spawn_request = SPAWN_REQUEST.lock().unwrap();
+        spawn_request.affinity = spawn_request.aow.valid_affinities()[selected];
+    }
+}
+
+struct MassSpawnList;
+impl TableController for MassSpawnList {
+    fn make_table_view(&self) -> TableView {
+        let rows = Categories::ARRAY.iter().map(|item| Row::new([item.to_string()])).collect();
+        TableView::new(rows)
+    }
+    fn handle_keys_selected(&self, selected: usize, ctx: &mut KeyContext) {
+        if ctx.key_enter() {
+            let item = SPAWN_REQUEST.lock().unwrap();
+            let quantity = item.quantity;
+            let upgrade = item.upgrade;
+
+            thread::spawn(move || {
+                item::mass_spawn(
+                    Categories::ARRAY[selected],
+                    quantity,
+                    upgrade,
+                )
+                .send_error();
+            });
+        }
     }
 }

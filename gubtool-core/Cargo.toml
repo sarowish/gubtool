@@ -7,8 +7,10 @@ edition = "2024"
 bincode = { workspace = true }
 pelite = { workspace = true }
 serde = { workspace = true }
+strum = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
+rayon = { workspace = true }
 
 assemble = { version = "0.1.0", path = "../assemble" }
 arboard = { version = "3.6.1", features = ["wayland-data-control", "wl-clipboard-rs"] }

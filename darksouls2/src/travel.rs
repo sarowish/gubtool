@@ -1,16 +1,11 @@
 use crate::{
     mem::*,
-    offsets::{
-        ChainReadExt,
-        code_cave::CaveOffset,
-        game_manager_imp::{self, event_manager_offsets},
-        module_offsets::{BasePointer, Function},
-    },
+    offsets::{code_cave::CaveAddress, module_offsets::Function},
+    pointer_cache::ResolvedPtr,
     resources::{asm_function, bonfires::Bonfire, bosses::Boss},
     utils::player_loaded_check,
 };
-use gubtool_core::slice_ops::*;
-use gubtool_core::sys::error::ProcResult;
+use gubtool_core::{slice_ops::*, sys::error::ProcResult};
 
 const DEFAULT_TRANSITION_MODE: u32 = 6;
 const DEFAULT_SPAWN_ANIM: u32 = 3;
@@ -42,7 +37,7 @@ enum WarpKind {
     DirectWithOffset = 1,
     MapOnly = 2,
     Bonfire = 3,
-    EventPoint = 4
+    EventPoint = 4,
 }
 
 impl Default for WarpRequest {
@@ -102,17 +97,13 @@ impl Bonfire {
 }
 
 fn warp(request: WarpRequest) -> ProcResult {
-    let warp_manager = read_address(BasePointer::GameManagerImp)
-        .read_offset(game_manager_imp::EVENT_MANAGER)
-        .read_offset(event_manager_offsets::EVENT_WARP_MANAGER)?;
-
     let mut fun = asm_function("warp");
     let mut asm = fun.take_bytes();
 
-    write_addr_to_slice(&mut asm, fun.reloc_find("warp_manager"), warp_manager)?;
-    write_addr_to_slice(&mut asm, fun.reloc_find("request_loc"), CaveOffset::WarpRequestStruct)?;
-    write_addr_to_slice(&mut asm, fun.reloc_find("fn_request_warp"), Function::Warp)?;
+    write_addr_to_slice(&mut asm, fun.reloc("warp_manager"), ResolvedPtr::WarpManager.get()?)?;
+    write_addr_to_slice(&mut asm, fun.reloc("request_loc"), CaveAddress::WarpRequestStruct)?;
+    write_addr_to_slice(&mut asm, fun.reloc("fn_request_warp"), Function::Warp)?;
 
-    write_bytes(CaveOffset::WarpRequestStruct, &request.to_array())?;
-    spawn_thread_join(CaveOffset::WarpRequestAsm, asm)
+    write_bytes(CaveAddress::WarpRequestStruct, &request.to_array())?;
+    spawn_thread_join(CaveAddress::WarpRequestAsm, asm)
 }

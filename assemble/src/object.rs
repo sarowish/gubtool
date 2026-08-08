@@ -1,12 +1,6 @@
-use object::{Object, ObjectSection, ObjectSymbol, RelocationTarget};
-use std::{
-    collections::{VecDeque},
-    env, fs,
-    path::PathBuf,
-    process::Command,
-};
-
 use crate::{AsmFolder, AsmFunction, Relocation};
+use object::{Object, ObjectSection, ObjectSymbol, RelocationTarget};
+use std::{collections::VecDeque, env, fs, path::PathBuf, process::Command};
 
 pub fn build(folders: &[(&'static str, &'static str, bool)]) {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -37,7 +31,6 @@ pub fn build(folders: &[(&'static str, &'static str, bool)]) {
             assert!(status.success(), "failed to assemble {:?}", file_path);
 
             println!("cargo:rerun-if-changed={}", &file_path.display());
-
 
             let mut relocations: VecDeque<Relocation> = VecDeque::new();
 

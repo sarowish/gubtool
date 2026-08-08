@@ -1,10 +1,10 @@
 use anyhow::{Ok, ensure};
 use clap::{Parser, Subcommand, ValueEnum};
-use eldenring::{self, chr_ins::ChrInsExt};
 use gubtool_core::{
-    attached::{self, game, process_manager::ProcessManager},
+    attached::{self, game},
     game_version::Game,
 };
+use shared::command::{ToggleCommand, UnitCommand};
 use std::{thread, time::Duration};
 use tui;
 
@@ -13,16 +13,14 @@ use tui;
 #[derive(Clone, Copy)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Option<Commands>,
+    pub command: Option<CliCommand>,
 }
 
-#[derive(Subcommand)]
-#[derive(Clone, Copy)]
-pub enum Commands {
+#[derive(Subcommand, Clone, Copy)]
+pub enum CliCommand {
     Quitout,
     KillTarget,
     NextPhase,
-
     #[cfg(debug_assertions)]
     AobScan,
     #[cfg(debug_assertions)]
@@ -43,50 +41,52 @@ pub fn run() -> anyhow::Result<()> {
 
     #[cfg(debug_assertions)]
     match cli.command.unwrap() {
-        Commands::AsmSizes => {
+        CliCommand::AsmSizes => {
             gubtool_core::sys::print_asm_sizes();
             darksouls2::utils::print_asm_sizes();
             eldenring::utils::print_asm_sizes();
-        },
-        Commands::Test => {
+            return Ok(());
         },
         _ => (),
     }
 
-    let _proc_manager = ProcessManager::new().try_auto_attach();
-
+    attached::try_auto_attach();
     ensure!(attached::is_attached(), "Game not found");
-    let game = game().unwrap();
 
+    let game = game().unwrap();
+    match game {
+        Game::DarkSouls2 => darksouls2::init(),
+        Game::EldenRing => eldenring::init(),
+    }
+
+    #[allow(unreachable_patterns)]
     match cli.command.unwrap() {
-        Commands::Quitout => match game {
-            Game::EldenRing => eldenring::utility::quitout()?,
-            Game::DarkSouls2 => darksouls2::utility::quitout()?,
+        CliCommand::Quitout => match game {
+            Game::EldenRing => eldenring::utility::Quitout.execute()?,
+            Game::DarkSouls2 => darksouls2::utility::Quitout.execute()?,
         },
-        Commands::KillTarget => match game {
+        CliCommand::KillTarget => match game {
             Game::EldenRing => {
-                if !eldenring::target::is_target_hook_active()? {
-                    eldenring::target::install_target_hook()?;
+                if !eldenring::target::SaveTargetHook.is()? {
+                    eldenring::target::SaveTargetHook.set(true)?;
                     thread::sleep(Duration::from_millis(50));
                 }
-                eldenring::chr_ins::ChrInsExt::set_hp(&eldenring::target::target_ins(), 0)?
+                eldenring::target::target().chr_ins()?.set_hp(0)?
             }
             Game::DarkSouls2 => {
-                if !darksouls2::target::is_target_hook_active() {
-                    darksouls2::target::install_target_hook()?;
+                if !darksouls2::target::SaveTargetHook.is()? {
+                    darksouls2::target::SaveTargetHook.set(true)?;
                     thread::sleep(Duration::from_millis(50));
                 }
-                darksouls2::chr_ctrl::ChrCtrlExt::set_hp(&darksouls2::target::target_ctrl(), 0)?
+                darksouls2::target::target().chr_ctrl()?.set_hp(0)?
             }
         },
-        Commands::NextPhase => match game {
-            Game::EldenRing => eldenring::target::target_ins().next_phase()?,
+        CliCommand::NextPhase => match game {
+            Game::EldenRing => eldenring::target::target().chr_ins()?.next_phase()?,
             Game::DarkSouls2 => (),
         },
         #[cfg(debug_assertions)]
-        Commands::AobScan => match game {
-            Game::EldenRing => eldenring::utils::scan_and_print_base_offsets()?,
-            Game::DarkSouls2 => darksouls2::utils::scan_and_print_base_offsets()?,
+        CliCommand::AobScan => {
         },
         _ => (),
     }

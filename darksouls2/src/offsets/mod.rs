@@ -3,13 +3,8 @@ pub mod code_cave;
 pub mod game_manager_imp;
 pub mod module_offsets;
 
-use crate::{
-    mem::{read, read_address, write},
-};
-use gubtool_core::{
-    attached::is_32,
-    sys::error::ProcResult,
-};
+use crate::mem::{read, read_address, write};
+use gubtool_core::{attached::is_32, sys::error::ProcResult};
 use pelite::Pod;
 
 pub struct Offset {
@@ -25,9 +20,13 @@ impl Offset {
 }
 
 pub trait ChainReadExt {
+    #[track_caller]
     fn read_offset(self, offset: Offset) -> ProcResult<u64>;
+    #[track_caller]
     fn add_offset(self, offset: Offset) -> ProcResult<u64>;
+    #[track_caller]
     fn read<T: Pod>(self) -> ProcResult<T>;
+    #[track_caller]
     fn write<T: Pod>(self, val: T) -> ProcResult;
 }
 

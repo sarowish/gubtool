@@ -1,7 +1,7 @@
 use crate::{
     mem::{EXECUTE_EMEVD_COMMAND_MUTEX, spawn_thread_join, write_bytes},
     offsets::{
-        code_cave::CaveOffset,
+        code_cave::CaveAddress,
         module_offsets::{BasePointer, Function},
     },
     resources::ASM,
@@ -16,41 +16,42 @@ fn execute_emevd_command(group_id: i32, command_id: i32, args: &[u8]) -> ProcRes
     write_addr_to_slice(&mut asm, fun.reloc("fn_emk_event_ins_ctor"), Function::EmkEventInsCtor)?;
     write_to_slice::<i32>(&mut asm, fun.reloc("group_id"), group_id)?;
     write_to_slice::<i32>(&mut asm, fun.reloc("command_id"), command_id)?;
-    write_addr_to_slice(&mut asm, fun.reloc("args_location"), CaveOffset::EmevdArgs)?;
+    write_addr_to_slice(&mut asm, fun.reloc("args_location"), CaveAddress::EmevdArgs)?;
     write_addr_to_slice(&mut asm, fun.reloc("cs_emk_system_base"), BasePointer::CsEmkSystem)?;
     write_addr_to_slice(&mut asm, fun.reloc("fn_emevd_switch"), Function::EmevdSwitch)?;
 
     let _handle = EXECUTE_EMEVD_COMMAND_MUTEX.lock().unwrap();
 
-    write_bytes(CaveOffset::EmevdArgs, args)?;
-    spawn_thread_join(CaveOffset::EmevdAsm, asm)
+    write_bytes(CaveAddress::EmevdArgs, args)?;
+    spawn_thread_join(CaveAddress::EmevdAsm, asm)
 }
 
 pub fn set_night() -> ProcResult {
     let mut param_data: [u8; 20] = [0x0; 20];
     write_to_slice::<u8>(&mut param_data, 0, 20)?;
     write_to_slice::<u8>(&mut param_data, 5, 1)?;
-    write_to_slice::<f32>(&mut param_data, 8, 0.75)?;
-    write_to_slice::<f32>(&mut param_data, 12, 2.0)?;
-    write_to_slice::<f32>(&mut param_data, 16, 0.0)?;
+    write_to_slice::<f32>(&mut param_data, 8, 0.75_f32)?;
+    write_to_slice::<f32>(&mut param_data, 12, 2.0_f32)?;
+    write_to_slice::<f32>(&mut param_data, 16, 0.0_f32)?;
     execute_emevd_command(2001, 4, &param_data)
 }
 
-pub fn rest() -> ProcResult {
+pub fn rest() -> anyhow::Result<()> {
     player_loaded_check()?;
-    execute_emevd_command(2004, 47, &[])
+    execute_emevd_command(2004, 47, &[])?;
+    Ok(())
 }
 
-
-pub fn disable_title_card() -> ProcResult {
+pub(crate) fn disable_title_card() -> ProcResult {
     execute_emevd_command(2012, 8, &[])
 }
 
-pub fn reset_character_position(entity_id: u32) -> ProcResult {
+pub fn reset_character_position(entity_id: u32) -> anyhow::Result<()> {
     player_loaded_check()?;
     let mut param_data: [u8; 20] = [0x0; 20];
     write_to_slice::<u32>(&mut param_data, 0, entity_id)?;
-    execute_emevd_command(2004, 81, &param_data)
+    execute_emevd_command(2004, 81, &param_data)?;
+    Ok(())
 }
 
 pub fn force_animation_playback(

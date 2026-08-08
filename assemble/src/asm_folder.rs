@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{HashMap, VecDeque},
-};
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AsmFolder {

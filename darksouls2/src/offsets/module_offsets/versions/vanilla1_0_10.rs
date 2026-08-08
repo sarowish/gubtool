@@ -20,6 +20,7 @@ pub const VANILLA_1_0_10: ModuleOffsets = ModuleOffsets {
         menu_chr_state: 0x503B40,
         level_up: 0x3BD600,
         level_lookup: 0x3BE0E0,
+        chr_set_action: 0x440F50,
     },
     hooks: Hooks {
         set_shared_flag: 0x4412CB,

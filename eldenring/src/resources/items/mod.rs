@@ -16,16 +16,13 @@ pub mod talismans;
 pub mod upgrade_materials;
 pub mod weapons;
 
-use crate::{
-    resources::items::{
-        armor::ARMOR, arrows::ARROWS, ashes_of_war::ASHES_OF_WAR, bell_bearings::BELL_BEARINGS,
-        consumables::CONSUMABLES, cookbooks::COOKBOOKS, crafting_materials::CRAFTING_MATERIALS,
-        crystal_tears::CRYSTAL_TEARS, incantations::INCANTATIONS, key_items::KEY_ITEMS,
-        pots_and_perfumes::POTS_AND_PERFUMES, prattling_pate::PRATTLING_PATE, sorceries::SORCERIES,
-        spirit_ashes::SPIRIT_ASHES, talismans::TALISMANS, upgrade_materials::UPGRADE_MATERIALS,
-        weapons::WEAPONS,
-    },
-    utils::is_version_dlc_compat,
+use crate::resources::items::{
+    armor::ARMOR, arrows::ARROWS, ashes_of_war::ASHES_OF_WAR, bell_bearings::BELL_BEARINGS,
+    consumables::CONSUMABLES, cookbooks::COOKBOOKS, crafting_materials::CRAFTING_MATERIALS,
+    crystal_tears::CRYSTAL_TEARS, incantations::INCANTATIONS, key_items::KEY_ITEMS,
+    pots_and_perfumes::POTS_AND_PERFUMES, prattling_pate::PRATTLING_PATE, sorceries::SORCERIES,
+    spirit_ashes::SPIRIT_ASHES, talismans::TALISMANS, upgrade_materials::UPGRADE_MATERIALS,
+    weapons::WEAPONS,
 };
 use clap::ValueEnum;
 use once_cell::sync::Lazy;
@@ -62,7 +59,7 @@ impl Item {
     }
 }
 
-static ITEMS: Lazy<Vec<Item>> = Lazy::new(|| {
+pub static ITEMS: Lazy<Vec<Item>> = Lazy::new(|| {
     let mut items = Vec::new();
     items.extend(ARMOR);
     items.extend(ARROWS);
@@ -84,27 +81,6 @@ static ITEMS: Lazy<Vec<Item>> = Lazy::new(|| {
     items.sort_by(|a, b| a.name.cmp(b.name));
     items
 });
-
-static ITEMS_NO_DLC_VERSION: Lazy<Vec<Item>> =
-    Lazy::new(|| ITEMS.iter().filter(|item| !item.dlc).cloned().collect());
-
-static ITEMS_DLC_NOT_ACTIVE: Lazy<Vec<Item>> = Lazy::new(|| {
-    ITEMS
-        .iter()
-        .filter(|item| !item.dlc || !item.requires_activated_dlc())
-        .cloned()
-        .collect()
-});
-
-pub fn items_array(dlc_active: bool) -> &'static [Item] {
-    if dlc_active {
-        &ITEMS
-    } else if is_version_dlc_compat() {
-        &ITEMS_DLC_NOT_ACTIVE
-    } else {
-        &ITEMS_NO_DLC_VERSION
-    }
-}
 
 #[derive(Clone, Copy, PartialEq, ValueEnum)]
 pub enum Categories {

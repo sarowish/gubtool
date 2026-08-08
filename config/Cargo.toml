@@ -9,10 +9,10 @@ ratatui-themes = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
 strum = { workspace = true }
+notify = "8.2.0"
 
 gubtool-core = { version = "0.1.0", path = "../gubtool-core" }
-darksouls2 = { version = "0.1.0", path = "../darksouls2" }
-eldenring = { version = "0.1.0", path = "../eldenring" }
+shared = { version = "0.1.0", path = "../shared" }
 
 [lints]
 workspace = true

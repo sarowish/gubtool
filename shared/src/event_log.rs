@@ -1,10 +1,10 @@
 use chrono::{DateTime, Local};
-use gubtool_core::{appdata::{AppDataError, app_data_dir}, slice_ops::read_from_slice, sys::error::ProcResult};
-use std::{
-    collections::HashMap,
-    fs::{OpenOptions},
-    io::{Write},
+use gubtool_core::{
+    appdata::{AppDataError, app_data_dir},
+    slice_ops::read_from_slice,
+    sys::error::ProcResult,
 };
+use std::{collections::HashMap, fs::OpenOptions, io::Write};
 use thiserror::Error;
 
 #[derive(Clone, Copy)]
@@ -69,8 +69,12 @@ impl EventLog {
 
         let appdata_dir = app_data_dir()?;
         let time = Local::now().format("%H:%M:%S");
-        let log_path = appdata_dir
-            .join("event_logs")
+        let dir = appdata_dir
+            .join("event_logs");
+
+        std::fs::create_dir_all(&dir)?;
+
+        let log_path = dir
             .join(format!("{file_prefix}_event_{time}.log"));
 
         let mut file = OpenOptions::new()
@@ -88,7 +92,7 @@ impl EventLog {
                 record.state.to_string().to_uppercase(),
             )?;
         }
-        Ok(format!("~/{}", log_path.display().to_string()))
+        Ok(format!("{}", log_path.display().to_string()))
     }
 }
 
@@ -99,6 +103,7 @@ pub trait EventLogger {
     fn read_buffer(&self) -> ProcResult<[u8; 0x1000]>;
     fn write_idx(&self) -> ProcResult<i32>;
     fn clear_cave(&self) -> ProcResult;
+    fn toggle_hook(&self) -> anyhow::Result<()>;
 
     fn poll(&mut self) -> ProcResult {
         let bytes = self.read_buffer()?;

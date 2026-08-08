@@ -1,18 +1,21 @@
-use std::ptr;
-
 pub use crate::offsets::{chr_dbg_flags::ChrDbgOffset, game_data_man::PlayerGameDataOffset};
+
 use crate::{
-    chr_ins::{self, ChrIns, ChrInsExt},
+    chr_ins::{ChrIns, ResolvedChrPtr},
+    emevd,
+    game_state::{self, StateFlag},
+    is_player_loaded,
     mem::*,
     offsets::{
         ChainReadExt,
-        code_cave::CaveOffset,
+        code_cave::CaveAddress,
         game_data_man,
         module_offsets::{BasePointer, Data, Function, Hook, Patch},
         world_chr_man,
     },
+    pointer_cache::ResolvedPtr,
     resources::ASM,
-    utils::player_loaded_check,
+    utils::{dlc_check, player_loaded_check},
 };
 use gubtool_core::{
     address::Address,
@@ -21,110 +24,305 @@ use gubtool_core::{
     slice_ops::*,
     sys::error::{PointerType, ProcResult, ProcessError},
 };
+use shared::{
+    command::{StatCommand, ToggleCommand, UnitCommand, ValueCommand},
+    declare_command,
+};
+use std::sync::{LazyLock, Mutex, MutexGuard};
+use strum::Display;
 
-pub fn player_ins() -> ChrIns {
-    match read::<u64>(BasePointer::WorldChrMan).read_offset(world_chr_man::player_ins()) {
-        Ok(ptr) if ptr != 0x0 => Ok(ptr),
-        Ok(_) | Err(_) => Err(ProcessError::InvalidPointer {
-            pointer_type: PointerType::PlayerIns,
-        }),
+static PLAYER: LazyLock<Mutex<Player>> = LazyLock::new(|| {
+    Mutex::new(Player::new())
+});
+
+pub fn player() -> MutexGuard<'static, Player> {
+    PLAYER.lock().unwrap()
+}
+
+pub struct Player {
+    chr_ins: Option<ChrIns>,
+}
+
+impl Player {
+    fn new() -> Self {
+        let mut player = Self { chr_ins: None };
+        player.update();
+        player
+    }
+    pub fn update(&mut self) {
+        let ptr = ResolvedPtr::WorldChrMan.get()
+            .read_offset(world_chr_man::player_ins());
+        match ptr {
+            Ok(pointer) => {
+                if pointer != 0x0 {
+                    self.chr_ins = Some(ChrIns::new(pointer));
+                } else {
+                    self.chr_ins = None;
+                }
+            }
+            Err(_) => {
+                self.chr_ins = None;
+            }
+        }
+    }
+    pub fn chr_ins(&mut self) -> ProcResult<&mut ChrIns> {
+        self.chr_ins.as_mut().ok_or(ProcessError::null_pointer(PointerType::Player))
+    }
+    pub fn pointers(&self) -> Vec<(String, u64)> {
+        self.chr_ins.as_ref().map(|c| c.pointers()).unwrap_or(Vec::default())
     }
 }
 
-pub fn torrent_ins() -> ChrIns {
-    let handle = player_game_data()
-        .read_offset(game_data_man::torrent_handle())?;
-    chr_ins::chr_ins_from_handle(handle)
+static TORRENT: LazyLock<Mutex<Torrent>> = LazyLock::new(|| {
+    Mutex::new(Torrent::new())
+});
+
+pub fn torrent() -> MutexGuard<'static, Torrent> {
+    TORRENT.lock().unwrap()
 }
 
-pub fn set_chr_dbg_flag(offset: ChrDbgOffset, state: bool) -> ProcResult {
-    write::<u8>(Data::ChrDbgFlags.add_offset(offset as u64), state as u8)
+pub struct Torrent {
+    chr_ins: Option<ChrIns>,
 }
 
-pub fn is_chr_dbg_flag(offset: ChrDbgOffset) -> ProcResult<bool> {
+impl Torrent {
+    fn new() -> Self {
+        let mut torrent = Self { chr_ins: None };
+        torrent.update();
+        torrent
+    }
+    pub fn update(&mut self) {
+        let handle = ResolvedPtr::PlayerGameData.get()
+            .read_offset(game_data_man::torrent_handle());
+        match handle {
+            Ok(pointer) => {
+                if pointer != 0x0 {
+                    self.chr_ins = Some(ChrIns::from_handle(pointer));
+                }
+            }
+            Err(_) => {
+                self.chr_ins = None;
+            }
+        }
+    }
+    pub fn chr_ins(&mut self) -> ProcResult<&mut ChrIns> {
+        self.chr_ins.as_mut().ok_or(ProcessError::null_pointer(PointerType::Torrent))
+    }
+    pub fn pointers(&self) -> Vec<(String, u64)> {
+        self.chr_ins.as_ref().map(|c| c.pointers()).unwrap_or(Vec::default())
+    }
+}
+
+declare_command!(
+    NoDeath,
+    OneShot,
+    InfiniteStamina,
+    InfiniteFp,
+    InfiniteConsumables,
+    InfiniteArrows,
+    Silent,
+    Hidden,
+    NoDamage,
+    InfinitePoise,
+    SetRfbsOnLoad,
+    RuneArc,
+    TorrentAnywhere,
+    TorrentNoDeath,
+    Health,
+    Die,
+    Runes,
+    AnimationSpeed,
+    Rest,
+);
+
+fn is_chr_dbg_flag(offset: ChrDbgOffset) -> ProcResult<bool> {
     read::<u8>(Data::ChrDbgFlags.add_offset(offset as u64)).map(|val| val == 1)
 }
 
-pub fn set_rune_arc(state: bool) -> ProcResult {
-        player_game_data()
+fn set_chr_dbg_flag(offset: ChrDbgOffset, state: bool) -> anyhow::Result<()> {
+    write::<u8>(Data::ChrDbgFlags.add_offset(offset as u64), state as u8)?;
+    Ok(())
+}
+
+macro_rules! impl_chr_dbg {
+    ($struct_name:ident, $chr_dbg_offset:path) => {
+        impl ToggleCommand for $struct_name {
+            fn is(&self) -> ProcResult<bool> {
+                is_chr_dbg_flag($chr_dbg_offset)
+            }
+            fn set(&self, state: bool) -> anyhow::Result<()> {
+                set_chr_dbg_flag($chr_dbg_offset, state)
+            }
+        }
+    };
+}
+
+impl_chr_dbg!(NoDeath, ChrDbgOffset::PlayerNoDeath);
+impl_chr_dbg!(OneShot, ChrDbgOffset::OneShot);
+impl_chr_dbg!(InfiniteStamina, ChrDbgOffset::InfiniteStamina);
+impl_chr_dbg!(InfiniteFp, ChrDbgOffset::InfiniteFp);
+impl_chr_dbg!(InfiniteArrows, ChrDbgOffset::InfiniteArrows);
+impl_chr_dbg!(InfiniteConsumables, ChrDbgOffset::InfiniteConsumables);
+impl_chr_dbg!(Hidden, ChrDbgOffset::Hidden);
+impl_chr_dbg!(Silent, ChrDbgOffset::Silent);
+
+impl ToggleCommand for NoDamage {
+    fn is(&self) -> ProcResult<bool> {
+        Ok(game_state::is_flag(StateFlag::PlayerNoDamage))
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        game_state::set_flag(StateFlag::PlayerNoDamage, state)?;
+        let _ = self.set_in_game(state);
+        Ok(())
+    }
+}
+impl NoDamage {
+    pub fn set_in_game(&self, state: bool) -> ProcResult {
+        player().chr_ins()?.set_no_damage(state)
+    }
+}
+
+impl ValueCommand<i32> for Health {
+    fn get(&self) -> ProcResult<i32> {
+        player().chr_ins()?.get_current_hp()
+    }
+    fn set(&self, val: i32) -> anyhow::Result<()> {
+        player().chr_ins()?.set_hp(val)?;
+        Ok(())
+    }
+}
+
+impl UnitCommand for Die {
+    fn execute(&self) -> anyhow::Result<()> {
+        player().chr_ins()?.set_hp(0)?;
+        Ok(())
+    }
+}
+
+impl ValueCommand<f32> for AnimationSpeed {
+    fn get(&self) -> ProcResult<f32> {
+        player().chr_ins()?.get_animation_speed()
+    }
+    fn set(&self, val: f32) -> anyhow::Result<()> {
+        player().chr_ins()?.set_animation_speed(val)?;
+        Ok(())
+    }
+}
+
+impl UnitCommand for Rest {
+    fn execute(&self) -> anyhow::Result<()> {
+        emevd::rest()
+    }
+}
+
+impl ToggleCommand for RuneArc {
+    fn is(&self) -> ProcResult<bool> {
+        Ok(player_game_data().rune_arc_active || game_state::is_flag(StateFlag::RuneArc))
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        game_state::set_flag(StateFlag::RuneArc, state)?;
+        let _ = self.set_in_game(state);
+        Ok(())
+    }
+}
+impl RuneArc {
+    pub fn set_in_game(&self, state: bool) -> ProcResult {
+        ResolvedPtr::PlayerGameData.get()
         .add_offset(PlayerGameDataOffset::RuneArc as u64)
         .write::<u8>(state as u8)
+    }
 }
 
-pub fn set_rfbs() -> ProcResult {
-    let player_ins = player_ins();
-    let max_hp = player_ins.get_max_hp()?;
-    player_ins.set_hp((max_hp * 20) / 100 - 1)
+impl ToggleCommand for SetRfbsOnLoad {
+    fn is(&self) -> ProcResult<bool> {
+        Ok(game_state::is_flag(StateFlag::Rfbs))
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        game_state::set_flag(StateFlag::Rfbs, state)?;
+        Ok(())
+    }
+}
+impl SetRfbsOnLoad {
+    pub fn apply_in_game(&self) -> ProcResult {
+        let max_hp = player().chr_ins()?.get_max_hp()?;
+        player().chr_ins()?.set_hp((max_hp * 20) / 100 - 1)
+    }
 }
 
-pub fn set_runes(amount: u32) -> ProcResult {
-    let current_amount = PlayerGameData::read().rune_count;
-    let to_give = amount as i32 - current_amount as i32;
-    give_runes(to_give as i64)
+impl ValueCommand<u32> for Runes {
+    fn get(&self) -> ProcResult<u32> {
+        Ok(player_game_data().rune_count)
+    }
+    fn set(&self, val: u32) -> anyhow::Result<()> {
+        let current_amount = player_game_data().rune_count;
+        let to_give = val as i32 - current_amount as i32;
+        self.give(to_give as i64)
+    }
+}
+impl Runes {
+    pub fn give(&self, amount: i64) -> anyhow::Result<()> {
+        player_loaded_check()?;
+        let mut fun = ASM.get_function("give_runes");
+        let mut asm = fun.take_bytes();
+
+        write_addr_to_slice(&mut asm, fun.reloc("player_game_data"), ResolvedPtr::PlayerGameData.get()?)?;
+        write_to_slice::<i64>(&mut asm, fun.reloc("amount"), amount)?;
+        write_addr_to_slice(&mut asm, fun.reloc("fn_give_runes"), Function::GiveRunes)?;
+
+        spawn_thread_join(CaveAddress::GiveRunesAsm, asm)?;
+        Ok(())
+    }
 }
 
-pub fn give_runes(amount: i64) -> ProcResult {
-    player_loaded_check()?;
-
-    let mut fun = ASM.get_function("give_runes");
-    let mut asm = fun.take_bytes();
-
-    write_addr_to_slice(&mut asm, fun.reloc("player_game_data"), player_game_data()?)?;
-    write_to_slice::<i64>(&mut asm, fun.reloc("amount"), amount)?;
-    write_addr_to_slice(&mut asm, fun.reloc("fn_give_runes"), Function::GiveRunes)?;
-
-    spawn_thread_join(CaveOffset::GiveRunesAsm, asm)
+impl ToggleCommand for TorrentAnywhere {
+    fn is(&self) -> ProcResult<bool> {
+        read::<[u8; 3]>(Patch::WhistleDisabled)
+            .map(|val| val != [0x0F, 0x95, 0xC0])
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        match state {
+            true => {
+                write_bytes(Patch::TorrentDisabledUnderworld, &[0x30, 0xC0, 0x90])?;
+                write_bytes(Patch::WhistleDisabled, &[0x30, 0xC0, 0x90])?;
+            }
+            false => {
+                write_bytes(Patch::TorrentDisabledUnderworld, &[0x0F, 0x95, 0xC0])?;
+                write_bytes(Patch::WhistleDisabled, &[0x0F, 0x95, 0xC0])?;
+            }
+        }
+        Ok(())
+    }
 }
 
-pub fn map_coords() -> ProcResult<[f32; 3]> {
-    read::<[f32; 3]>(
-        player_ins()? + world_chr_man::player_ins_offsets::current_map_coords(),
-    )
+impl ToggleCommand for TorrentNoDeath {
+    fn is(&self) -> ProcResult<bool> {
+        Ok(game_state::is_flag(StateFlag::TorrentNoDeath))
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        game_state::set_flag(StateFlag::TorrentNoDeath, state)?;
+        let _ = self.set_in_game(state);
+        Ok(())
+    }
+}
+impl TorrentNoDeath {
+    pub fn set_in_game(&self, state: bool) -> ProcResult {
+        torrent().chr_ins()?.set_no_death(state)
+    }
 }
 
-pub fn map_angle() -> ProcResult<f32> {
-    read::<f32>(
-        player_ins()? + world_chr_man::player_ins_offsets::current_map_angle(),
-    )
-}
-
-fn install_grab_hook() -> ProcResult {
-    let mut fun = ASM.get_function("grab_hook");
-    let mut asm = fun.take_bytes();
-
-    let location = CaveOffset::NoGrabHook;
-    let skip_grab_jmp_location = Hook::PlayerNoGrab.add_offset(0x95);
-
-    write_addr_to_slice(&mut asm, fun.reloc("world_chr_man"), BasePointer::WorldChrMan)?;
-    write_to_slice::<i32>(&mut asm, fun.reloc("player_ins_off"), world_chr_man::player_ins())?;
-    write_rel_i32(&mut asm, location, fun.reloc("skip_grab_jmp_location"), skip_grab_jmp_location, 4)?;
-    write_rel_i32(&mut asm, location, fun.reloc("hook_loc"), Hook::PlayerNoGrab.add_offset(9), 4)?;
-
-    install_hook(&asm, location, Hook::PlayerNoGrab, 9)
+impl ToggleCommand for InfinitePoise {
+    fn is(&self) -> ProcResult<bool> {
+        read::<[u8; 7]>(Hook::PlayerInfinitePoise)
+            .map(|val| val != infinite_poise_bytes_original())
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        self.set_infinite_poise(state)?;
+        self.set_no_grab(state)?;
+        Ok(())
+    }
 }
 
 const GRAB_HOOK_BYTES_ORIGINAL: [u8; 9] = [0x41, 0x8B, 0x56, 0x44, 0x48, 0x8D, 0x4C, 0x24, 0x40];
-fn uninstall_grab_hook() -> ProcResult {
-    write_bytes(Hook::PlayerNoGrab, &GRAB_HOOK_BYTES_ORIGINAL)
-}
-
-fn install_infinite_poise_hook() -> ProcResult {
-    let mut fun = ASM.get_function("infinite_poise_hook");
-    let mut asm = fun.take_bytes();
-
-    write_addr_to_slice(&mut asm, fun.reloc("world_chr_man"), BasePointer::WorldChrMan)?;
-    write_to_slice::<i32>(&mut asm, fun.reloc("player_ins_off"), world_chr_man::player_ins())?;
-    write_addr_to_slice(&mut asm, fun.reloc("fn_get_chr_ins"), Function::GetChrInsByEntityId)?;
-    write_rel_i32(
-        &mut asm,
-        CaveOffset::InfinitePoiseHook,
-        fun.reloc("hook_loc"),
-        Hook::PlayerInfinitePoise.add_offset(7),
-        4,
-    )?;
-    install_hook(&asm, CaveOffset::InfinitePoiseHook, Hook::PlayerInfinitePoise, 7)
-}
-
 fn infinite_poise_bytes_original() -> [u8; 7] {
     match version() {
         Some(Version1_2_0) | Some(Version1_2_1) | Some(Version1_2_2) | Some(Version1_2_3) => {
@@ -133,49 +331,57 @@ fn infinite_poise_bytes_original() -> [u8; 7] {
         _ => [0x4C, 0x8B, 0xC7, 0x40, 0x0F, 0xB6, 0xD5],
     }
 }
-fn uninstall_infinite_poise_hook() -> ProcResult {
-    write_bytes(Hook::PlayerInfinitePoise, &infinite_poise_bytes_original())
-}
+impl InfinitePoise {
+    fn set_infinite_poise(&self, state: bool) -> ProcResult {
+        if state {
+            let mut fun = ASM.get_function("infinite_poise_hook");
+            let mut asm = fun.take_bytes();
 
-pub fn is_infinite_poise() -> ProcResult<bool> {
-    read::<[u8; 7]>(Hook::PlayerInfinitePoise)
-        .map(|val| val != infinite_poise_bytes_original())
-}
-
-pub fn set_infinite_poise(val: bool) -> ProcResult {
-    match val {
-        true => {
-            install_infinite_poise_hook()?;
-            install_grab_hook()
+            write_addr_to_slice(&mut asm, fun.reloc("world_chr_man"), BasePointer::WorldChrMan)?;
+            write_to_slice::<i32>(&mut asm, fun.reloc("player_ins_off"), world_chr_man::player_ins())?;
+            write_addr_to_slice(&mut asm, fun.reloc("fn_get_chr_ins"), Function::GetChrInsByEntityId)?;
+            write_rel_i32(
+                &mut asm,
+                CaveAddress::InfinitePoiseHook,
+                fun.reloc("hook_loc"),
+                Hook::PlayerInfinitePoise.add_offset(7),
+                4,
+            )?;
+            install_hook(&asm, CaveAddress::InfinitePoiseHook, Hook::PlayerInfinitePoise, 7)
+        } else {
+            write_bytes(Hook::PlayerInfinitePoise, &infinite_poise_bytes_original())
         }
-        false => {
-            uninstall_infinite_poise_hook()?;
-            uninstall_grab_hook()
+    }
+    fn set_no_grab(&self, state: bool) -> ProcResult {
+        if state {
+            let mut fun = ASM.get_function("grab_hook");
+            let mut asm = fun.take_bytes();
+
+            let location = CaveAddress::NoGrabHook;
+            let skip_grab_jmp_location = Hook::PlayerNoGrab.add_offset(0x95);
+
+            write_addr_to_slice(&mut asm, fun.reloc("world_chr_man"), BasePointer::WorldChrMan)?;
+            write_to_slice::<i32>(&mut asm, fun.reloc("player_ins_off"), world_chr_man::player_ins())?;
+            write_rel_i32(&mut asm, location, fun.reloc("skip_grab_jmp_location"), skip_grab_jmp_location, 4)?;
+            write_rel_i32(&mut asm, location, fun.reloc("hook_loc"), Hook::PlayerNoGrab.add_offset(9), 4)?;
+
+            install_hook(&asm, location, Hook::PlayerNoGrab, 9)
+        } else {
+            write_bytes(Hook::PlayerNoGrab, &GRAB_HOOK_BYTES_ORIGINAL)
         }
     }
 }
 
-pub fn set_torrent_anywhere(state: bool) -> ProcResult {
-    match state {
-        true => {
-            write_bytes(Patch::TorrentDisabledUnderworld, &[0x30, 0xC0, 0x90])?;
-            write_bytes(Patch::WhistleDisabled, &[0x30, 0xC0, 0x90])
-        }
-        false => {
-            write_bytes(Patch::TorrentDisabledUnderworld, &[0x0F, 0x95, 0xC0])?;
-            write_bytes(Patch::WhistleDisabled, &[0x0F, 0x95, 0xC0])
-        }
-    }
+pub fn map_coords() -> ProcResult<[f32; 3]> {
+    player().chr_ins()?.get_ptr(ResolvedChrPtr::ChrIns)
+        .add_offset(world_chr_man::player_ins_offsets::current_map_coords())
+        .read::<[f32; 3]>()
 }
 
-pub fn is_torrent_anywhere() -> ProcResult<bool> {
-    read::<[u8; 3]>(Patch::WhistleDisabled)
-        .map(|val| val != [0x0F, 0x95, 0xC0])
-}
-
-fn player_game_data() -> ProcResult<u64> {
-    read::<u64>(BasePointer::GameDataMan)
-        .read_offset(game_data_man::PLAYER_GAME_DATA)
+pub fn map_angle() -> ProcResult<f32> {
+    player().chr_ins()?.get_ptr(ResolvedChrPtr::ChrIns)
+        .add_offset(world_chr_man::player_ins_offsets::current_map_angle())
+        .read::<f32>()
 }
 
 #[repr(C)]
@@ -250,7 +456,7 @@ pub struct PlayerGameData {
     pub solo_breakin_point: u32,
     pub invaders_killed: u32,
     pub scadutree_blessing: u8,
-    pub reversed_spirit_ash: u8,
+    pub revered_spirit_ash: u8,
     pub resist_curse_item_count: u8,
     pub rune_arc_active: bool,
     unk100: bool,
@@ -258,55 +464,103 @@ pub struct PlayerGameData {
     pub max_fp_flask: u8,
 }
 
+static PLAYER_GAME_DATA: LazyLock<Mutex<PlayerGameData>> = LazyLock::new(|| {
+    Mutex::new(PlayerGameData::default())
+});
+
+pub fn player_game_data() -> MutexGuard<'static, PlayerGameData> {
+    PLAYER_GAME_DATA.lock().unwrap()
+}
+
 impl PlayerGameData {
-    pub fn read() -> Self {
-        if player_loaded_check().is_err() {
-            return Self::default()
-        }
-        let bytes = read::<u64>(BasePointer::GameDataMan)
-            .read_offset(game_data_man::PLAYER_GAME_DATA)
-            .read::<[u8; std::mem::size_of::<Self>()]>()
-            .unwrap_or([0x0; std::mem::size_of::<Self>()]);
-        unsafe {
-            ptr::read_unaligned(bytes.as_ptr() as *const Self)
+    pub fn read(&mut self) {
+        if is_player_loaded() {
+            let bytes = ResolvedPtr::PlayerGameData.get()
+                .read::<[u8; std::mem::size_of::<Self>()]>()
+                .unwrap_or([0x0; std::mem::size_of::<Self>()]);
+            *self = unsafe { *(bytes.as_ptr() as *const Self) }
+        } else {
+            *self = Self::default()
         }
     }
 }
 
-pub fn set_stat(player_game_data_offset: PlayerGameDataOffset, val: i32) -> anyhow::Result<()> {
-    player_loaded_check()?;
-
-    let val = val.clamp(0, 99);
-
-    let game_data = player_game_data()?;
-    let current_val = read::<i32>(game_data + player_game_data_offset as u64)?;
-
-    let diff = val - current_val;
-    let current_level = read::<i32>(game_data + PlayerGameDataOffset::RuneLevel as u64)?;
-
-    if val > current_val {
-        let mut rune_cost = 0;
-        for i in 1..=diff {
-            rune_cost += level_up_cost(current_level + i);
-        }
-        let current_rune_mem = read::<u32>(game_data + PlayerGameDataOffset::RuneMemory as u64)?;
-        let new_rune_mem = std::cmp::min(current_rune_mem as u64 + rune_cost as u64, 0xFFFFFFFF);
-        write::<u32>(
-            game_data + PlayerGameDataOffset::RuneMemory as u64,
-            new_rune_mem as u32,
-        )?;
-    }
-    write::<i32>(
-        game_data + PlayerGameDataOffset::RuneLevel as u64,
-        current_level + diff,
-    )?;
-    write::<i32>(game_data + player_game_data_offset as u64, val)?;
-    Ok(())
+#[repr(u64)]
+#[derive(Debug, Clone, Copy, Display)]
+#[strum(serialize_all = "title_case")]
+pub enum Stat {
+    Vigor = 0x3C,
+    Mind = 0x40,
+    Endurance = 0x44,
+    Strength = 0x48,
+    Dexterity = 0x4C,
+    Intelligence = 0x50,
+    Faith = 0x54,
+    Arcane = 0x58,
+    ScadutreeBlessing = 0xFC,
+    ReveredSpiritAsh = 0xFD,
 }
 
-pub fn set_dlc_stat(player_game_data_offset: PlayerGameDataOffset, val: u8) -> anyhow::Result<()> {
+impl StatCommand for Stat {
+    fn get(&self) -> u32 {
+        let s = player_game_data();
+        match self {
+            Self::Vigor => s.vigor,
+            Self::Mind => s.mind,
+            Self::Endurance => s.endurance,
+            Self::Strength => s.strength,
+            Self::Dexterity => s.dexterity,
+            Self::Intelligence => s.intelligence,
+            Self::Faith => s.faith,
+            Self::Arcane => s.arcane,
+            Self::ScadutreeBlessing => s.scadutree_blessing as u32,
+            Self::ReveredSpiritAsh => s.revered_spirit_ash as u32,
+        }
+    }
+    fn set(&self, val: u32) -> anyhow::Result<()> {
+        set_stat(*self, val as i32)
+    }
+}
+
+fn set_stat(stat: Stat, val: i32) -> anyhow::Result<()> {
     player_loaded_check()?;
-    write::<u8>(player_game_data()? + player_game_data_offset as u64, val.clamp(0, 20))?;
+
+    match stat {
+        Stat::ScadutreeBlessing | Stat::ReveredSpiritAsh => {
+            dlc_check()?;
+
+            ResolvedPtr::PlayerGameData.get()
+                .add_offset(stat as u64)
+                .write::<u8>((val as u8).clamp(0, 20))?;
+        }
+        _ => {
+            let val = val.clamp(0, 99);
+
+            let game_data = ResolvedPtr::PlayerGameData.get()?;
+            let current_val = read::<i32>(game_data + stat as u64)?;
+
+            let diff = val - current_val;
+            let current_level = read::<i32>(game_data + PlayerGameDataOffset::RuneLevel as u64)?;
+
+            if val > current_val {
+                let mut rune_cost = 0;
+                for i in 1..=diff {
+                    rune_cost += level_up_cost(current_level + i);
+                }
+                let current_rune_mem = read::<u32>(game_data + PlayerGameDataOffset::RuneMemory as u64)?;
+                let new_rune_mem = std::cmp::min(current_rune_mem as u64 + rune_cost as u64, 0xFFFFFFFF);
+                write::<u32>(
+                    game_data + PlayerGameDataOffset::RuneMemory as u64,
+                    new_rune_mem as u32,
+                )?;
+            }
+            write::<i32>(
+                game_data + PlayerGameDataOffset::RuneLevel as u64,
+                current_level + diff,
+            )?;
+            write::<i32>(game_data + stat as u64, val)?;
+        }
+    }
     Ok(())
 }
 

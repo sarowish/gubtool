@@ -1,9 +1,9 @@
+pub mod scan;
 mod structs;
 mod versions;
 
 use crate::offsets::module_offsets::structs::module_offsets;
 use gubtool_core::{address::Address, attached::module_base};
-pub use structs::scan;
 
 #[derive(Clone, Copy)]
 pub enum BasePointer {
@@ -29,6 +29,7 @@ pub enum Function {
     MenuChrState,
     LevelUp,
     LevelLookup,
+    ChrSetAction,
 }
 
 #[derive(Clone, Copy)]
@@ -102,6 +103,7 @@ impl Address for Function {
             Self::MenuChrState => f.menu_chr_state,
             Self::LevelUp => f.level_up,
             Self::LevelLookup => f.level_lookup,
+            Self::ChrSetAction => f.chr_set_action,
         };
         module_base() + offset
     }

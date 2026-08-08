@@ -4,5 +4,6 @@ pub mod appdata;
 pub mod attached;
 pub mod game_version;
 pub mod memory_viewer;
+pub mod pe;
 pub mod slice_ops;
 pub mod sys;

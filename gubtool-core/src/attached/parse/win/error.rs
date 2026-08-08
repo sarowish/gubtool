@@ -1,4 +1,4 @@
-use crate::{attached::parse::ParsePeError};
+use crate::pe::error::ParsePeError;
 use std::fmt::Display;
 
 #[derive(Debug, Clone)]
@@ -39,5 +39,11 @@ impl Display for ParseError {
                 write!(f, "Could not match product version ({major}, {minor}, {patch})")
             }
         }
+    }
+}
+
+impl From<ParsePeError> for ParseError {
+    fn from(value: ParsePeError) -> Self {
+        Self::ParsePe { error: value }
     }
 }

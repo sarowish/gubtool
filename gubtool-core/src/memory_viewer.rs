@@ -1,5 +1,7 @@
 use crate::{
-    attached::{is_32, module_base}, slice_ops::read_from_slice, sys::{error::ProcessError, read_unsafe, write_unsafe}
+    attached::{is_32, module_base},
+    slice_ops::read_from_slice,
+    sys::{error::ProcessError, read_unsafe, write_unsafe},
 };
 use arboard::Clipboard;
 use pelite::Pod;

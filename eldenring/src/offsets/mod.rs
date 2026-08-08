@@ -48,6 +48,7 @@ impl ChainReadExt for ProcResult<u64> {
         set_bit(addr, mask, state)
     }
 }
+
 pub mod field_area {
     pub const WORLD_INFO_OWNER: u64 = 0x10;
 
@@ -62,8 +63,8 @@ pub mod chr_dbg_flags {
     pub enum ChrDbgOffset {
         PlayerNoDeath = 0x0,
         OneShot = 0x2,
-        InfiniteGoods = 0x3,
-        InfiniteStam = 0x4,
+        InfiniteConsumables = 0x3,
+        InfiniteStamina = 0x4,
         InfiniteFp = 0x5,
         InfiniteArrows = 0x6,
         Hidden = 0x8,

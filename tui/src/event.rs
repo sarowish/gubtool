@@ -1,31 +1,26 @@
-use crate::app::App;
-use config::attach::attach_config_error::AttachConfigError;
-use crossterm::event::{self, Event as CEvent, KeyEvent};
+use crate::input::fuzzy_finder::SearchRequest;
+use config::attach::attach_config_error::ApplyAttachError;
+use crossterm::event::{self, Event as CEvent, KeyCode, KeyEvent, KeyModifiers};
 use gubtool_core::{
     appdata::{AppDataError, log_error},
     attached::AttachError,
-    game_version::Game,
     sys::error::ProcessError,
 };
-use nucleo_matcher::Utf32String;
 use std::{
     sync::{OnceLock, mpsc},
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 pub enum Event {
-    Key(KeyEvent),
     RenderTick,
-    BackgroundTick,
+    Key(KeyContext),
     Info((String, InfoType)),
-    BlockInputs(bool),
     Input((&'static str, tokio::sync::oneshot::Sender<String>, std::any::TypeId)),
-    Search((Vec<Utf32String>, tokio::sync::oneshot::Sender<Option<usize>>)),
-    AppState(Box<dyn FnOnce(&mut App) + Send>),
+    SearchRequest(&'static dyn SearchRequest),
+    SearchResult(usize),
+    GameScreen(gubtool_core::game_version::Game),
     Attach,
-    ApplyAttach,
-    Detach(Game),
 }
 
 pub enum InfoType {
@@ -34,43 +29,103 @@ pub enum InfoType {
     Success,
 }
 
-pub static SENDER: OnceLock<mpsc::Sender<Event>> = OnceLock::new();
+pub struct KeyContext {
+    key_event: Option<KeyEvent>,
+}
+
+impl KeyContext {
+    #[track_caller]
+    pub fn key_with_modifiers(&mut self, code: KeyCode, modifiers: KeyModifiers) -> bool {
+        match self.key_event {
+            Some(key_event) => {
+                if key_event == KeyEvent::new(code, modifiers) {
+                    self.key_event = None;
+                    true
+                } else {
+                    false
+                }
+            }
+            None => false,
+        }
+    }
+
+    #[track_caller]
+    pub fn key(&mut self, code: KeyCode) -> bool {
+        match self.key_event {
+            Some(key_event) => {
+                if key_event.code == code {
+                    self.key_event = None;
+                    true
+                } else {
+                    false
+                }
+            }
+            None => false,
+        }
+    }
+
+    #[track_caller]
+    pub fn key_enter(&mut self) -> bool {
+        self.key(KeyCode::Enter)
+    }
+
+    #[track_caller]
+    pub fn key_char(&mut self, c: char) -> bool {
+        self.key(KeyCode::Char(c))
+    }
+
+    #[track_caller]
+    pub fn key_f(&mut self, key: u8) -> bool {
+        self.key(KeyCode::F(key))
+    }
+
+    pub fn key_any(&mut self) -> bool {
+        if self.key_event.is_some() {
+            self.key_event = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn peek_code(&self) -> Option<KeyCode> {
+        self.key_event.map(|k| k.code)
+    }
+
+    pub fn consume(&mut self) {
+        self.key_event = None
+    }
+
+    pub fn consumed(&self) -> bool {
+        self.key_event.is_none()
+    }
+}
+
+static SENDER: OnceLock<mpsc::Sender<Event>> = OnceLock::new();
 
 pub fn start_event_loop_thread() -> mpsc::Receiver<Event> {
     let (tx, rx) = mpsc::channel();
     SENDER.set(tx).unwrap();
 
     thread::spawn(|| {
-        let render_tick_rate = Duration::from_millis(30);
-        let mut last_render_tick = Instant::now();
-        let background_tick_rate = Duration::from_millis(200);
-        let mut last_background_tick = Instant::now();
+        let render_tick_rate = Duration::from_millis(50);
 
         loop {
-            let timeout = render_tick_rate
-                .checked_sub(last_render_tick.elapsed())
-                .unwrap_or(Duration::ZERO);
-
-            if event::poll(timeout).unwrap()
+            if event::poll(render_tick_rate).unwrap()
                 && let CEvent::Key(key) = event::read().unwrap()
-                && key.kind == event::KeyEventKind::Press {
-                send_event(Event::Key(key))
+                && key.kind == event::KeyEventKind::Press
+            {
+                let ctx = KeyContext { key_event: Some(key) };
+                send_event(Event::Key(ctx))
             }
 
-            if last_render_tick.elapsed() >= render_tick_rate {
-                send_event(Event::RenderTick);
-                last_render_tick = Instant::now();
-            }
-
-            if last_background_tick.elapsed() >= background_tick_rate {
-                send_event(Event::BackgroundTick);
-                last_background_tick = Instant::now();
-            }
+            send_event(Event::RenderTick);
         }
     });
     rx
 }
 
+#[track_caller]
 pub fn send_event(event: Event) {
     SENDER.get().unwrap().clone().send(event).unwrap()
 }
@@ -94,6 +149,10 @@ where
     }
 }
 
+pub fn request_search(search_request: &'static dyn SearchRequest) {
+    send_event(Event::SearchRequest(search_request));
+}
+
 pub trait AnyhowExt<T> {
     fn send_error(self);
 }
@@ -111,13 +170,13 @@ fn handle_error(err: &(dyn std::error::Error + 'static)) -> (String, InfoType) {
 
     if let Some(proc_error) = err.downcast_ref::<ProcessError>() {
         match proc_error {
-            ProcessError::InvalidGame { .. } | ProcessError::InvalidPointer { .. } => (),
+            ProcessError::InvalidGame { .. } | ProcessError::NullPointer { .. } => (),
             _ => {
                 info_type = InfoType::SysError;
                 let _ = log_error(&proc_error);
             }
         }
-    } else if err.is::<AttachError>() || err.is::<AttachConfigError>() || err.is::<AppDataError>(){
+    } else if err.is::<AttachError>() || err.is::<ApplyAttachError>() || err.is::<AppDataError>(){
         info_type = InfoType::SysError;
     }
 

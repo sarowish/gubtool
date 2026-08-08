@@ -2,7 +2,7 @@ pub mod error;
 pub use error::ParseError;
 
 use crate::{
-    attached::{GameProcess, parse::parse_file_for_version_and_address_size},
+    attached::{GameProcess, parse::parse_pe_for_version_and_address_size},
     game_version::Game,
     sys::Pid,
 };
@@ -41,7 +41,7 @@ pub(crate) fn parse_process(game: &Game, pid: Pid, comm: String) -> GameProcess 
     });
 
     let (address_size, game_version, parse_state) =
-        parse_file_for_version_and_address_size(game, &exe_path, parse_errors);
+        parse_pe_for_version_and_address_size(game, &exe_path, parse_errors);
 
     GameProcess { pid, game_version, comm, exe_path, module_base, address_size, parse_state, handle}
 }

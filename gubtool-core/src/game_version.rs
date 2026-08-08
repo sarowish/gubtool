@@ -120,7 +120,7 @@ impl Display for EldenRingVersion {
     }
 }
 
-impl Display for Game{
+impl Display for Game {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::EldenRing => write!(f, "Elden Ring"),
@@ -132,8 +132,8 @@ impl Display for Game{
 impl Display for GameVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::EldenRing(version) => write!(f, "{}", version),
-            Self::DarkSouls2(version) => write!(f, "{}", version),
+            Self::EldenRing(version) => write!(f, "{version}"),
+            Self::DarkSouls2(version) => write!(f, "{version}"),
         }
     }
 }

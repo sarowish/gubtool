@@ -1,13 +1,5 @@
-use crate::{
-    mem::is_scholar,
-    offsets::module_offsets::versions,
-    resources::{scholar_patterns, vanilla_patterns},
-};
-use gubtool_core::{
-    aob_scanner::{self, ScanError},
-    attached::version,
-    game_version::DarkSouls2Version::*,
-};
+use crate::offsets::module_offsets::versions;
+use gubtool_core::{attached::version, game_version::DarkSouls2Version::*};
 
 #[derive(Debug)]
 pub struct ModuleOffsets {
@@ -43,6 +35,7 @@ pub struct Functions {
     pub menu_chr_state: u64,
     pub level_up: u64,
     pub level_lookup: u64,
+    pub chr_set_action: u64,
 }
 
 #[derive(Debug)]
@@ -85,6 +78,7 @@ pub struct ExternalFunctionPointers {
     pub kernel32_load_library_w: u64,
 }
 
+#[inline(always)]
 pub(super) fn module_offsets() -> &'static ModuleOffsets {
     match version() {
         Some(Vanilla1_0_10) => &versions::VANILLA_1_0_10,
@@ -94,130 +88,5 @@ pub(super) fn module_offsets() -> &'static ModuleOffsets {
         Some(Scholar1_0_2) => &versions::SCHOLAR_1_0_2,
         Some(Scholar1_0_3) => &versions::SCHOLAR_1_0_3,
         _ => &versions::SCHOLAR_1_0_3,
-    }
-}
-
-pub fn scan_scholar() -> Result<ModuleOffsets, ScanError> {
-    Ok(ModuleOffsets {
-        base_ptrs: BasePointers {
-            game_manager_imp: aob_scanner::scan(scholar_patterns::GAME_MANAGER_IMP)?,
-            katana_main_app: aob_scanner::scan(scholar_patterns::KATANA_MAIN_APP)?,
-        },
-        functions: Functions {
-            give_souls: aob_scanner::scan(scholar_patterns::GIVE_SOULS)?,
-            warp: aob_scanner::scan(scholar_patterns::WARP)?,
-            item_spawn: aob_scanner::scan(scholar_patterns::ITEM_SPAWN)?,
-            build_item_dialogue: aob_scanner::scan(scholar_patterns::BUILD_ITEM_DIALOGUE)?,
-            show_item_dialogue: aob_scanner::scan(scholar_patterns::SHOW_ITEM_DIALOGUE)?,
-            current_item_quantity_check: aob_scanner::scan(scholar_patterns::CURRENT_ITEM_QUANTITY_CHECK)?,
-            set_event: aob_scanner::scan(scholar_patterns::SET_EVENT)?,
-            get_map_entity_with_area_id_and_obj_id: aob_scanner::scan(scholar_patterns::GET_MAP_ENTITY_WITH_AREA_ID_AND_OBJ_ID)?,
-            get_state_act_component: aob_scanner::scan(scholar_patterns::GET_MAP_OBJ_STATE_ACT_COMPONENT)?,
-            make_sound: aob_scanner::scan(scholar_patterns::MAKE_SOUND)?,
-            bonfire_rest: aob_scanner::scan(scholar_patterns::BONFIRE_REST)?,
-            bonfire_unlock: aob_scanner::scan(scholar_patterns::BONFIRE_UNLOCK)?,
-            open_menu: aob_scanner::scan(scholar_patterns::OPEN_MENU)?,
-            menu_chr_state: aob_scanner::scan(scholar_patterns::MENU_CHR_STATE)?,
-            level_up: aob_scanner::scan(scholar_patterns::LEVEL_UP)?,
-            level_lookup: aob_scanner::scan(scholar_patterns::LEVEL_LOOKUP)?,
-        },
-        hooks: Hooks {
-            set_shared_flag: aob_scanner::scan(scholar_patterns::SET_SHARED_FLAG)?,
-            locked_target_pointer: aob_scanner::scan(scholar_patterns::LOCKED_TARGET_POINTER)?,
-            credits_skip: aob_scanner::scan(scholar_patterns::CREDITS_SKIP)?,
-            faster_menu: aob_scanner::scan(scholar_patterns::FASTER_MENU)?,
-            event_log: aob_scanner::scan(scholar_patterns::EVENT_LOG)?,
-            player_no_damage: aob_scanner::scan(scholar_patterns::PLAYER_NO_DAMAGE)?,
-            infinite_poise: aob_scanner::scan(scholar_patterns::INFINITE_POISE)?,
-        },
-        patches: Patches {
-            infinite_stamina: aob_scanner::scan(scholar_patterns::INFINITE_STAMINA)?,
-            infinite_consumables: aob_scanner::scan(scholar_patterns::INFINITE_CONSUMABLES)?,
-            infinite_durability: aob_scanner::scan(scholar_patterns::INFINITE_DURABILITY)?,
-            infinite_casts: aob_scanner::scan(scholar_patterns::INFINITE_CASTS)?,
-            no_soul_gain: aob_scanner::scan(scholar_patterns::NO_SOUL_GAIN)?,
-            no_hollowing: aob_scanner::scan(scholar_patterns::NO_HOLLOWING)?,
-            no_soul_loss: aob_scanner::scan(scholar_patterns::NO_SOUL_LOSS)?,
-            player_hidden: aob_scanner::scan(scholar_patterns::PLAYER_HIDDEN)?,
-            player_silent: aob_scanner::scan(scholar_patterns::PLAYER_SILENT)?,
-            menu_transition: aob_scanner::scan(scholar_patterns::MENU_TRANSITION)?,
-            no_roll: aob_scanner::scan(scholar_patterns::NO_ROLL)?,
-            no_backstep: aob_scanner::scan(scholar_patterns::NO_BACKSTEP)?,
-        },
-        data: Data {
-            map_id: aob_scanner::scan(scholar_patterns::MAP_ID)?
-        },
-        external_fn_ptrs: ExternalFunctionPointers {
-            kernel32_create_thread: aob_scanner::scan(scholar_patterns::KERNEL32_CREATE_THREAD)?,
-            kernel32_close_handle: aob_scanner::scan(scholar_patterns::KERNEL32_CLOSE_HANDLE)?,
-            kernel32_sleep: aob_scanner::scan(scholar_patterns::KERNEL32_SLEEP)?,
-            kernel32_load_library_w: aob_scanner::scan(scholar_patterns::KERNEL32_LOAD_LIBRARY_W)?,
-        },
-    })
-}
-
-pub fn scan_vanilla() -> Result<ModuleOffsets, ScanError> {
-    Ok(ModuleOffsets {
-        base_ptrs: BasePointers {
-            game_manager_imp: aob_scanner::scan(vanilla_patterns::GAME_MANAGER_IMP)?,
-            katana_main_app: aob_scanner::scan(vanilla_patterns::KATANA_MAIN_APP)?,
-        },
-        functions: Functions {
-            give_souls: aob_scanner::scan(vanilla_patterns::GIVE_SOULS)?,
-            warp: aob_scanner::scan(vanilla_patterns::WARP)?,
-            item_spawn: aob_scanner::scan(vanilla_patterns::ITEM_SPAWN)?,
-            build_item_dialogue: aob_scanner::scan(vanilla_patterns::BUILD_ITEM_DIALOGUE)?,
-            show_item_dialogue: aob_scanner::scan(vanilla_patterns::SHOW_ITEM_DIALOGUE)?,
-            current_item_quantity_check: aob_scanner::scan(vanilla_patterns::CURRENT_ITEM_QUANTITY_CHECK)?,
-            set_event: aob_scanner::scan(vanilla_patterns::SET_EVENT)?,
-            get_map_entity_with_area_id_and_obj_id: aob_scanner::scan(vanilla_patterns::GET_MAP_ENTITY_WITH_AREA_ID_AND_OBJ_ID)?,
-            get_state_act_component: aob_scanner::scan(vanilla_patterns::GET_STATE_ACT_COMPONENT)?,
-            make_sound: aob_scanner::scan(vanilla_patterns::MAKE_SOUND)?,
-            bonfire_rest: aob_scanner::scan(vanilla_patterns::BONFIRE_REST)?,
-            bonfire_unlock: aob_scanner::scan(vanilla_patterns::BONFIRE_UNLOCK)?,
-            open_menu: aob_scanner::scan(vanilla_patterns::OPEN_MENU)?,
-            menu_chr_state: aob_scanner::scan(vanilla_patterns::MENU_CHR_STATE)?,
-            level_up: aob_scanner::scan(vanilla_patterns::LEVEL_UP)?,
-            level_lookup: aob_scanner::scan(vanilla_patterns::LEVEL_LOOKUP)?,
-        },
-        hooks: Hooks {
-            set_shared_flag: aob_scanner::scan(vanilla_patterns::SET_SHARED_FLAG)?,
-            locked_target_pointer: aob_scanner::scan(vanilla_patterns::LOCKED_TARGET_POINTER)?,
-            credits_skip: aob_scanner::scan(vanilla_patterns::CREDITS_SKIP)?,
-            faster_menu: aob_scanner::scan(vanilla_patterns::FASTER_MENU)?,
-            event_log: aob_scanner::scan(vanilla_patterns::EVENT_LOG)?,
-            player_no_damage: aob_scanner::scan(vanilla_patterns::PLAYER_NO_DAMAGE)?,
-            infinite_poise: aob_scanner::scan(vanilla_patterns::INFINITE_POISE)?,
-        },
-        patches: Patches {
-            infinite_stamina: aob_scanner::scan(vanilla_patterns::INFINITE_STAMINA)?,
-            infinite_consumables: aob_scanner::scan(vanilla_patterns::INFINITE_CONSUMABLES)?,
-            infinite_durability: aob_scanner::scan(vanilla_patterns::INFINITE_DURABILITY)?,
-            infinite_casts: aob_scanner::scan(vanilla_patterns::INFINITE_CASTS)?,
-            no_soul_gain: aob_scanner::scan(vanilla_patterns::NO_SOUL_GAIN)?,
-            no_hollowing: aob_scanner::scan(vanilla_patterns::NO_HOLLOWING)?,
-            no_soul_loss: aob_scanner::scan(vanilla_patterns::NO_SOUL_LOSS)?,
-            player_hidden: aob_scanner::scan(vanilla_patterns::PLAYER_HIDDEN)?,
-            player_silent: aob_scanner::scan(vanilla_patterns::PLAYER_SILENT)?,
-            menu_transition: aob_scanner::scan(vanilla_patterns::MENU_TRANSITION)?,
-            no_roll: aob_scanner::scan(vanilla_patterns::NO_ROLL)?,
-            no_backstep: aob_scanner::scan(vanilla_patterns::NO_BACKSTEP)?,
-        },
-        data: Data {
-            map_id: aob_scanner::scan(vanilla_patterns::MAP_ID)?
-        },
-        external_fn_ptrs: ExternalFunctionPointers {
-            kernel32_create_thread: aob_scanner::scan(vanilla_patterns::KERNEL32_CREATE_THREAD)?,
-            kernel32_close_handle: aob_scanner::scan(vanilla_patterns::KERNEL32_CLOSE_HANDLE)?,
-            kernel32_sleep: aob_scanner::scan(vanilla_patterns::KERNEL32_SLEEP)?,
-            kernel32_load_library_w: aob_scanner::scan(vanilla_patterns::KERNEL32_LOAD_LIBRARY_W)?,
-        },
-    })
-}
-
-pub fn scan() -> Result<ModuleOffsets, ScanError> {
-    match is_scholar() {
-        true => scan_scholar(),
-        false => scan_vanilla(),
     }
 }

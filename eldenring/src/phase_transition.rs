@@ -1,11 +1,11 @@
 use crate::{
-    chr_ins::{ChrIns, ChrInsExt, chr_ins_from_entity_id},
+    chr_ins::ChrIns,
     resources::entity_ids,
     utils::{wait_for_cutscence_completion, wait_for_event},
 };
 use anyhow::bail;
 
-pub fn next_phase(chr: &ChrIns) -> anyhow::Result<()> {
+pub fn next_phase(chr: &mut ChrIns) -> anyhow::Result<()> {
     match chr.entity_id()? {
         entity_ids::MARGIT_BOSS => {
             if !chr.has_speffect(16200)? {
@@ -38,7 +38,7 @@ pub fn next_phase(chr: &ChrIns) -> anyhow::Result<()> {
         }
         entity_ids::CLERGYMAN => {
             chr.set_hp_pct(55.0)?;
-            let maliketh_ins = chr_ins_from_entity_id(entity_ids::MALIKETH);
+            let mut maliketh_ins = ChrIns::from_entity_id(entity_ids::MALIKETH)?;
             maliketh_ins.set_hp_pct(55.0)?;
             wait_for_cutscence_completion()?;
             wait_for_event(13002802, true, 5)?;
@@ -65,7 +65,7 @@ pub fn next_phase(chr: &ChrIns) -> anyhow::Result<()> {
             }
         }
         entity_ids::FIRE_GIANT_P1 => {
-            let p2_ins = chr_ins_from_entity_id(entity_ids::FIRE_GIANT_P2);
+            let mut p2_ins = ChrIns::from_entity_id(entity_ids::FIRE_GIANT_P2)?;
             let p1_max_hp = chr.get_max_hp()?;
             let p2_max_hp = p2_ins.get_max_hp()?;
             p2_ins.set_hp(p2_max_hp - p1_max_hp)?;
@@ -90,7 +90,8 @@ pub fn next_phase(chr: &ChrIns) -> anyhow::Result<()> {
             if chr.get_hp_pct()? > 1.0 {
                 chr.set_hp_pct(1.0)?;
                 wait_for_cutscence_completion()?;
-                chr_ins_from_entity_id(entity_ids::RYKARD).set_as_target()?;
+                ChrIns::from_entity_id(entity_ids::RYKARD)?
+                    .set_as_target()?;
             }
         }
         _ => bail!("Not implemented for current target")

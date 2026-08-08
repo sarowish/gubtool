@@ -32,11 +32,12 @@ pub fn write_bytes(address: impl Address, data: &[u8]) -> ProcResult {
     write_bytes_unsafe(address, data)
 }
 
+#[track_caller]
 pub fn spawn_thread_join(thread_start_address: impl Address, thread_code: Vec<u8>) -> ProcResult {
     ensure_eldenring()?;
     #[cfg(unix)]
     gubtool_core::sys::spawn_thread_join(
-        crate::offsets::code_cave::CaveOffset::RunThreadAsm.addr(),
+        crate::offsets::code_cave::CaveAddress::RunThreadAsm.addr(),
         thread_start_address,
         thread_code,
         crate::offsets::module_offsets::ExternalFunctionPointer::Kernel32CreateThread,
@@ -50,11 +51,13 @@ pub fn spawn_thread_join(thread_start_address: impl Address, thread_code: Vec<u8
     Ok(())
 }
 
+#[track_caller]
 pub fn is_bit_set(address: impl Address, mask: u8) -> ProcResult<bool> {
     read::<u8>(address)
         .map(|byte| byte & mask != 0)
 }
 
+#[track_caller]
 pub fn set_bit(address: impl Address, mask: u8, value: bool) -> ProcResult {
     let current_byte = read::<u8>(address)?;
     let new_byte = match value {
@@ -64,13 +67,14 @@ pub fn set_bit(address: impl Address, mask: u8, value: bool) -> ProcResult {
     write::<u8>(address, new_byte)
 }
 
+#[track_caller]
 pub fn install_hook(code: &[u8], code_location: impl Address, hook_location: impl Address, original_instruction_size: u64) -> ProcResult {
     let hookbytes = get_hook_bytes(code_location, hook_location, original_instruction_size)?;
     write_bytes(code_location, &code)?;
     write_bytes(hook_location, &hookbytes)
 }
 
-fn ensure_eldenring() -> ProcResult {
+pub(crate) fn ensure_eldenring() -> ProcResult {
     if game() != Some(Game::EldenRing) {
         Err(ProcessError::InvalidGame { expected: Game::EldenRing })
     } else {

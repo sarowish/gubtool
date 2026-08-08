@@ -11,11 +11,14 @@ pelite = { workspace = true }
 clap = { workspace = true }
 once_cell = { workspace = true }
 bincode = { workspace = true }
+rayon = { workspace = true }
 tokio = { workspace = true }
+strum = { workspace = true }
 
 gubtool-core = { version = "0.1.0", path = "../gubtool-core" }
 shared = { version = "0.1.0", path = "../shared" }
 assemble = { version = "0.1.0", path = "../assemble" }
+config = { version = "0.1.0", path = "../config" }
 
 [build-dependencies]
 assemble = { version = "0.1.0", path = "../assemble" }

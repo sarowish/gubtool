@@ -1,6 +1,5 @@
-use crate::{chr_ins::ChrInsExt, player};
+use crate::player;
 use gubtool_core::sys::error::ProcResult;
-use once_cell::sync::Lazy;
 
 #[derive(Clone, Copy)]
 pub struct TalkCommand {
@@ -10,14 +9,6 @@ pub struct TalkCommand {
     pub handle: Option<fn() -> ProcResult<u64>>,
     pub dlc: bool,
 }
-
-pub fn shops_array(dlc_available: bool) -> &'static [TalkCommand] {
-    if dlc_available { &SHOPS } else { &SHOPS_NO_DLC }
-}
-
-static SHOPS_NO_DLC: Lazy<Vec<TalkCommand>> = Lazy::new(|| {
-    SHOPS.iter().filter(|shop| !shop.dlc).cloned().collect()
-});
 
 pub static MENUS: [TalkCommand; 12] = [
     TalkCommand {
@@ -73,7 +64,7 @@ pub static MENUS: [TalkCommand; 12] = [
         name: "Sell Item",
         command_id: 46,
         params: &[-1, -1],
-        handle: Some(|| player::player_ins().handle()),
+        handle: Some(|| player::player().chr_ins().and_then(|chr| chr.handle())),
         dlc: false,
     },
     TalkCommand {

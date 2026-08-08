@@ -1,9 +1,9 @@
+pub mod scan;
 mod structs;
 mod versions;
 
 use crate::offsets::module_offsets::structs::module_offsets;
 use gubtool_core::{address::Address, attached::module_base};
-pub use structs::scan;
 
 #[derive(Clone, Copy)]
 pub enum BasePointer {

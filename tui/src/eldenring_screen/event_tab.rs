@@ -1,201 +1,59 @@
 use crate::{
-    app::App,
-    common::{
-        StrExt,
-        controls::draw_controls,
-        event_log_table::{self, handle_log_table_keys, logs_table},
-        stateful_list::StatefulList,
-        tab_state::TabState,
-        tabs_list,
-    },
-    eldenring_screen::GameState,
-    event::{AnyhowExt, ResultExt},
-    input::request_input,
-    mutate_app, spawn_task,
+    common::event_log_table::draw_logging_enabled_line,
+    event::KeyContext,
+    impl_tablecontroller_for_commands,
+    panes::{PaneManager, TablePane},
+    screen::Screen,
 };
-use crossterm::event::{KeyCode, KeyEvent};
-use eldenring::event::{self, ErEventLogger, get_dlc_clear, is_event_log_hook, set_event_log_hook};
+use crossterm::event::KeyCode;
+use eldenring::event::{self, ErEventLogger};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    widgets::{List, ListItem, TableState},
 };
-use shared::event_log::EventLogger;
+use shared::command::{Command, ToggleCommand};
 
-enum CommandsItems {
-    Event,
-    FightFortissax,
-    FightEldenBeast,
-    UnlockMetyr,
-    DlcClear,
-}
-
-const COMMANDS_IDX: usize = 0;
-const LOG_IDX: usize = 1;
-
-pub struct EventTab {
-    tab: TabState,
-    event: Option<u32>,
-    log: ErEventLogger,
-    table_state: TableState,
+pub(super) struct EventTab {
+    pub pane_manager: PaneManager,
 }
 
 impl EventTab {
     pub fn new() -> Self {
-        let mut list_states = vec![StatefulList::new(0); 3];
-        list_states[COMMANDS_IDX] = StatefulList::new(CommandsItems::ARRAY.len());
         EventTab {
-            tab: TabState::new(list_states),
-            event: None,
-            log: ErEventLogger::default(),
-            table_state: TableState::default(),
+            pane_manager: PaneManager::new(vec![
+                TablePane::new_static(&Commands).boxed(),
+                TablePane::event_logs(ErEventLogger::default()).boxed(),
+            ])
         }
     }
+}
 
-    pub fn draw(&mut self, frame: &mut Frame, layout: Rect) {
-        let _ = self.log.poll();
-
+impl Screen for EventTab {
+    fn draw(&mut self, frame: &mut Frame, rect: Rect) {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![
                 Constraint::Percentage(40),
                 Constraint::Percentage(60),
             ])
-            .split(layout);
+            .split(rect);
 
-        frame.render_stateful_widget(
-            CommandsItems::list(self),
-            layout[COMMANDS_IDX],
-            &mut self.tab.get_list_state(COMMANDS_IDX),
-        );
+        self.pane_manager.draw(frame, &layout);
 
-        frame.render_stateful_widget(
-            logs_table(
-                &self.log,
-                self.tab.block_style(LOG_IDX),
-                is_event_log_hook().unwrap_or_default(),
-            ),
-            layout[LOG_IDX],
-            &mut self.table_state,
-        );
-
-        draw_controls(frame, layout[LOG_IDX], event_log_table::CONTROLS);
+        let enabled = event::EventLogHook.is().unwrap_or_default();
+        draw_logging_enabled_line(frame, layout[1], enabled);
     }
 
-    pub fn handle_keys(&mut self, key: KeyEvent) {
-        if self.tab.current_list == LOG_IDX {
-            handle_log_table_keys(&mut self.table_state, &mut self.log, key);
-        }
-
-        self.tab.handle_keys(key);
-
-        match key.code {
-            KeyCode::Backspace => {
-                if self.tab.current_list == COMMANDS_IDX {
-                    let Some(selected) = self.tab.get_list_selected(self.tab.current_list) else { return };
-                    CommandsItems::array()[selected].set_input();
-                }
-            }
-            KeyCode::Enter => {
-                self.handle_select();
-            }
-            _ => (),
-        }
-    }
-
-    fn handle_select(&mut self) {
-        let Some(selected) = self.tab.get_list_selected(self.tab.current_list) else { return };
-        match self.tab.current_list {
-            COMMANDS_IDX => CommandsItems::array()[selected].execute(self),
-            LOG_IDX => {
-                let new_state = !is_event_log_hook().unwrap_or_default();
-                set_event_log_hook(new_state).send_error();
-            }
-            _ => (),
-        }
+    fn handle_keys(&mut self, ctx: &mut KeyContext) {
+        self.pane_manager.handle_keys(ctx);
     }
 }
 
-impl CommandsItems {
-    fn execute(&self, event_tab: &EventTab) {
-        match self {
-            Self::Event => {
-                if let Some(event) = event_tab.event {
-                    let new_state = !event::get_event(event).unwrap_or_default();
-                    event::set_event(event, new_state).send_error()
-                }
-            }
-            Self::FightFortissax => {
-                event::fight_fortissax().send_error()
-            }
-            Self::FightEldenBeast => {
-                event::fight_elden_beast().send_error()
-            }
-            Self::UnlockMetyr => {
-                event::unlock_metyr().send_error()
-            }
-            Self::DlcClear => {
-                let new_state = !get_dlc_clear().unwrap_or_default();
-                event::set_dlc_clear(new_state).send_error()
-            }
-        }
-    }
-    fn set_input(&self) {
-        match self {
-            Self::Event => {
-                spawn_task! {
-                    if let Some(val) = request_input::<u32>(None).await {
-                        mutate_app!(|app: &mut App| {
-                            app.elden_ring.event.event = Some(val);
-                        });
-                    }
-                }
-            }
-            _ => (),
-        }
-    }
-    fn to_list_item(&self, event_tab: &EventTab) -> ListItem<'_> {
-        let text = match self {
-            Self::Event => {
-                let state = event::get_event(event_tab.event.unwrap_or_default()).unwrap_or_default();
-                format!("Event: {}",
-                event_tab.event.map(|v| v.to_string()).unwrap_or_default())
-                    .create_toggle_str(state)
-            }
-            Self::FightFortissax => {
-                "Fight Fortissax".to_string()
-            }
-            Self::FightEldenBeast => {
-                "Fight Elden Beast".to_string()
-            }
-            Self::UnlockMetyr => {
-                "Unlock Metyr".to_string()
-            }
-            Self::DlcClear => {
-                let state = get_dlc_clear().unwrap_or_default();
-                "DLC Clear Flag".create_toggle_str(state)
-            }
-        };
-        ListItem::new(text)
-    }
-    const ARRAY: &[CommandsItems] = &[
-        Self::Event,
-        Self::FightFortissax,
-        Self::FightEldenBeast,
-        Self::UnlockMetyr,
-        Self::DlcClear,
-    ];
-    const NO_DLC_ARRAY: &[CommandsItems] = &[
-        Self::Event,
-        Self::FightFortissax,
-        Self::FightEldenBeast,
-    ];
-    fn array() -> &'static [CommandsItems] {
-        if !GameState::dlc(){ Self::NO_DLC_ARRAY } else { Self::ARRAY }
-    }
-    fn list(event_tab: &EventTab) -> List<'static> {
-        let array = Self::array();
-        let items: Vec<ListItem> = array.iter().map(|i| i.to_list_item(event_tab)).collect();
-        tabs_list(items, None, &event_tab.tab, COMMANDS_IDX)
-    }
-}
+const COMMANDS: [Command; 4] = [
+    Command::Toggle(&event::DlcClear),
+    Command::Unit(&event::FightEldenBeast),
+    Command::Unit(&event::FightFortissax),
+    Command::Unit(&event::UnlockMetyr),
+];
+
+impl_tablecontroller_for_commands!(Commands, COMMANDS);

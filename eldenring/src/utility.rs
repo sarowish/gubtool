@@ -1,231 +1,322 @@
 use crate::{
     event,
+    game_state::{self, StateFlag},
     mem::*,
     offsets::{
         ChainReadExt,
-        code_cave::CaveOffset,
+        code_cave::CaveAddress,
         cs_flipper_imp, damage_manager, dl_user_input_manager_impl, game_data_man, game_man,
         map_dbg_flags,
-        module_offsets::{BasePointer, Data, Hook, Patch},
+        module_offsets::{Data, Hook, Patch},
     },
+    pointer_cache::ResolvedPtr,
     resources::ASM,
     utils::player_loaded_check,
 };
 use gubtool_core::{address::Address, slice_ops::*, sys::error::ProcResult};
+use shared::{
+    command::{ToggleCommand, UnitCommand, ValueCommand},
+    declare_command,
+};
 
-pub fn quitout() -> ProcResult {
+declare_command!(
+    Quitout,
+    ClearCount,
+    TriggerNewGameCycle,
+    FpsCap,
+    DisableLogos,
+    FreezeWorld,
+    MuteMusic,
+    DrawHitboxes,
+    ShowAllGraces,
+    ShowAllMaps,
+    StutterFix,
+    GameSpeed,
+    MapInCombat,
+    TravelInDungeons,
+    DisableAreaWelcomeMessage,
+    DisableRoll,
+    DisableJump,
+    DisableBackstep,
+);
+
+impl UnitCommand for Quitout {
+    fn execute(&self) -> anyhow::Result<()> {
     player_loaded_check()?;
-    read::<u64>(BasePointer::GameMan)
+    ResolvedPtr::GameMan.get()
         .add_offset(game_man::QUITOUT)
-        .write::<u8>(0x1)
-}
-
-pub fn get_ng_cycle() -> ProcResult<i32> {
-    read::<u64>(BasePointer::GameDataMan)
-        .add_offset(game_data_man::NEW_GAME)
-        .read::<i32>()
+        .write::<u8>(0x1)?;
+    Ok(())
+    }
 }
 
 const NG_EVENT_IDS: [u32; 8] = [50, 51, 52, 53, 54, 55, 56, 57];
-pub fn set_ng_cycle(val: i32) -> ProcResult {
-    read::<u64>(BasePointer::GameDataMan)
-        .add_offset(game_data_man::NEW_GAME)
-        .write::<i32>(val)?;
+impl ValueCommand<i32> for ClearCount {
+    fn get(&self) -> ProcResult<i32> {
+        ResolvedPtr::GameDataMan.get()
+            .add_offset(game_data_man::NEW_GAME)
+            .read::<i32>()
+    }
+    fn set(&self, val: i32) -> anyhow::Result<()> {
+        player_loaded_check()?;
+        ResolvedPtr::GameDataMan.get()
+            .add_offset(game_data_man::NEW_GAME)
+            .write::<i32>(val)?;
 
-    let current_ng = get_ng_cycle()?.clamp(0, 7);
-    NG_EVENT_IDS.iter().enumerate()
-        .try_for_each(|(i, &id)| event::set_event(id, i == current_ng as usize))
-}
-
-pub fn trigger_new_game() -> ProcResult {
-    player_loaded_check()?;
-    read::<u64>(BasePointer::GameMan)
-        .add_offset(game_man::start_new_game())
-        .write::<u8>(0x1)
-}
-
-pub fn set_fps_cap(value: f32) -> ProcResult {
-    write::<f32>(Patch::FpsCap.add_offset(0x3), 1_f32 / value)
-}
-
-pub fn get_fps_cap() -> f32 {
-    read::<f32>(Patch::FpsCap.add_offset(0x3))
-        .map(|val| (1_f32 / val).round())
-        .unwrap_or_default()
-}
-
-pub fn set_logo_patch(state: bool) -> ProcResult {
-    match state {
-        false => write_bytes(Patch::NoLogo, &[0x74, 0x53]),
-        true => write_bytes(Patch::NoLogo, &[0x90, 0x90]),
+        let current_ng = ClearCount.get()?.clamp(0, 7);
+        NG_EVENT_IDS.iter().enumerate()
+            .try_for_each(|(i, &id)| event::set_event(id, i == current_ng as usize))
     }
 }
 
-pub fn is_logo_patch() -> bool {
-    read::<[u8; 2]>(Patch::NoLogo)
-        .map(|val| val != [0x74, 0x53])
-        .unwrap_or_default()
-}
-
-pub fn set_freeze_world(state: bool) -> ProcResult {
-    match state {
-        false => write_bytes(Patch::PauseWorld, &[0x0F, 0x84]),
-        true => write_bytes(Patch::PauseWorld, &[0x0F, 0x85]),
+impl UnitCommand for TriggerNewGameCycle {
+    fn execute(&self) -> anyhow::Result<()> {
+        player_loaded_check()?;
+        ResolvedPtr::GameMan.get()
+            .add_offset(game_man::start_new_game())
+            .write::<u8>(0x1)?;
+        Ok(())
     }
 }
 
-pub fn is_freeze_world_on() -> bool {
-    read::<[u8; 2]>(Patch::PauseWorld)
-        .map(|val| val != [0x0F, 0x84])
-        .unwrap_or_default()
-}
-
-pub fn mute_music(state: bool) -> ProcResult {
-    match state {
-        false => write_bytes(Patch::MuteMusic, &[0x0F, 0xB6, 0x48, 0x04]),
-        true => write_bytes(Patch::MuteMusic, &[0x31, 0xC9, 0x90, 0x90]),
+impl ValueCommand<f32> for FpsCap {
+    fn get(&self) -> ProcResult<f32> {
+        read::<f32>(Patch::FpsCap.add_offset(0x3))
+            .map(|val| (1_f32 / val).round())
+    }
+    fn set(&self, val: f32) -> anyhow::Result<()> {
+        write::<f32>(Patch::FpsCap.add_offset(0x3), 1_f32 / val)?;
+        Ok(())
     }
 }
 
-pub fn is_music_muted() -> bool {
-    read::<[u8; 4]>(Patch::MuteMusic)
-        .map(|val| val != [0x0F, 0xB6, 0x48, 0x04])
-        .unwrap_or_default()
-}
-
-pub fn draw_hitboxes(val: bool, is_view_b: bool) -> ProcResult {
-    let offset = if is_view_b { damage_manager::HITBOXVIEW_B } else { damage_manager::HITBOXVIEW_A };
-    read::<u64>(BasePointer::DamageManager)
-        .add_offset(offset)
-        .write::<i64>(val as i64)
-}
-
-pub fn is_hitboxes(is_view_b: bool) -> bool {
-    let offset = if is_view_b { damage_manager::HITBOXVIEW_B } else { damage_manager::HITBOXVIEW_A };
-    read::<u64>(BasePointer::DamageManager)
-        .read_offset(offset)
-        .map(|val| val != 0x0)
-        .unwrap_or_default()
-}
-
-pub fn show_all_graces(val: bool) -> ProcResult {
-    write::<u8>(Data::MapDbgFlags.add_offset(map_dbg_flags::SHOW_ALL_GRACES), val as u8)
-}
-
-pub fn is_show_all_graces_on() -> bool {
-    read::<u8>(Data::MapDbgFlags.add_offset(map_dbg_flags::SHOW_ALL_GRACES))
-        .map(|val| val != 0x0)
-        .unwrap_or_default()
-}
-
-pub fn show_all_maps(val: bool) -> ProcResult {
-    write::<u8>(Data::MapDbgFlags.add_offset(map_dbg_flags::SHOW_ALL_MAPS), val as u8)
-}
-
-pub fn is_show_all_maps_on() -> bool {
-    read::<u8>(Data::MapDbgFlags.add_offset(map_dbg_flags::SHOW_ALL_MAPS))
-        .map(|val| val != 0x0)
-        .unwrap_or_default()
-}
-
-pub fn set_stutter_fix(val: bool) -> ProcResult {
-    read::<u64>(BasePointer::DlUserInputManagerImpl)
-        .add_offset(dl_user_input_manager_impl::STEAM_INPUT)
-        .write::<u8>(val as u8)
-}
-
-pub fn is_stutter_fix() -> bool {
-    read::<u64>(BasePointer::DlUserInputManagerImpl)
-        .add_offset(dl_user_input_manager_impl::STEAM_INPUT)
-        .read::<u8>()
-        .map(|val| val != 0x0)
-        .unwrap_or_default()
-}
-
-pub fn set_game_speed(val: f32) -> ProcResult {
-    read::<u64>(BasePointer::CsFlipperImp)
-        .add_offset(cs_flipper_imp::game_speed())
-        .write::<f32>(val)
-}
-
-pub fn get_game_speed() -> f32 {
-    read::<u64>(BasePointer::CsFlipperImp)
-        .add_offset(cs_flipper_imp::game_speed())
-        .read::<f32>()
-        .unwrap_or_default()
-}
-
-pub fn set_map_anywhere(state: bool) -> ProcResult {
-    match state {
-        true => {
-            write::<u8>(Patch::OpenMap, 0xEB)?;
-            write_bytes(Patch::CloseMap, &[0x90; 3])
+impl ToggleCommand for DisableLogos {
+    fn is(&self) -> ProcResult<bool> {
+        read::<[u8; 2]>(Patch::NoLogo)
+            .map(|val| val != [0x74, 0x53])
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        match state {
+            false => write_bytes(Patch::NoLogo, &[0x74, 0x53])?,
+            true => write_bytes(Patch::NoLogo, &[0x90, 0x90])?,
         }
-        false => {
-            write::<u8>(Patch::OpenMap, 0x74)?;
-            write_bytes(Patch::CloseMap, &[0xFF, 0x50, 0x60])
+        Ok(())
+    }
+}
+
+impl ToggleCommand for FreezeWorld {
+    fn is(&self) -> ProcResult<bool> {
+        read::<[u8; 2]>(Patch::PauseWorld)
+            .map(|val| val != [0x0F, 0x84])
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        match state {
+            false => write_bytes(Patch::PauseWorld, &[0x0F, 0x84])?,
+            true => write_bytes(Patch::PauseWorld, &[0x0F, 0x85])?,
         }
+        Ok(())
     }
 }
 
-pub fn is_map_anywhere() -> bool {
-    read::<u8>(Patch::OpenMap)
-        .map(|val| val != 0x74)
-        .unwrap_or_default()
-}
-
-pub fn set_travel_anywhere(state: bool) -> ProcResult {
-    match state {
-        true => write_bytes(Patch::CanFastTravel, &[0xB0, 0x01, 0x90, 0x90, 0x90]),
-        false => write_bytes(Patch::CanFastTravel, &[0x84, 0xC0, 0x0F, 0x94, 0xC0]),
+impl ToggleCommand for MuteMusic {
+    fn is(&self) -> ProcResult<bool> {
+        read::<[u8; 4]>(Patch::MuteMusic)
+            .map(|val| val != [0x0F, 0xB6, 0x48, 0x04])
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        match state {
+            false => write_bytes(Patch::MuteMusic, &[0x0F, 0xB6, 0x48, 0x04])?,
+            true => write_bytes(Patch::MuteMusic, &[0x31, 0xC9, 0x90, 0x90])?,
+        }
+        Ok(())
     }
 }
 
-pub fn is_travel_anywhere() -> bool {
-    read::<[u8; 5]>(Patch::CanFastTravel)
-        .map(|val| val != [0x84, 0xC0, 0x0F, 0x94, 0xC0])
-        .unwrap_or_default()
+impl ToggleCommand for DrawHitboxes {
+    fn is(&self) -> ProcResult<bool> {
+        Ok(game_state::is_flag(StateFlag::Hitboxes))
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        game_state::set_flag(StateFlag::Hitboxes, state)?;
+        let _ = self.set_in_game(state);
+        Ok(())
+    }
+}
+impl DrawHitboxes {
+    pub fn get_in_game(&self) -> ProcResult<bool> {
+        ResolvedPtr::DamageManager.get()
+            .add_offset(damage_manager::HITBOXVIEW_A)
+            .read::<u8>()
+            .map(|val| val != 0x0)
+    }
+    pub fn set_in_game(&self, state: bool) -> ProcResult {
+        ResolvedPtr::DamageManager.get()
+            .add_offset(damage_manager::HITBOXVIEW_A)
+            .write::<i64>(state as i64)
+    }
 }
 
+impl ToggleCommand for ShowAllGraces {
+    fn is(&self) -> ProcResult<bool> {
+        read::<u8>(Data::MapDbgFlags.add_offset(map_dbg_flags::SHOW_ALL_GRACES))
+            .map(|val| val != 0x0)
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        write::<u8>(Data::MapDbgFlags.add_offset(map_dbg_flags::SHOW_ALL_GRACES), state as u8)?;
+        Ok(())
+    }
+}
+
+impl ToggleCommand for ShowAllMaps {
+    fn is(&self) -> ProcResult<bool> {
+        read::<u8>(Data::MapDbgFlags.add_offset(map_dbg_flags::SHOW_ALL_MAPS))
+            .map(|val| val != 0x0)
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        write::<u8>(Data::MapDbgFlags.add_offset(map_dbg_flags::SHOW_ALL_MAPS), state as u8)?;
+        Ok(())
+    }
+}
+
+impl ToggleCommand for StutterFix {
+    fn is(&self) -> ProcResult<bool> {
+        Ok(game_state::is_flag(StateFlag::StutterFix))
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        game_state::set_flag(StateFlag::StutterFix, state)?;
+        let _ = self.set_in_game(state);
+        Ok(())
+    }
+}
+impl StutterFix {
+    pub fn get_in_game(&self) -> ProcResult<bool> {
+        ResolvedPtr::DlUserInputManagerImpl.get()
+            .add_offset(dl_user_input_manager_impl::STEAM_INPUT)
+            .read::<u8>()
+            .map(|val| val != 0x0)
+    }
+    pub fn set_in_game(&self, state: bool) -> ProcResult {
+        ResolvedPtr::DlUserInputManagerImpl.get()
+            .add_offset(dl_user_input_manager_impl::STEAM_INPUT)
+            .write::<u8>(state as u8)
+    }
+}
+
+impl ValueCommand<f32> for GameSpeed {
+    fn get(&self) -> ProcResult<f32> {
+        ResolvedPtr::CsFlipperImp.get()
+            .add_offset(cs_flipper_imp::game_speed())
+            .read::<f32>()
+    }
+    fn set(&self, val: f32) -> anyhow::Result<()> {
+        ResolvedPtr::CsFlipperImp.get()
+            .add_offset(cs_flipper_imp::game_speed())
+            .write::<f32>(val)?;
+        Ok(())
+    }
+}
+
+impl ToggleCommand for MapInCombat {
+    fn is(&self) -> ProcResult<bool> {
+        read::<u8>(Patch::OpenMap)
+            .map(|val| val != 0x74)
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        match state {
+            true => {
+                write::<u8>(Patch::OpenMap, 0xEB)?;
+                write_bytes(Patch::CloseMap, &[0x90; 3])?
+            }
+            false => {
+                write::<u8>(Patch::OpenMap, 0x74)?;
+                write_bytes(Patch::CloseMap, &[0xFF, 0x50, 0x60])?
+            }
+        }
+        Ok(())
+    }
+}
+
+impl ToggleCommand for TravelInDungeons {
+    fn is(&self) -> ProcResult<bool> {
+        read::<[u8; 5]>(Patch::CanFastTravel)
+            .map(|val| val != [0x84, 0xC0, 0x0F, 0x94, 0xC0])
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        match state {
+            true => write_bytes(Patch::CanFastTravel, &[0xB0, 0x01, 0x90, 0x90, 0x90])?,
+            false => write_bytes(Patch::CanFastTravel, &[0x84, 0xC0, 0x0F, 0x94, 0xC0])?,
+        }
+        Ok(())
+    }
+}
+
+impl ToggleCommand for DisableAreaWelcomeMessage {
+    fn is(&self) -> ProcResult<bool> {
+        Ok(game_state::is_flag(StateFlag::TitleCards))
+    }
+    fn set(&self, state: bool) -> anyhow::Result<()> {
+        game_state::set_flag(StateFlag::TitleCards, state)?;
+        Ok(())
+    }
+}
+
+macro_rules! impl_control_toggle {
+    ($struct_name: ident, $control_flag: path) => {
+        impl ToggleCommand for $struct_name {
+            fn is(&self) -> ProcResult<bool> {
+                is_control_disabled($control_flag)
+            }
+            fn set(&self, state: bool) -> anyhow::Result<()> {
+                set_control($control_flag, state)
+            }
+
+        }
+    };
+}
+
+impl_control_toggle!(DisableRoll, ControlFlag::Roll);
+impl_control_toggle!(DisableJump, ControlFlag::Jump);
+impl_control_toggle!(DisableBackstep, ControlFlag::Backstep);
 
 fn install_action_hook() -> ProcResult {
-    let location = CaveOffset::ActionHook;
+    let location = CaveAddress::ActionHook;
 
     let mut fun = ASM.get_function("action_hook");
     let mut asm = fun.take_bytes();
 
-    write_rel_i32(&mut asm, location, fun.reloc("roll_flag"), CaveOffset::DisableRollFlag, 5)?;
-    write_rel_i32(&mut asm, location, fun.reloc("jump_flag"), CaveOffset::DisableJumpFlag, 5)?;
-    write_rel_i32(&mut asm, location, fun.reloc("backstep_flag"), CaveOffset::DisableBackstepFlag, 5)?;
+    write_rel_i32(&mut asm, location, fun.reloc("roll_flag"), CaveAddress::DisableRollFlag, 5)?;
+    write_rel_i32(&mut asm, location, fun.reloc("jump_flag"), CaveAddress::DisableJumpFlag, 5)?;
+    write_rel_i32(&mut asm, location, fun.reloc("backstep_flag"), CaveAddress::DisableBackstepFlag, 5)?;
 
     install_hook(&asm, location, Hook::SetRequestedAction, 5)
 }
 
-pub enum ControlFlag {
+#[derive(Clone, Copy)]
+enum ControlFlag {
     Roll,
     Jump,
     Backstep,
 }
 
-impl ControlFlag {
-    fn addr(&self) -> impl Address {
+impl Address for ControlFlag {
+    fn addr(&self) -> u64 {
         match self {
-            Self::Roll => CaveOffset::DisableRollFlag,
-            Self::Jump => CaveOffset::DisableJumpFlag,
-            Self::Backstep => CaveOffset::DisableBackstepFlag,
+            Self::Roll => CaveAddress::DisableRollFlag.addr(),
+            Self::Jump => CaveAddress::DisableJumpFlag.addr(),
+            Self::Backstep => CaveAddress::DisableBackstepFlag.addr(),
         }
     }
 }
 
-pub fn is_control_disabled(flag: ControlFlag) -> bool {
-    read::<u8>(flag.addr())
+fn is_control_disabled(flag: ControlFlag) -> ProcResult<bool> {
+    read::<u8>(flag)
         .map(|val| val != 0x0)
-        .unwrap_or_default()
 }
 
-pub fn set_control(flag: ControlFlag, state: bool) -> ProcResult {
+fn set_control(flag: ControlFlag, state: bool) -> anyhow::Result<()> {
     if state {
         install_action_hook()?;
     }
-    write::<u8>(flag.addr(), state as u8)
+    write::<u8>(flag, state as u8)?;
+    Ok(())
 }

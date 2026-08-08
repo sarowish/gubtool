@@ -1,107 +1,117 @@
 use crate::{
-    common::{block, centered_rect, stateful_list::StatefulList},
+    app::App,
+    common::helpers::bordered_block,
+    event::{Event, KeyContext, send_event},
     input::Input,
+    panes::{Pane, TableController, TablePane, TableView},
+    popup::{Popup, PopupState, centered_popup},
+    screen::Screen,
     theme::{self, theme},
 };
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::KeyCode;
 use nucleo_matcher::{
-    Config, Matcher, Utf32String,
+    Matcher, Utf32String,
     pattern::{CaseMatching, Normalization, Pattern},
 };
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Margin},
-    style::Style,
+    layout::{Constraint, Direction, Layout, Margin, Rect},
+    style::{Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    widgets::{Cell, Paragraph, Row},
 };
+use std::{cell::RefCell, rc::Rc};
 
 pub struct FuzzyFinder {
-    matcher: Matcher,
     input: Input,
-    pattern: Pattern,
-    pub entries: Option<Vec<Utf32String>>,
-    matched: Vec<Matched>,
-    list_state: StatefulList,
+    table: TablePane,
+    popup_state: PopupState,
     match_count: usize,
-    pub show: bool,
-    sender: Option<tokio::sync::oneshot::Sender<Option<usize>>>,
+    entries: Option<Vec<Utf32String>>,
+    matched: Rc<RefCell<Vec<Matched>>>,
+    matcher: Matcher,
+    pattern: Pattern,
+    pub request: Option<&'static dyn SearchRequest>,
 }
 
-impl Default for FuzzyFinder {
-    fn default() -> Self {
-        Self {
-            matcher: Matcher::new(Config::DEFAULT.match_paths()),
-            input: Input::default(),
-            pattern: Pattern::default(),
-            entries: None,
-            matched: Vec::new(),
-            list_state: StatefulList::new(0),
-            match_count: 0,
-            show: false,
-            sender: None,
-        }
+struct SearchController {
+    matched: Rc<RefCell<Vec<Matched>>>,
+}
+
+impl SearchController {
+    fn new(matched: Rc<RefCell<Vec<Matched>>>) -> Self {
+        Self { matched }
     }
 }
 
-impl FuzzyFinder {
-    pub fn show(
-        &mut self,
-        entries: Vec<Utf32String>,
-        sender: tokio::sync::oneshot::Sender<Option<usize>>,
-    ) {
-        self.entries = Some(entries);
-        self.sender = Some(sender);
-        self.update_matches();
-        self.show = true;
+pub trait SearchRequest: Send + Sync {
+    fn items(&self) -> Vec<Utf32String>;
+    fn jump(&self, app: &mut App, selected: usize) {
+        app.current_screen().tab_manager().current_tab_mut().pane_manager().set_current_list_idx(selected);
     }
+}
 
-    fn selected_idx(&self) -> Option<usize> {
-        self.list_state.selected().map(|selected| self.matched[selected].idx)
-    }
+impl TableController for SearchController {
+    fn make_table_view(&self) -> TableView {
+        let mut longest_name_len = 0;
+        let mut name_cells: Vec<Cell> = Vec::new();
+        let mut label_cells: Vec<Cell> = Vec::new();
 
-    fn update_matches(&mut self) {
-        self.pattern
-            .reparse(&self.input.text, CaseMatching::Smart, Normalization::Smart);
-
-        self.matched.clear();
-
-        for (idx, path) in self.entries.as_deref().into_iter().flatten().enumerate() {
-            let mut indices = Vec::new();
-            let score = self
-                .pattern
-                .indices(path.slice(..), &mut self.matcher, &mut indices);
-
-            if score.is_some() {
-                indices.sort_unstable();
-                indices.dedup();
-
-                self.matched
-                    .push(Matched::new(path.to_string(), idx, score, &indices));
+        self.matched.borrow().iter().for_each(|item| {
+            let name_len = item.name.len();
+            if name_len > longest_name_len {
+                longest_name_len = name_len
             }
-        }
-        self.match_count = self.matched.len();
-        self.matched.sort_by(|a, b| b.score.cmp(&a.score));
-        self.list_state.select(0);
+
+            let (name_span, label_span) = item.highlight_line();
+            name_cells.push(highlighted_cell(name_span, Style::from(theme().fg)));
+            if let Some(label_span) = label_span {
+                label_cells.push(highlighted_cell(label_span, Style::from(theme().muted)));
+            }
+        });
+
+        let widths = if label_cells.len() > 0 {
+            vec![
+                Constraint::Min(longest_name_len as u16 + 1),
+                Constraint::Fill(1),
+            ]
+        } else {
+            vec![Constraint::Fill(1)]
+        };
+
+        let rows = if label_cells.len() > 0 {
+            name_cells.into_iter().zip(label_cells).map(|(name, label)| {
+                Row::new([name, label])
+            })
+            .collect()
+        } else {
+            name_cells.into_iter().map(|name| {
+                Row::new([name])
+            })
+            .collect()
+        };
+
+        TableView::new(rows).with_widths(widths)
     }
-
-    pub fn draw_checked(&mut self, frame: &mut Frame) {
-        if !self.show {
-            return;
+    fn handle_keys_selected(&self, selected: usize, ctx: &mut KeyContext) {
+        if ctx.peek_code() == Some(KeyCode::Enter) {
+            let idx = self.matched.borrow()[selected].idx;
+            send_event(Event::SearchResult(idx));
         }
+    }
+}
 
-        let layout = centered_rect(75, 75, frame.area());
-        frame.render_widget(Clear, layout);
-
+impl Screen for FuzzyFinder {
+    fn draw(&mut self, frame: &mut Frame, rect: Rect) {
         let [search_area, results_area] = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![
                 Constraint::Length(3),
                 Constraint::Fill(1),
             ])
-            .areas(layout);
+            .areas(rect);
 
-        let search_block = block(Some("Search"), None);
+        let search_block = bordered_block(Some("Search"));
         frame.render_widget(&search_block, search_area);
         let search_area = search_block.inner(search_area);
 
@@ -130,99 +140,104 @@ impl FuzzyFinder {
             let counter = Paragraph::new(counter).right_aligned().style(theme().fg);
             frame.render_widget(counter, counter_area);
         }
-
-        let selected_idx = self.list_state.selected().unwrap_or(0);
-        let mut names = Vec::new();
-        let mut labels = Vec::new();
-        let mut labels_len = 0;
-
-        self.matched.iter().enumerate()
-            .for_each(|(idx, item)| {
-                let mut name_span = item.highlight_line().0;
-                name_span.insert(0, (if selected_idx == idx { theme::HIGHLIGHT_SYMBOL } else { "  " }, false));
-                names.push(Self::highlighted_list_item(idx, selected_idx, name_span, Style::from(theme().fg)));
-
-                if let (Some(label), Some(label_span)) = (&item.label, item.highlight_line().1) {
-                    labels_len = labels_len.max(label.chars().count() + 3);
-                    labels.push(Self::highlighted_list_item(idx, selected_idx, label_span, Style::from(theme().muted)));
-                }
-            });
-
-        let results_block = block(Some("Results"), None);
-        frame.render_widget(&results_block, results_area);
-        let inner = results_block.inner(results_area);
-
-        let [name_area, label_area] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![
-                Constraint::Min(40),
-                Constraint::Max(labels_len as u16),
-            ])
-            .areas(inner);
-        frame.render_stateful_widget(
-            List::new(names),
-            name_area,
-            &mut self.list_state.state
-        );
-        frame.render_stateful_widget(
-            List::new(labels).block(Block::default().borders(Borders::LEFT)),
-            label_area,
-            &mut self.list_state.state
-        );
+        self.table.draw(frame, results_area);
     }
+    fn handle_keys(&mut self, ctx: &mut KeyContext) {
+        let prev_match_count = self.match_count;
 
-    fn highlighted_list_item(idx: usize, selected_idx: usize, line: Vec<(&str, bool)>, style: Style) -> ListItem<'static> {
-        let spans = line.into_iter()
-            .map(|(slice, highlighted)| {
-                let content = slice.to_string();
-                if highlighted {
-                    Span::raw(content).style(theme().warning)
-                } else if selected_idx == idx {
-                    Span::raw(content).style(theme().accent)
-                } else {
-                    Span::raw(content)
-                }
-            })
-            .collect::<Vec<Span>>();
-        ListItem::new(Line::from(spans)).style(style)
-    }
-
-    pub fn handle_keys(&mut self, key: KeyEvent) {
-        self.list_state.size = self.match_count;
-
-        match (key.code, key.modifiers) {
-            (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
-                self.list_state.increment(28);
-            }
-            (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
-                self.list_state.decrement(28);
-            }
-            (KeyCode::Down, _) | (KeyCode::Tab, _) | (KeyCode::Char('j'), KeyModifiers::CONTROL) => {
-                self.list_state.increment(1);
-            }
-            (KeyCode::Up, _) | (KeyCode::BackTab, _) | (KeyCode::Char('k'), KeyModifiers::CONTROL) => {
-                self.list_state.decrement(1);
-            }
-            (KeyCode::Esc, _) => {
-                self.input.set_text("");
-                self.entries.take();
-                self.sender = None;
-                self.show = false;
-
-            }
-            (KeyCode::Enter, _) => {
-                if let Some(tx) = self.sender.take() {
-                    let _ = tx.send(self.selected_idx());
-                }
-                self.input.set_text("");
-                self.entries.take();
-                self.show = false;
-            }
-            _ => {
-                let _ = self.input.handle_keys(key);
-                self.update_matches();
-            }
+        if ctx.key(KeyCode::Tab) || ctx.key(KeyCode::Down) {
+            self.table.increment_wrapping(1);
         }
+
+        if ctx.key(KeyCode::BackTab) || ctx.key(KeyCode::Up) {
+            self.table.decrement_wrapping(1);
+        }
+
+        self.table.handle_keys_selected(ctx);
+        self.input.handle_keys(ctx);
+
+        self.update_matches();
+
+        if self.match_count != prev_match_count {
+            self.table.select(0);
+        }
+    }
+}
+
+impl Popup for FuzzyFinder {
+    fn popup_state(&mut self) -> &mut PopupState {
+        &mut self.popup_state
+    }
+    fn screen(&mut self) -> &mut dyn Screen {
+        self
+    }
+    fn popup_rect(&self, frame: &mut Frame) -> Rect {
+        centered_popup(75, 75, frame.area())
+    }
+    fn close(&mut self) {
+        self.input.set_text("");
+        self.entries.take();
+        self.table.select(0);
+        self.popup_state.close();
+    }
+    fn close_on_key(&self, ctx: &mut KeyContext) -> bool {
+        ctx.key(KeyCode::Enter) | ctx.key(KeyCode::Esc)
+    }
+}
+
+impl Default for FuzzyFinder {
+    fn default() -> Self {
+        let matched = Rc::new(RefCell::new(Vec::new()));
+        Self {
+            match_count: 0,
+            input: Input::default(),
+            popup_state: PopupState::default(),
+            entries: None,
+            matcher: Matcher::default(),
+            pattern: Pattern::default(),
+            table: TablePane::new_owned(SearchController::new(matched.clone()))
+                .freeze()
+                .with_title("Results"),
+            matched,
+            request: None,
+        }
+    }
+}
+
+impl FuzzyFinder {
+    pub fn show(&mut self, request: &'static dyn SearchRequest) {
+        self.request = Some(request);
+        self.entries = Some(request.items());
+        self.update_matches();
+        self.popup_state.open();
+    }
+
+    fn update_matches(&mut self) {
+        self.pattern
+            .reparse(&self.input.text, CaseMatching::Smart, Normalization::Smart);
+
+        {
+            let mut matched = self.matched.borrow_mut();
+            matched.clear();
+
+            for (idx, path) in self.entries.as_deref().into_iter().flatten().enumerate() {
+                let mut indices = Vec::new();
+                let score = self
+                    .pattern
+                    .indices(path.slice(..), &mut self.matcher, &mut indices);
+
+                if score.is_some() {
+                    indices.sort_unstable();
+                    indices.dedup();
+
+                    matched.push(Matched::new(path.to_string(), idx, score, &indices));
+                }
+            }
+            self.match_count = matched.len();
+            matched.sort_by(|a, b| b.score.cmp(&a.score));
+        }
+
+        self.table.update_container();
     }
 }
 
@@ -307,4 +322,18 @@ impl Matched {
         }
         slices
     }
+}
+
+fn highlighted_cell(line: Vec<(&str, bool)>, style: Style) -> Cell<'static> {
+    let spans = line.into_iter()
+        .map(|(slice, highlighted)| {
+            let content = slice.to_string();
+            if highlighted {
+                Span::raw(content).fg(theme().error)
+            } else {
+                Span::raw(content)
+            }
+        })
+        .collect::<Vec<Span>>();
+    Cell::new(Line::from(spans)).style(style)
 }

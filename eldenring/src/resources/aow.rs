@@ -1,5 +1,4 @@
-use crate::{resources::items::Item, utils::is_version_dlc_compat};
-use once_cell::sync::Lazy;
+use crate::resources::items::Item;
 
 #[derive(Clone, Copy)]
 pub struct Aow {
@@ -28,8 +27,8 @@ impl Aow {
             .unwrap_or(false)
     }
 
-    pub fn supports_affinity(self, flag: u16) -> bool {
-        (self.available_affinities & flag) != 0
+    pub fn supports_affinity(self, affinity: Affinity) -> bool {
+        (self.available_affinities & affinity.flag) != 0
     }
 }
 
@@ -149,19 +148,7 @@ pub static AFFINITIES: [Affinity; 13] = [
     },
 ];
 
-pub fn aow_array() -> &'static [Aow] {
-    if is_version_dlc_compat() {
-        &AOW
-    } else {
-        &AOW_NO_DLC
-    }
-}
-
-static AOW_NO_DLC: Lazy<Vec<Aow>> = Lazy::new(|| {
-    AOW.iter().filter(|aow| !aow.dlc).cloned().collect()
-});
-
-static AOW: [Aow; 117] = [
+pub static AOW: [Aow; 117] = [
     Aow {
         id: -1,
         name: "None",

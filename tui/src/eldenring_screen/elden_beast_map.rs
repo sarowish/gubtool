@@ -1,8 +1,5 @@
-use crate::{eldenring_screen::GameState, theme::theme};
-use eldenring::{
-    chr_ins::{ChrIns, ChrInsExt, chr_ins_from_entity_id},
-    player,
-};
+use crate::theme::theme;
+use eldenring::{chr_ins::ChrIns, player};
 use ratatui::{
     Frame,
     style::Stylize,
@@ -15,40 +12,51 @@ use ratatui::{
 
 const ELDEN_BEAST_ENTITY_ID: u32 = 19000800;
 const ELDEN_BEAST_MAP_ID: u32 = 318767104;
-pub struct EldenBeastMap {
+
+pub(super) struct EldenBeastMap {
     map_valid: bool,
-    chr_ins: ChrIns,
+    chr_ins: Option<ChrIns>,
 }
 
 impl Default for EldenBeastMap {
     fn default() -> Self {
         Self {
             map_valid: false,
-            chr_ins: Ok(0x0),
+            chr_ins: None,
         }
     }
 }
+
 impl EldenBeastMap {
-    fn draw(&mut self, frame: &mut Frame, er: &GameState) {
-        let map = er.player_ins.block_id().unwrap_or_default();
+    fn draw(&mut self, frame: &mut Frame) {
+        let map = player::player()
+            .chr_ins()
+            .and_then(|chr| chr.block_id())
+            .unwrap_or_default();
+
         let correct_map = map == ELDEN_BEAST_MAP_ID;
         if self.map_valid && !correct_map {
-            self.map_valid = false
+            self.map_valid = false;
+            self.chr_ins = None;
         }
         if !self.map_valid && correct_map {
-            self.chr_ins = chr_ins_from_entity_id(ELDEN_BEAST_ENTITY_ID);
+            self.chr_ins = Some(ChrIns::from_entity_id(ELDEN_BEAST_ENTITY_ID).unwrap());
             self.map_valid = true
         }
         if self.map_valid {
             frame.render_widget(self.stars_cooldown(), frame.area());
-            frame.render_widget(Self::arena(&self.chr_ins), frame.area());
+            frame.render_widget(Self::arena(self), frame.area());
         } else {
             frame.render_widget(Self::not_loaded_paragraph(), frame.area());
         }
     }
 
-    fn stars_cooldown(&self) -> impl Widget {
-        let cooldown = self.chr_ins.get_lua_timers().unwrap_or_default()[2];
+    fn stars_cooldown(&mut self) -> impl Widget {
+        let cooldown = if let Some(chr_ins) = self.chr_ins.as_mut() {
+            chr_ins.get_lua_timers().unwrap_or_default()[2]
+        } else {
+            0.0
+        };
         Paragraph::new(format!("Elden Stars Cooldown: {}", cooldown as i32))
             .fg(theme().fg)
     }
@@ -58,9 +66,13 @@ impl EldenBeastMap {
             .fg(theme().fg)
     }
 
-    fn arena(eb_chr_ins: &ChrIns) -> impl Widget {
+    fn arena(&mut self) -> impl Widget {
         let player_coords = player::map_coords().unwrap_or_default();
-        let eb_coords = eb_chr_ins.map_coords().unwrap_or_default();
+        let eb_coords = if let Some(chr_ins) = self.chr_ins.as_mut() {
+            chr_ins.map_coords().unwrap_or_default()
+        } else {
+            Default::default()
+        };
         Canvas::default()
             .background_color(theme().bg)
             .x_bounds([31.0, 371.0])

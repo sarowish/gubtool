@@ -1,58 +1,64 @@
 use crate::{
-    app::CurrentScreen,
-    common::{centered_rect, list, stateful_list::StatefulList},
+    event::{Event, KeyContext, send_event},
+    panes::{TableController, TablePane, TableView},
+    popup::{Popup, PopupState, centered_popup},
+    screen::Screen,
     ui_state::UiState,
 };
 use config::Config;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyCode;
 use gubtool_core::game_version::Game;
-use ratatui::{
-    Frame,
-    widgets::{Clear, List, ListItem},
-};
+use ratatui::{Frame, layout::Rect, widgets::Row};
 
-const GAMES: &[Game] = &[
+const GAMES: [Game; 2] = [
     Game::DarkSouls2,
     Game::EldenRing,
 ];
+
 pub struct GameScreenSelector {
-    list: StatefulList,
+    list: TablePane,
+    popup_state: PopupState,
+}
+
+impl Popup for GameScreenSelector {
+    fn screen(&mut self) -> &mut dyn Screen {
+        &mut self.list
+    }
+    fn popup_state(&mut self) -> &mut PopupState {
+        &mut self.popup_state
+    }
+    fn popup_rect(&self, frame: &mut Frame) -> Rect {
+        centered_popup(50, 50, frame.area())
+    }
+    fn close_on_key(&self, ctx: &mut KeyContext) -> bool {
+        ctx.key(KeyCode::Esc) || ctx.key_char('q') || ctx.key_enter()
+    }
+}
+
+struct GameList;
+impl TableController for GameList {
+    fn make_table_view(&self) -> TableView {
+        let items = GAMES.iter()
+            .map(|game| Row::new([format!("{}", game)]))
+            .collect();
+        TableView::new(items)
+    }
+    fn handle_keys_selected(&self, selected: usize, ctx: &mut KeyContext) {
+        if ctx.peek_code() == Some(KeyCode::Enter) {
+            let game = GAMES[selected];
+            send_event(Event::GameScreen(game));
+            let _ = UiState::update(|c| c.global.game_screen = game );
+        }
+    }
 }
 
 impl GameScreenSelector {
     pub fn new() -> Self {
         Self {
-            list: StatefulList::new(GAMES.len()),
-        }
-    }
-
-    pub fn draw(&mut self, frame: &mut Frame) {
-        let layout = centered_rect(40, 40, frame.area());
-        frame.render_widget(Clear, layout);
-
-        frame.render_stateful_widget(Self::list(), layout, &mut self.list.state);
-    }
-
-    fn list() -> List<'static> {
-        let items = GAMES.iter()
-        .map(|game| ListItem::new(format!("{}", game)) )
-        .collect();
-        list(items, Some("Select Game Screen"))
-    }
-
-    pub fn handle_keys(&mut self, key: KeyEvent, game_screen: &mut Game, current_screen: &mut CurrentScreen) {
-        self.list.handle_keys(key);
-        match (key.code, key.modifiers) {
-            (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Main,
-            (KeyCode::Enter, _) => {
-                if let Some(idx) = self.list.selected() {
-                    let game = GAMES[idx];
-                    *game_screen = game;
-                    let _ = UiState::update(|c| c.global.game_screen = game );
-                    *current_screen = CurrentScreen::Main
-                }
-            }
-            _ => (),
+            list: TablePane::new_static(&GameList)
+                .freeze()
+                .with_title("Select Game Screen"),
+            popup_state: PopupState::default(),
         }
     }
 }

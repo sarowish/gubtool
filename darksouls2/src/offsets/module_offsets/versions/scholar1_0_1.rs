@@ -20,6 +20,7 @@ pub const SCHOLAR_1_0_1: ModuleOffsets = ModuleOffsets {
         menu_chr_state: 0x4FA0D0,
         level_up: 0x384780,
         level_lookup: 0x386720,
+        chr_set_action: 0x41F240,
     },
     hooks: Hooks {
         set_shared_flag: 0x41F372,

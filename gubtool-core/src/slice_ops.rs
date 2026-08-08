@@ -1,7 +1,6 @@
-use std::{fmt::Display, panic::Location};
-use pelite::Pod;
-
 use crate::{address::Address, attached::is_32};
+use pelite::Pod;
+use std::{fmt::Display, panic::Location};
 
 #[derive(Debug, Copy, Clone)]
 pub struct SliceError {

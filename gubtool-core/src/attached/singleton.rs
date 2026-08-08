@@ -6,112 +6,77 @@ use std::path::PathBuf;
 
 static mut ATTACHED_PROCESS: Option<GameProcess> = None;
 
+#[expect(static_mut_refs)]
+#[inline(always)]
+fn attached_process() -> &'static Option<GameProcess> {
+    unsafe { &ATTACHED_PROCESS }
+}
+
 pub fn pid() -> Option<crate::sys::Pid> {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(process) => Some(process.pid),
-            None => None,
-        }
-    }
+    attached_process().as_ref().map(|process| process.pid)
 }
 
 pub fn game_version() -> Option<GameVersion> {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(process) => Some(process.game_version),
-            None => None,
-        }
-    }
+    attached_process()
+        .as_ref()
+        .map(|process| process.game_version)
 }
 
 pub fn game() -> Option<Game> {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(process) => Some(process.game_version.game()),
-            None => None,
-        }
-    }
+    attached_process()
+        .as_ref()
+        .map(|process| process.game_version.game())
 }
 
-pub fn comm() -> &'static str {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(process) => &process.comm,
-            None => "",
-        }
-    }
+pub fn comm() -> Option<&'static str> {
+    attached_process()
+        .as_ref()
+        .map(|process| process.comm.as_str())
 }
 
-pub fn path() -> PathBuf {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(process) => process.exe_path.to_owned(),
-            None => PathBuf::default(),
-        }
-    }
+pub fn path() -> Option<&'static PathBuf> {
+    attached_process().as_ref().map(|process| &process.exe_path)
 }
 
 pub fn module_base() -> u64 {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(process) => process.module_base,
-            None => 0x0,
-        }
-    }
+    attached_process()
+        .as_ref()
+        .map(|process| process.module_base)
+        .unwrap_or(0x0)
 }
 
 pub fn address_size() -> Option<AddressSize> {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(process) => Some(process.address_size),
-            None => None,
-        }
-    }
+    attached_process()
+        .as_ref()
+        .map(|process| process.address_size)
 }
 
 pub fn version<T: Version>() -> Option<T> {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(process) => T::from_game_version(&process.game_version),
-            None => None,
-        }
-    }
+    attached_process()
+        .as_ref()
+        .and_then(|process| T::from_game_version(&process.game_version))
 }
 
 pub fn is_32() -> bool {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(process) => {
-                match process.address_size {
-                    AddressSize::Bits32 => true,
-                    AddressSize::Bits64 => false,
-                }
-            }
-            None => false
-        }
-    }
+    attached_process()
+        .as_ref()
+        .map(|process| process.address_size == AddressSize::Bits32)
+        .unwrap_or(false)
 }
 
 #[cfg(windows)]
 pub(crate) fn handle() -> Option<windows::Win32::Foundation::HANDLE> {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(process) => Some(process.handle),
-            None => None,
-        }
-    }
+    attached_process().as_ref().map(|process| process.handle)
 }
 
 pub fn uptime() -> f64 {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(process) => process.uptime(),
-            None => 0.0,
-        }
-    }
+    attached_process()
+        .as_ref()
+        .map(|process| process.uptime())
+        .unwrap_or(0.0)
 }
 
-pub fn attach_to_process(process: GameProcess) {
+pub(crate) fn attach_to_process(process: GameProcess) {
     unsafe { ATTACHED_PROCESS = Some(process) }
 }
 
@@ -120,19 +85,9 @@ pub fn detach() {
 }
 
 pub fn is_attached() -> bool {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(_) => true,
-            None => false,
-        }
-    }
+    attached_process().as_ref().is_some()
 }
 
 pub fn process_exists() -> Option<bool> {
-    unsafe {
-        match &*std::ptr::addr_of!(ATTACHED_PROCESS) {
-            Some(proc) => Some(proc.exists()),
-            None => None,
-        }
-    }
+    attached_process().as_ref().map(|process| process.exists())
 }

@@ -1,8 +1,8 @@
-use std::fmt::{self};
 use phf::phf_map;
+use strum::Display;
 
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Display)]
 pub enum Infusion {
     Normal = 0,
     Fire = 1,
@@ -28,24 +28,6 @@ pub static INFUSIONS: [Infusion; 10] = [
     Infusion::Enchanted,
     Infusion::Mundane,
 ];
-
-impl fmt::Display for Infusion {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let name = match self {
-            Self::Normal => "Normal",
-            Self::Fire => "Fire",
-            Self::Magic => "Magic",
-            Self::Lightning => "Lightning",
-            Self::Dark => "Dark",
-            Self::Poison => "Poison",
-            Self::Bleed => "Bleed",
-            Self::Raw => "Raw",
-            Self::Enchanted => "Enchanted",
-            Self::Mundane => "Mundane",
-        };
-        write!(f, "{}", name)
-    }
-}
 
 pub static INFUSION_IDS: phf::Map<i32, [u8; 10]> = phf_map! {
     10 => [1,0,0,0,0,0,0,1,1,1],

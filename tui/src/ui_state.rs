@@ -1,7 +1,14 @@
-use crate::app::App;
+use crate::{
+    app::App,
+    event::{Event, send_event},
+    theme::set_theme,
+};
 use anyhow::Result;
 use config::Config;
-use gubtool_core::{appdata::{AppDataError, app_data_dir}, game_version::Game};
+use gubtool_core::{
+    appdata::{AppDataError, app_data_dir},
+    game_version::Game,
+};
 use ratatui_themes::ThemeName;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
@@ -10,12 +17,6 @@ use std::{fs, path::PathBuf};
 pub struct UiState {
     #[serde(rename = "global")]
     pub global: GlobalState,
-
-    // #[serde(rename = "dark_souls_2")]
-    // dark_souls_2: Ds2State,
-
-    // #[serde(rename = "elden_ring")]
-    // elden_ring: ErState,
 }
 
 impl Config for UiState {
@@ -23,21 +24,18 @@ impl Config for UiState {
         let appdata_dir = app_data_dir()?;
         Ok(appdata_dir.join("ui_state.toml"))
     }
-
     fn read() -> Result<Self, AppDataError> {
         let config_path = Self::get_path()?;
         let contents = fs::read_to_string(config_path)?;
         let ui_state: UiState = toml::from_str(&contents)?;
         Ok(ui_state)
     }
-
     fn write(&self) -> Result<(), AppDataError> {
         let path = Self::get_path()?;
         let toml = toml::to_string(self)?;
         fs::write(path, toml)?;
         Ok(())
     }
-
     fn update<F>(modifier: F) -> Result<(), AppDataError>
     where
         F: FnOnce(&mut UiState),
@@ -47,28 +45,11 @@ impl Config for UiState {
         Self::write(&toml)
     }
 }
+
 impl UiState {
     pub fn apply(app: &mut App) {
         let config: Self = Self::read().unwrap_or_default();
         config.global.apply(app);
-    //     config.elden_ring.apply(&mut app.elden_ring);
-    //     config.dark_souls_2.apply();
-    // }
-    // pub fn update_er<F>(modifier: F) -> Result<()>
-    // where
-    //     F: FnOnce(&mut ErState),
-    // {
-    //     let mut er_state: ErState = Self::read().unwrap_or_default().elden_ring;
-    //     modifier(&mut er_state);
-    //     Self::update(|c| c.elden_ring = er_state)
-    // }
-    // pub fn update_ds2<F>(modifier: F) -> Result<()>
-    // where
-    //     F: FnOnce(&mut Ds2State),
-    // {
-    //     let mut ds2_state: Ds2State = Self::read().unwrap_or_default().dark_souls_2;
-    //     modifier(&mut ds2_state);
-    //     Self::update(|c| c.dark_souls_2 = ds2_state)
     }
 }
 
@@ -76,6 +57,7 @@ impl UiState {
 pub struct GlobalState {
     pub theme: ThemeName,
     pub game_screen: Game,
+    pub has_pressed_f1: bool,
 }
 
 impl Default for GlobalState {
@@ -83,47 +65,15 @@ impl Default for GlobalState {
         Self {
             theme: ThemeName::TokyoNight,
             game_screen: Game::EldenRing,
+            has_pressed_f1: false,
         }
     }
 }
 
 impl GlobalState {
     fn apply(self, app: &mut App) {
-        app.theme = self.theme;
-        app.game_screen = self.game_screen;
+        send_event(Event::GameScreen(self.game_screen));
+        set_theme(self.theme);
+        app.has_pressed_f1 = self.has_pressed_f1;
     }
 }
-
-// #[derive(Serialize, Deserialize, Clone)]
-// pub struct ErState {
-// }
-
-// impl Default for ErState {
-//     fn default() -> Self {
-//         Self {
-//         }
-//     }
-// }
-
-// impl ErState {
-//     fn apply(self, er: &mut crate::eldenring_screen::EldenRing) {
-//     }
-// }
-
-// #[derive(Serialize, Deserialize, Clone)]
-// pub struct Ds2State {
-//     pub event: Option<u32>,
-// }
-
-// impl Default for Ds2State {
-//     fn default() -> Self {
-//         Self {
-//             event: None,
-//         }
-//     }
-// }
-
-// impl Ds2State {
-//     fn apply(self) {
-//     }
-// }

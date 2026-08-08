@@ -1,16 +1,8 @@
-use crate::{
-    event::get_event,
-    game_state,
-    mem::*,
-    offsets::{self, ChainReadExt, cs_dlc_imp, module_offsets::BasePointer},
-    resources::ASM,
-};
+pub use offsets::module_offsets::scan::*;
+
+use crate::{event::get_event, is_dlc_available, is_player_loaded, offsets, resources::ASM};
 use anyhow::bail;
-use gubtool_core::{
-    attached::version,
-    game_version::EldenRingVersion::*,
-    sys::error::{PointerType::PlayerIns, ProcResult, ProcessError},
-};
+use gubtool_core::{attached::version, game_version::EldenRingVersion::*};
 use std::{
     thread,
     time::{Duration, Instant},
@@ -25,21 +17,18 @@ pub struct DlcError;
 #[error("Requires version 1.12 or above")]
 pub struct VersionError;
 
-pub fn is_dlc_available() -> bool {
-    read::<u64>(BasePointer::CsDlcImp)
-        .add_offset(cs_dlc_imp::BYTE_FLAGS)
-        .add_offset(cs_dlc_imp::flags::DLC_CHECK)
-        .read::<u8>()
-        .map(|val| val == 1)
-        .unwrap_or_default()
-}
+#[derive(Error, std::fmt::Debug)]
+#[error("Player not loaded")]
+pub struct LoadedError;
 
-pub fn dlc_check() -> Result<(), DlcError> {
-    if !is_dlc_available() {
-        Err(DlcError)
-    } else {
+pub fn dlc_check() -> anyhow::Result<()> {
+    crate::mem::ensure_eldenring()?;
+    if is_dlc_available() {
         Ok(())
-    }
+    } else {
+        Err(DlcError)
+    }?;
+    Ok(())
 }
 
 pub fn is_version_dlc_compat() -> bool {
@@ -65,12 +54,14 @@ pub fn version_check() -> Result<(), VersionError> {
     }
 }
 
-pub fn player_loaded_check() -> ProcResult {
-    if !game_state::is_loaded() {
-        Err(ProcessError::InvalidPointer { pointer_type: PlayerIns })
-    } else {
+pub fn player_loaded_check() -> anyhow::Result<()> {
+    crate::mem::ensure_eldenring()?;
+    if is_player_loaded() {
         Ok(())
-    }
+    } else {
+        Err(LoadedError)
+    }?;
+    Ok(())
 }
 
 pub(crate) fn wait_for_event(event_id: u32, state: bool, timeout_secs: u64) -> anyhow::Result<()> {
@@ -88,13 +79,6 @@ pub(crate) fn wait_for_event(event_id: u32, state: bool, timeout_secs: u64) -> a
 pub(crate) fn wait_for_cutscence_completion() -> anyhow::Result<()> {
     wait_for_event(2200, true, 30)?;
     wait_for_event(2200, false, 120)
-}
-
-
-pub fn scan_and_print_base_offsets() -> anyhow::Result<()> {
-    let base_offsets = offsets::module_offsets::scan()?;
-    println!("{:#X?}", base_offsets);
-    Ok(())
 }
 
 pub fn print_asm_sizes() {

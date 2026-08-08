@@ -1,4 +1,9 @@
-use std::{fmt::Display, fs::OpenOptions, io::{Read, Seek, SeekFrom, Write}, path::PathBuf};
+use std::{
+    fmt::Display,
+    fs::OpenOptions,
+    io::{Read, Seek, SeekFrom, Write},
+    path::PathBuf,
+};
 
 #[derive(Debug)]
 pub enum AppDataError {

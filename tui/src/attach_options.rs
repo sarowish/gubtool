@@ -1,157 +1,164 @@
 use crate::{
-    app::CurrentScreen,
-    common::{StrExt, centered_rect, list, stateful_list::StatefulList, tabs_widget::TabsWidget},
-    event::ResultExt,
-    input::request_input,
-    mutate_app, spawn_task,
+    common::helpers::bordered_block,
+    event::KeyContext,
+    impl_tablecontroller_for_commands,
+    panes::{TabPane, TablePane},
+    popup::{Popup, PopupState, centered_popup},
+    screen::Screen,
+    theme::theme,
 };
-use config::{
-    Config,
-    attach::{AttachConfig, AttachConfigManager, AttachEntries, AttachEntry},
-};
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyCode;
 use gubtool_core::game_version::Game;
 use ratatui::{
     Frame,
-    widgets::{Clear, List, ListItem},
+    layout::{Constraint, Direction, Layout, Rect},
+    text::{Line, Span},
+    widgets::{Paragraph, Wrap},
 };
+use shared::command::{Command, OptCmd};
+use std::{cell::RefCell, rc::Rc};
 
 pub struct AttachOptions {
-    pub manager: AttachConfigManager,
-    game_tabs: GameTabs,
-    list_state: StatefulList,
-    list_identifier: usize,
-}
-
-struct GameTabs {
-    ds2: TabsWidget,
-    er: TabsWidget,
+    game_screen: Rc<RefCell<Game>>,
+    popup_state: PopupState,
+    ds2_tabs: TabPane,
+    er_tabs: TabPane,
 }
 
 impl AttachOptions {
-    pub fn new() -> Self {
+    pub fn new(game_screen: Rc<RefCell<Game>>) -> Self {
         Self {
-            manager: AttachConfigManager::new(),
-            list_state: StatefulList::new(0),
-            list_identifier: 0,
-            game_tabs: GameTabs {
-                ds2: TabsWidget {
-                    current_tab: 0,
-                    title: None,
-                    tabs: &["Player", "Utility"],
-                },
-                er: TabsWidget {
-                    current_tab: 0,
-                    title: None,
-                    tabs: &["Player", "Utility"],
-                },
-            }
+            game_screen,
+            popup_state: PopupState::default(),
+            ds2_tabs: TabPane::new(
+                &["Player", "Utility"],
+                vec![
+                    TablePane::new_static(&Ds2Player),
+                    TablePane::new_static(&Ds2Utility),
+                ]
+            ),
+            er_tabs: TabPane::new(
+                &["Player", "Utility"],
+                vec![
+                    TablePane::new_static(&ErPlayer),
+                    TablePane::new_static(&ErUtility),
+                ]
+            ),
         }
     }
 
-    pub fn draw(&mut self, frame: &mut Frame, game_screen: &Game) {
-        self.manager.update();
+    fn paragraph(&self) -> Paragraph<'static> {
+        const INFO: &'static str = "These options will \
+            be automatically applied when gubtool attaches to ";
 
-        let layout = centered_rect(65, 65, frame.area());
-        frame.render_widget(Clear, layout);
-
-        let (list, id) = current_list(&self.game_tabs, &self.manager.entries, game_screen);
-        let list_len = list.len();
-
-        if self.list_identifier != id {
-            self.list_identifier = id;
-            self.list_state.select(0);
-            self.list_state.size = list_len;
-        }
-
-        frame.render_stateful_widget(
-            entries_to_list(&self.manager.config, list),
-            layout,
-            &mut self.list_state.state,
-        );
-
-        let tabs = match game_screen {
-            Game::DarkSouls2 => &self.game_tabs.ds2,
-            Game::EldenRing => &self.game_tabs.er,
-        };
-        tabs.draw_thin(frame, layout);
+        Paragraph::new(Line::from(vec![
+            Span::raw(INFO),
+            Span::raw(self.game_screen.borrow().to_string()),
+        ]))
+        .wrap(Wrap { trim: true })
+        .style(theme().muted)
+        .block(bordered_block(Some("Attach Options")))
     }
+}
 
-    pub fn handle_keys(&mut self, key: KeyEvent, game_screen: &Game, current_screen: &mut CurrentScreen) {
-        match game_screen {
-            Game::DarkSouls2 => {
-                self.game_tabs.ds2.handle_keys_arrows(key);
-            }
-            Game::EldenRing => {
-                self.game_tabs.er.handle_keys_arrows(key);
-            }
+impl Popup for AttachOptions {
+    fn popup_state(&mut self) -> &mut PopupState {
+        &mut self.popup_state
+    }
+    fn screen(&mut self) -> &mut dyn Screen {
+        self
+    }
+    fn popup_rect(&self, frame: &mut Frame) -> Rect {
+        centered_popup(75, 75, frame.area())
+    }
+}
+
+impl Screen for AttachOptions {
+    fn draw(&mut self, frame: &mut Frame, area: Rect) {
+        let paragraph = self.paragraph();
+        let lines = paragraph.line_count(area.width).clamp(3, 5);
+
+        let [info, tabs] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(lines as u16),
+                Constraint::Fill(1),
+            ])
+            .areas(area);
+
+        frame.render_widget(paragraph, info);
+
+        match *self.game_screen.borrow() {
+            Game::DarkSouls2 => self.ds2_tabs.draw(frame, tabs),
+            Game::EldenRing => self.er_tabs.draw(frame, tabs),
         }
-
-        self.list_state.handle_keys(key);
-
-        match (key.code, key.modifiers) {
-            (KeyCode::Char('q') | KeyCode::Esc, _) => *current_screen = CurrentScreen::Main,
-            (KeyCode::Enter, _) => {
-                let Some(selected) = self.list_state.selected() else { return };
-                let (list, _) = current_list(&self.game_tabs, &self.manager.entries, game_screen);
-
-                match &list[selected] {
-                    AttachEntry::Bool(val) => {
-                        val.toggle(&mut self.manager.config);
-                        self.manager.config.write().send_error();
-                    }
-                    AttachEntry::Float(_) => {
-                        let game = game_screen.clone();
-                        spawn_task! {
-                            let new_val = request_input::<f32>(None).await;
-                            mutate_app!(|app: &mut crate::app::App| {
-                                let (list, _) = current_list(&app.attach_options.game_tabs, &app.attach_options.manager.entries, &game);
-                                if let Some(AttachEntry::Float(target_val)) = list.get(selected) {
-                                    target_val.set(&mut app.attach_options.manager.config, new_val);
-                                    app.attach_options.manager.config.write().send_error();
-                                }
-                            });
-                        }
-                    }
-                }
-            }
-            _ => (),
+    }
+    fn handle_keys(&mut self, ctx: &mut KeyContext) {
+        match *self.game_screen.borrow() {
+            Game::DarkSouls2 => self.ds2_tabs.handle_keys(ctx),
+            Game::EldenRing => self.er_tabs.handle_keys(ctx),
         }
     }
 }
 
-fn current_list<'a>(tabs: &'a GameTabs, entries: &'a AttachEntries, game_screen: &'a Game) -> (&'a Vec<AttachEntry>, usize) {
-    let list = match game_screen {
-        Game::DarkSouls2 => {
-            match tabs.ds2.current_tab() {
-                "Player" => &entries.ds2.player,
-                "Utility" => &entries.ds2.utility,
-                _ => panic!("invalid tab"),
-            }
-        }
-        Game::EldenRing => {
-            match tabs.er.current_tab() {
-                "Player" => &entries.er.player,
-                "Utility" => &entries.er.utility,
-                _ => panic!("invalid tab"),
-            }
-        }
-    };
-    let id = list.as_ptr() as usize;
-    (list, id)
-}
+const DS2_PLAYER: [Command; 10] = [
+    Command::Toggle(&darksouls2::attach::NoDeath),
+    Command::Toggle(&darksouls2::attach::NoDamage),
+    Command::Toggle(&darksouls2::attach::InfinitePoise),
+    Command::Toggle(&darksouls2::attach::InfiniteStamina),
+    Command::Toggle(&darksouls2::attach::InfiniteDurability),
+    Command::Toggle(&darksouls2::attach::InfiniteConsumables),
+    Command::Toggle(&darksouls2::attach::NoHollowing),
+    Command::Toggle(&darksouls2::attach::NoSoulLoss),
+    Command::Toggle(&darksouls2::attach::Hidden),
+    Command::Toggle(&darksouls2::attach::Silent),
+];
 
-fn entries_to_list(config: &AttachConfig, entries: &Vec<AttachEntry>) -> List<'static> {
-    let items: Vec<ListItem> = entries.iter().map(|x| {
-        match x {
-            AttachEntry::Bool(val) => {
-                ListItem::from(format!("{x}").create_toggle_str(*val.get(config)))
-            }
-            AttachEntry::Float(val) => {
-                let s = val.get(config).map_or(String::new(), |v| v.to_string());
-                ListItem::from(format!("{}: {}", x, s))
-            }
-        }
-    }).collect();
-    list(items, None)
-}
+const DS2_UTILITY: [Command; 7] = [
+    Command::Toggle(&darksouls2::attach::SkipCredits),
+    Command::Toggle(&darksouls2::attach::FastQuitout),
+    Command::Toggle(&darksouls2::attach::DisableRoll),
+    Command::Toggle(&darksouls2::attach::DisableBackstep),
+    Command::Toggle(&darksouls2::attach::SkipIvoryKingGauntlet),
+    Command::Toggle(&darksouls2::attach::DisableLoyceKnights),
+    Command::Toggle(&darksouls2::attach::StartEventLogger),
+];
+
+const ER_PLAYER: [Command; 14] = [
+    Command::Toggle(&eldenring::attach::NoDeath),
+    Command::Toggle(&eldenring::attach::NoDamage),
+    Command::Toggle(&eldenring::attach::InfinitePoise),
+    Command::Toggle(&eldenring::attach::OneShot),
+    Command::Toggle(&eldenring::attach::RuneArc),
+    Command::Toggle(&eldenring::attach::SetRfbsOnLoad),
+    Command::Toggle(&eldenring::attach::Hidden),
+    Command::Toggle(&eldenring::attach::Silent),
+    Command::Toggle(&eldenring::attach::InfiniteStamina),
+    Command::Toggle(&eldenring::attach::InfiniteFp),
+    Command::Toggle(&eldenring::attach::InfiniteConsumables),
+    Command::Toggle(&eldenring::attach::InfiniteArrows),
+    Command::Toggle(&eldenring::attach::TorrentAnywhere),
+    Command::Toggle(&eldenring::attach::TorrentNoDeath),
+];
+
+const ER_UTILITY: [Command; 14] = [
+    Command::Option(OptCmd::F32(&eldenring::attach::FpsCap)),
+    Command::Option(OptCmd::F32(&eldenring::attach::GameSpeed)),
+    Command::Toggle(&eldenring::attach::DisableLogos),
+    Command::Toggle(&eldenring::attach::MuteMusic),
+    Command::Toggle(&eldenring::attach::DisableAreaWelcomeMessage),
+    Command::Toggle(&eldenring::attach::StutterFix),
+    Command::Toggle(&eldenring::attach::MapInCombat),
+    Command::Toggle(&eldenring::attach::TravelInDungeons),
+    Command::Toggle(&eldenring::attach::DrawHitboxes),
+    Command::Toggle(&eldenring::attach::ShowAllGraces),
+    Command::Toggle(&eldenring::attach::ShowAllMaps),
+    Command::Toggle(&eldenring::attach::DisableRoll),
+    Command::Toggle(&eldenring::attach::DisableJump),
+    Command::Toggle(&eldenring::attach::DisableBackstep),
+];
+
+impl_tablecontroller_for_commands!(Ds2Player, DS2_PLAYER);
+impl_tablecontroller_for_commands!(Ds2Utility, DS2_UTILITY);
+impl_tablecontroller_for_commands!(ErPlayer, ER_PLAYER);
+impl_tablecontroller_for_commands!(ErUtility, ER_UTILITY);

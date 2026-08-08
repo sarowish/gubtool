@@ -3,15 +3,16 @@ use crate::{
     mem::*,
     offsets::{
         ChainReadExt,
-        code_cave::CaveOffset,
+        code_cave::CaveAddress,
         menu_man,
         module_offsets::{BasePointer, Function, Hook},
     },
+    pointer_cache::ResolvedPtr,
     resources::{ASM, bosses::Boss, graces::Grace},
     utils::{dlc_check, player_loaded_check},
 };
 use gubtool_core::{address::Address, slice_ops::*, sys::error::ProcResult};
-use std::{time::Duration};
+use std::time::Duration;
 
 pub fn warp_to_grace(grace_id: i64) -> ProcResult {
     let mut fun = ASM.get_function("warp_to_grace");
@@ -21,7 +22,7 @@ pub fn warp_to_grace(grace_id: i64) -> ProcResult {
     write_to_slice::<i64>(&mut asm, fun.reloc("grace_id"), grace_id)?;
     write_addr_to_slice(&mut asm, fun.reloc("fn_grace_warp"), Function::GraceWarp)?;
 
-    spawn_thread_join(CaveOffset::GraceWarpAsm, asm)
+    spawn_thread_join(CaveAddress::GraceWarpAsm, asm)
 }
 
 pub async fn warp_to_block_id(block_id: i32, coords: [f32; 3], angle: f32, is_night: bool) -> ProcResult {
@@ -39,7 +40,7 @@ pub async fn warp_to_block_id(block_id: i32, coords: [f32; 3], angle: f32, is_ni
     write_to_slice::<i32>(&mut asm, fun.reloc("alt_no"), alt_no)?;
     write_addr_to_slice(&mut asm, fun.reloc("fn_block_warp"), Function::BlockWarp)?;
 
-    spawn_thread_join(CaveOffset::BlockWarpAsm, asm)?;
+    spawn_thread_join(CaveAddress::BlockWarpAsm, asm)?;
     hook_warp_coord_writes(coords, angle, is_night).await
 }
 
@@ -48,16 +49,16 @@ async fn hook_warp_coord_writes(coords: [f32; 3], angle: f32, is_night: bool) ->
     write_to_slice::<f32>(&mut target_coords, 0, coords[0])?;
     write_to_slice::<f32>(&mut target_coords, 4, coords[1])?;
     write_to_slice::<f32>(&mut target_coords, 8, coords[2])?;
-    write_to_slice::<f32>(&mut target_coords, 12, 1.0)?;
+    write_to_slice::<f32>(&mut target_coords, 12, 1.0_f32)?;
 
-    write_bytes(CaveOffset::WarpCoords, &target_coords)?;
-    write::<f32>(CaveOffset::WarpAngle.add_offset(4), angle)?;
+    write_bytes(CaveAddress::WarpCoords, &target_coords)?;
+    write::<f32>(CaveAddress::WarpAngle.add_offset(4), angle)?;
 
     let mut fun = ASM.get_function("warp_coord_angle_hook");
     let mut asm = fun.take_bytes();
 
-    let code_loc = CaveOffset::WarpCoordsHook;
-    write_rel_i32(&mut asm, code_loc, fun.reloc("new_val"), CaveOffset::WarpCoords, 4)?;
+    let code_loc = CaveAddress::WarpCoordsHook;
+    write_rel_i32(&mut asm, code_loc, fun.reloc("new_val"), CaveAddress::WarpCoords, 4)?;
     write_to_slice::<i32>(&mut asm, fun.reloc("property_offset"), 0xAA0)?;
     write_rel_i32(&mut asm, code_loc, fun.reloc("hook_loc"), Hook::WarpCoordWrite.add_offset(7), 4)?;
     install_hook(&asm, code_loc, Hook::WarpCoordWrite, 7)?;
@@ -65,8 +66,8 @@ async fn hook_warp_coord_writes(coords: [f32; 3], angle: f32, is_night: bool) ->
     let mut fun = ASM.get_function("warp_coord_angle_hook");
     let mut asm = fun.take_bytes();
 
-    let code_loc = CaveOffset::WarpAngleHook;
-    write_rel_i32(&mut asm, code_loc, fun.reloc("new_val"), CaveOffset::WarpAngle, 4)?;
+    let code_loc = CaveAddress::WarpAngleHook;
+    write_rel_i32(&mut asm, code_loc, fun.reloc("new_val"), CaveAddress::WarpAngle, 4)?;
     write_to_slice::<i32>(&mut asm, fun.reloc("property_offset"), 0xAB0)?;
     write_rel_i32(&mut asm, code_loc, fun.reloc("hook_loc"), Hook::WarpAngleWrite.add_offset(7), 4)?;
     install_hook(&asm, code_loc, Hook::WarpAngleWrite, 7)?;
@@ -77,7 +78,7 @@ async fn hook_warp_coord_writes(coords: [f32; 3], angle: f32, is_night: bool) ->
 const COORD_HOOK_ORIGINAL: [u8; 7] = [0x0F, 0x11, 0x80, 0xA0, 0x0A, 0x00, 0x00];
 const ANGLE_HOOK_ORIGINAL: [u8; 7] = [0x0F, 0x11, 0x80, 0xB0, 0x0A, 0x00, 0x00];
 async fn wait_to_unhook_warp(is_night: bool) -> ProcResult {
-    let is_faded_ptr = read::<u64>(BasePointer::MenuMan)
+    let is_faded_ptr = ResolvedPtr::MenuMan.get()
         .add_offset(menu_man::is_fading())?;
 
     while !is_bit_set(is_faded_ptr, menu_man::fade_bit_flags::IS_FADE_SCREEN)? {

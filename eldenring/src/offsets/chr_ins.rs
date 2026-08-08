@@ -114,7 +114,7 @@ pub mod bit_flags {
     pub const DISABLE_AI: u8 = 0b00000001;
 }
 
-pub fn manipulator() -> u64 {
+pub fn com_manipulator() -> u64 {
     match version() {
         Some(Version1_2_0) | Some(Version1_2_1) | Some(Version1_2_2) |
         Some(Version1_2_3) | Some(Version1_3_0) | Some(Version1_3_1) |

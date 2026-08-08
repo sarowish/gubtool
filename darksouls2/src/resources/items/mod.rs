@@ -9,13 +9,10 @@ pub mod spells;
 pub mod upgrade_materials;
 pub mod weapons;
 
-use crate::{
-    mem::is_scholar,
-    resources::items::{
-        armor::ARMOR, arrows::ARROWS, consumables::CONSUMABLES, gestures::GESTURES,
-        key_items::KEY_ITEMS, rings::RINGS, spells::SPELLS, upgrade_materials::UPGRADE_MATERIALS,
-        weapons::WEAPONS,
-    },
+use crate::resources::items::{
+    armor::ARMOR, arrows::ARROWS, consumables::CONSUMABLES, gestures::GESTURES,
+    key_items::KEY_ITEMS, rings::RINGS, spells::SPELLS, upgrade_materials::UPGRADE_MATERIALS,
+    weapons::WEAPONS,
 };
 use once_cell::sync::Lazy;
 use std::fmt;
@@ -47,7 +44,7 @@ impl Item {
     }
 }
 
-static ITEMS: Lazy<Vec<Item>> = Lazy::new(|| {
+pub static ITEMS: Lazy<Vec<Item>> = Lazy::new(|| {
     let mut items: Vec<Item> = Vec::new();
     items.extend(ARMOR);
     items.extend(ARROWS);
@@ -61,22 +58,6 @@ static ITEMS: Lazy<Vec<Item>> = Lazy::new(|| {
     items.sort_by(|a, b| a.name.cmp(b.name));
     items
 });
-
-static ITEMS_NO_SCHOLAR: Lazy<Vec<Item>> = Lazy::new(|| {
-    ITEMS
-        .iter()
-        .filter(|item| !item.scholar_only)
-        .cloned()
-        .collect()
-});
-
-pub fn items_array() -> &'static [Item] {
-    if is_scholar() {
-        &ITEMS
-    } else {
-        &ITEMS_NO_SCHOLAR
-    }
-}
 
 #[derive(Clone, Copy)]
 pub enum Categories {

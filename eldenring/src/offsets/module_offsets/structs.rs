@@ -1,6 +1,5 @@
-use crate::{offsets::module_offsets::versions, resources::scan_patterns};
-use anyhow::Result;
-use gubtool_core::{aob_scanner, attached::version, game_version::EldenRingVersion::*};
+use crate::offsets::module_offsets::versions;
+use gubtool_core::{attached::version, game_version::EldenRingVersion::*};
 
 #[derive(Debug)]
 pub struct ModuleOffsets {
@@ -83,6 +82,7 @@ pub struct ExternalFunctionPointers {
     pub kernel32_close_handle: u64,
 }
 
+#[inline(always)]
 pub(super) fn module_offsets() -> &'static ModuleOffsets {
     match version() {
         Some(Version1_2_0) => &versions::OFFSETS_1_2_0,
@@ -113,68 +113,4 @@ pub(super) fn module_offsets() -> &'static ModuleOffsets {
         Some(Version2_6_2) => &versions::OFFSETS_2_6_2,
         _ => &versions::OFFSETS_2_6_2,
     }
-}
-
-pub fn scan() -> Result<ModuleOffsets> {
-    Ok(ModuleOffsets {
-        base_ptrs: BasePointers {
-            world_chr_man: aob_scanner::scan(scan_patterns::WORLD_CHR_MAN)?,
-            field_area: aob_scanner::scan(scan_patterns::FIELD_AREA)?,
-            game_man: aob_scanner::scan(scan_patterns::GAME_MAN)?,
-            game_data_man: aob_scanner::scan(scan_patterns::GAME_DATA_MAN)?,
-            menu_man: aob_scanner::scan(scan_patterns::MENU_MAN)?,
-            cs_emk_system: aob_scanner::scan(scan_patterns::CS_EMK_SYSTEM)?,
-            virtual_mem_flag: aob_scanner::scan(scan_patterns::VIRTUAL_MEMORY_FLAG)?,
-            damage_manager: aob_scanner::scan(scan_patterns::DAMAGE_MANAGER)?,
-            map_item_man_impl: aob_scanner::scan(scan_patterns::MAP_ITEM_MAN_IMPL)?,
-            dl_user_input_manager_impl: aob_scanner::scan(scan_patterns::DL_USER_INPUT_MANAGER_IMPL)?,
-            cs_flipper_imp: aob_scanner::scan(scan_patterns::CS_FLIPPER_IMP)?,
-            cs_dlc_imp: aob_scanner::scan(scan_patterns::CS_DLC_IMP)?,
-        },
-        functions: Functions {
-            grace_warp: aob_scanner::scan(scan_patterns::GRACE_WARP)?,
-            block_warp: aob_scanner::scan(scan_patterns::BLOCK_WARP)?,
-            get_player_item_quantity_by_id: aob_scanner::scan(scan_patterns::GET_PLAYER_ITEM_QUANTITY_BY_ID)?,
-            item_spawn: aob_scanner::scan(scan_patterns::ITEM_SPAWN)?,
-            give_runes: aob_scanner::scan(scan_patterns::GIVE_RUNES)?,
-            get_event: aob_scanner::scan(scan_patterns::GET_EVENT)?,
-            set_event: aob_scanner::scan(scan_patterns::SET_EVENT)?,
-            set_speffect: aob_scanner::scan(scan_patterns::SET_SPEFFECT)?,
-            remove_speffect: aob_scanner::scan(scan_patterns::REMOVE_SPEFFECT)?,
-            get_chr_ins_by_entity_id: aob_scanner::scan(scan_patterns::GET_CHR_INS_BY_ENTITY_ID)?,
-            emevd_switch: aob_scanner::scan(scan_patterns::EMEVD_SWITCH)?,
-            emk_event_ins_ctor: aob_scanner::scan(scan_patterns::EMK_EVENT_INS_CTOR)?,
-            external_event_temp_ctor: aob_scanner::scan(scan_patterns::EXTERNAL_EVENT_TEMP_CTOR)?,
-            execute_talk_command: aob_scanner::scan(scan_patterns::EXECUTE_TALK_COMMAND)?,
-        },
-        hooks: Hooks {
-            locked_target_pointer: aob_scanner::scan(scan_patterns::LOCKED_TARGET_POINTER)?,
-            target_no_stagger: aob_scanner::scan(scan_patterns::TARGET_NO_STAGGER)?,
-            player_no_grab: aob_scanner::scan(scan_patterns::PLAYER_NO_GRAB)?,
-            player_infinite_poise: aob_scanner::scan(scan_patterns::PLAYER_INFINITE_POISE)?,
-            warp_coord_write: aob_scanner::scan(scan_patterns::WARP_COORD_WRITE)?,
-            warp_angle_write: aob_scanner::scan(scan_patterns::WARP_ANGLE_WRITE)?,
-            get_force_act_idx: aob_scanner::scan(scan_patterns::GET_FORCE_ACT_IDX)?,
-            set_requested_action: aob_scanner::scan(scan_patterns::SET_REQUESTED_ACTION)?,
-        },
-        patches: Patches {
-            no_logo: aob_scanner::scan(scan_patterns::NO_LOGO)?,
-            fps_cap: aob_scanner::scan(scan_patterns::FPS_CAP)?,
-            mute_music: aob_scanner::scan(scan_patterns::MUTE_MUSIC)?,
-            pause_world: aob_scanner::scan(scan_patterns::PAUSE_WORLD)?,
-            torrent_disabled_underworld: aob_scanner::scan(scan_patterns::TORRENT_DISABLED_UNDERWOLD)?,
-            whistle_disabled: aob_scanner::scan(scan_patterns::WHISTLE_DISABLED)?,
-            open_map: aob_scanner::scan(scan_patterns::OPEN_MAP)?,
-            close_map: aob_scanner::scan(scan_patterns::CLOSE_MAP)?,
-            can_fast_travel: aob_scanner::scan(scan_patterns::CAN_FAST_TRAVEL)?,
-        },
-        data: Data {
-            chr_dbg_flags: aob_scanner::scan(scan_patterns::CHR_DBG_FLAGS)?,
-            map_dbg_flags: aob_scanner::scan(scan_patterns::MAP_DBG_FLAGS)?,
-        },
-        external_fn_ptrs: ExternalFunctionPointers {
-            kernel32_create_thread: aob_scanner::scan(scan_patterns::KERNEL32_CREATE_THREAD)?,
-            kernel32_close_handle: aob_scanner::scan(scan_patterns::KERNEL32_CLOSE_HANDLE)?,
-        },
-    })
 }

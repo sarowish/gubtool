@@ -5,7 +5,7 @@ pub const BASE_OFFSET: u64 = 0x4000000;
 
 #[repr(u64)]
 #[derive(Clone, Copy)]
-pub enum CaveOffset {
+pub enum CaveAddress {
     SavedTargetPointer = 0x0,                           // u64
     LookedUpHandle = 0x8,                               // u64
     LookedUpEntityId = 0x10,                            // u64
@@ -59,7 +59,7 @@ pub enum CaveOffset {
     EventLogBuffer = 0x4000,                            // 0x1000
 }
 
-impl Address for CaveOffset {
+impl Address for CaveAddress {
     fn addr(&self) -> u64 {
         module_base()
             .saturating_add(BASE_OFFSET)
