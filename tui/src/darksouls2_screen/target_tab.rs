@@ -1,4 +1,5 @@
 use crate::{
+    common::helpers::line_gauge,
     event::KeyContext,
     impl_tablecontroller_for_commands,
     panes::{PaneManager, TablePane},
@@ -91,16 +92,17 @@ fn hp_line_gauge() -> LineGauge<'static> {
         .chr_ctrl()
         .and_then(|t| t.max_hp())
         .unwrap_or_default();
-    LineGauge::default()
-        .label(format!(
-            "{:<22}", format!("Health: {}/{}",
-                current.to_formatted_string(&Locale::en),
-                max.to_formatted_string(&Locale::en)
-            )
-        ))
-        .filled_style(Style::from(theme().fg).bg(theme().fg).bold())
-        .ratio(if max > 0 { (current as f64 / max as f64).clamp(0.0, 1.0) } else { 0.0 })
-    .style(Style::from(theme().fg))
+
+    let label = format!(
+        "{:<22}",
+        format!(
+            "Health: {}/{}",
+            current.to_formatted_string(&Locale::en),
+            max.to_formatted_string(&Locale::en)
+        )
+    );
+
+    line_gauge(label, current as f64, max as f64)
 }
 
 fn poise_line_gauge() -> LineGauge<'static> {
@@ -117,12 +119,10 @@ fn poise_line_gauge() -> LineGauge<'static> {
     } else {
         "Immune".to_string()
     };
-    LineGauge::default()
-        .label(format!(
-            "{:<22}", format!("Poise: {vals}")))
-        .filled_style(Style::from(theme().fg).bg(theme().fg).bold())
-        .ratio(if max > 0.0 { (current as f64 / max as f64).clamp(0.0, 1.0) } else { 0.0 })
-    .style(Style::from(theme().fg))
+
+    let label = format!("{:<22}", format!("Poise: {vals}"));
+
+    line_gauge(label, current as f64, max as f64)
 }
 
 fn posture_line_gauge() -> LineGauge<'static> {
@@ -134,15 +134,17 @@ fn posture_line_gauge() -> LineGauge<'static> {
         .chr_ctrl()
         .and_then(|t| t.max_posture())
         .unwrap_or_default();
-    LineGauge::default()
-        .label(format!(
-            "{:<22}", format!("Posture: {}/{}",
-                (current as i64).to_formatted_string(&Locale::en),
-                (max as i64).to_formatted_string(&Locale::en)
-        )))
-        .filled_style(Style::from(theme().fg).bg(theme().fg).bold())
-        .ratio(if max > 0.0 { (current as f64 / max as f64).clamp(0.0, 1.0) } else { 0.0 })
-    .style(Style::from(theme().fg))
+
+    let label = format!(
+        "{:<22}",
+        format!(
+            "Posture: {}/{}",
+            (current as i64).to_formatted_string(&Locale::en),
+            (max as i64).to_formatted_string(&Locale::en)
+        )
+    );
+
+    line_gauge(label, current as f64, max as f64)
 }
 
 fn chr_name_paragraph() -> Paragraph<'static> {
