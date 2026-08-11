@@ -1,7 +1,8 @@
 use crate::theme::{self, theme};
 use ratatui::{
     style::{Modifier, Stylize},
-    widgets::Block,
+    symbols,
+    widgets::{Block, LineGauge},
 };
 use ratatui_themes::Style;
 
@@ -23,6 +24,25 @@ pub fn bordered_block<'a>(title: Option<&'a str>) -> Block<'a> {
         Some(title) => block.title(title.fg(theme().secondary)),
         None => block,
     }
+}
+
+pub fn line_gauge(label: String, current: f64, max: f64) -> LineGauge<'static> {
+    let ratio = if max > 0.0 {
+        (current / max).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+
+    let theme = theme();
+
+    LineGauge::default()
+        .label(label)
+        .filled_symbol(symbols::block::FULL)
+        .filled_style(theme.fg)
+        .unfilled_symbol(symbols::block::FULL)
+        .unfilled_style(theme.muted)
+        .style(theme.fg)
+        .ratio(ratio)
 }
 
 #[macro_export]
